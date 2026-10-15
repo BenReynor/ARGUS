@@ -1,0 +1,134 @@
+import React, { useState, useEffect } from 'react';
+import { useServerMap, useSetSelectedChannel, useAddLog, useShowNotification } from '../store/useStore';
+import { listChannels, sendMessage } from '../api/tauri';
+import { Hash, MessageSquare, Volume2, Folder, Send, Copy, Search, ChevronRight } from 'lucide-react';
+import type { Channel } from '../types';
+
+const CHANNEL_TYPE_ICONS: Record<number, React.ComponentType<{ size?: number }>> = {
+  0: MessageSquare,
+  2: Volume2,
+  4: Folder,
+  15: Hash,
+};
+
+export const ChannelsView: React.FC = () => {
+  const serverMap = useServerMap();
+  const setSelectedChannel = useSetSelectedChannel();
+  const addLog = useAddLog();
+  const showNotification = useShowNotification();
+  const [search, setSearch] = useState('');
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const [newMessage, setNewMessage] = useState('');
+
+  const categories = serverMap?.categories || {};
+  const categoryNames: Record<string, string> = {
+    '1541531966053159034': '📁 VERIFICACIÓN OFF ROL',
+    '1555424136254201888': '📁 CANALES ONROL',
+    '1555423953185677372': '📁 OPERACIONES ISD ONROL',
+    '1541513297529147466': '📁 ZONA SOCIAL OFF ROL',
+    '1541532787377438815': '🔊 DIRECTORIO ISD',
+    '1542373594225446993': '📁 OPERACIONES ISD OFF ROL',
+    '1542360558089543782': '📁 ZONA DE INTERROGATORIOS ONROL',
+    'none': '📁 SIN CATEGORÍA',
+  };
+
+  const handleSend = async (channelId: string) => {
+    if (!newMessage.trim()) return;
+    try {
+      await sendMessage(channelId, newMessage);
+      addLog(`[SENT] #${channelId}: ${newMessage.slice(0, 50)}...`);
+      showNotification('Mensaje enviado', 'success');
+      setNewMessage('');
+    } catch {
+      showNotification('Error al enviar', 'error');
+    }
+  };
+
+  const copyId = (id: string) => {
+    navigator.clipboard.writeText(id);
+    showNotification('ID copiado', 'info');
+  };
+
+  return (
+    <div className="channels-view">
+      <div className="view-header">
+        <h2>CANALES DEL SERVIDOR</h2>
+        <div className="search-box">
+          <Search size={16} />
+          <input
+            type="text"
+            placeholder="Filtrar canales..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="channels-tree">
+        {Object.entries(categories).map(([catId, channels]) => {
+          const filtered = channels.filter(c => 
+            c.name.toLowerCase().includes(search.toLowerCase())
+          );
+          if (filtered.length === 0 && search) return null;
+
+          const isExpanded = expandedCategories[catId] !== false;
+          return (
+            <div key={catId} className="category-group">
+              <button className="category-header" onClick={() => setExpandedCategories(prev => ({ ...prev, [catId]: !isExpanded }))}>
+                <ChevronRight size={14} className={isExpanded ? 'expanded' : ''} />
+                <Folder size={16} />
+                <span>{categoryNames[catId] || catId}</span>
+                <span className="channel-count">{filtered.length}</span>
+              </button>
+              {isExpanded && (
+                <div className="channels-list">
+                  {filtered.map((channel) => {
+                    const Icon = CHANNEL_TYPE_ICONS[channel.channel_type] || Hash;
+                    return (
+                      <div key={channel.id} className="channel-item">
+                        <Icon size={14} className={`type-icon type-${channel.channel_type}`} />
+                        <span className="channel-name">#{channel.name}</span>
+                        <div className="channel-actions">
+                          <button className="icon-btn" onClick={() => copyId(channel.id)} title="Copiar ID">
+                            <Copy size={12} />
+                          </button>
+                          <button className="icon-btn" onClick={() => setSelectedChannel(channel)} title="Seleccionar">
+                            <ChevronRight size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {useStore.getState().selectedChannel && (
+        <div className="channel-detail-panel">
+          <div className="panel-header">
+            <h3>#{useStore.getState().selectedChannel!.name}</h3>
+            <button className="icon-btn" onClick={() => setSelectedChannel(null)}>
+              <ChevronRight size={16} className="rotate-180" />
+            </button>
+          </div>
+          <div className="message-send">
+            <textarea
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder="Escribe un mensaje..."
+              rows={3}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend(useStore.getState().selectedChannel!.id))}
+            />
+            <button className="btn-primary" onClick={() => handleSend(useStore.getState().selectedChannel!.id)}>
+              <Send size={16} />
+              ENVIAR
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
