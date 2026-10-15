@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tauri::Manager;
+use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,7 +16,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             discord_token: String::new(),
-            server_id: "1541513296375717921".to_string(), // ISD server
+            server_id: "1541513296375717921".to_string(),
             auto_start: false,
             minimize_to_tray: true,
         }
@@ -113,23 +113,21 @@ impl AppState {
         }
     }
 
-    pub async fn load_config(&self, app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(store) = app.store("config.json") {
-            if let Ok(value) = store.get("config") {
-                if let Ok(config) = serde_json::from_value(value) {
-                    *self.config.lock().unwrap() = config;
-                }
+    pub async fn load_config(&self, app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+        let store = app.store("config.json")?;
+        if let Some(value) = store.get("config") {
+            if let Ok(config) = serde_json::from_value(value) {
+                *self.config.lock().unwrap() = config;
             }
         }
         Ok(())
     }
 
-    pub async fn save_config(&self, app: &tauri::AppHandle, config: Config) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn save_config(&self, app: &AppHandle, config: Config) -> Result<(), Box<dyn std::error::Error>> {
         *self.config.lock().unwrap() = config.clone();
-        if let Some(store) = app.store("config.json") {
-            store.set("config", serde_json::to_value(config)?)?;
-            store.save()?;
-        }
+        let store = app.store("config.json")?;
+        store.set("config", serde_json::to_value(config)?);
+        store.save()?;
         Ok(())
     }
 }

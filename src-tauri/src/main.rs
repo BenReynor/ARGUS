@@ -3,18 +3,16 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, Runtime,
+    Manager,
 };
 use tauri_plugin_log::{Target, TargetKind};
 
 mod commands;
-mod discord;
 mod state;
 
 use commands::*;
 use state::AppState;
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_state = AppState::new();
 
@@ -33,15 +31,12 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_tray::init())
         .plugin(tauri_plugin_opener::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
-            // Bot control
             start_bot,
             stop_bot,
             get_bot_status,
-            // Discord operations
             list_guilds,
             list_channels,
             list_members,
@@ -52,21 +47,18 @@ pub fn run() {
             add_role,
             remove_role,
             timeout_member,
-            // Config
             get_config,
             save_config,
-            // Utils
             get_server_map,
             refresh_server_map,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
 
-            // System tray
-            let show_item = MenuItem::with_id(handle, "show", "Mostrar ARGUS", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(handle, "quit", "Salir", true, None::<&str>)?;
+            let show_item = MenuItem::with_id(&handle, "show", "Mostrar ARGUS", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(&handle, "quit", "Salir", true, None::<&str>)?;
 
-            let menu = Menu::with_items(handle, &[&show_item, &quit_item])?;
+            let menu = Menu::with_items(&handle, &[&show_item, &quit_item])?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(handle.default_window_icon().cloned().unwrap())
@@ -81,9 +73,8 @@ pub fn run() {
                     }
                     _ => {}
                 })
-                .build(handle)?;
+                .build(&handle)?;
 
-            // Handle menu events
             handle.on_menu_event(move |app, event| match event.id.as_ref() {
                 "show" => {
                     if let Some(window) = app.get_webview_window("main") {

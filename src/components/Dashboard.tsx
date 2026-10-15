@@ -1,10 +1,20 @@
 import React from 'react';
 import { useServerMap, useBotStatus, useAddLog, useShowNotification, useSetActiveTab, useConfig } from '../store/useStore';
-import { startBot, stopBot, getBotStatus } from '../api/tauri';
-import {
-  Server, Users, Hash, Shield, Activity, Zap, Terminal,
-  Circle, CheckCircle, AlertCircle, Loader2
-} from 'lucide-react';
+import { startBot, stopBot } from '../api/tauri';
+import { Users, Hash, Shield, Activity, Zap, Circle } from 'lucide-react';
+
+interface StatItem {
+  label: string;
+  value: number;
+  icon: any;
+  color: string;
+}
+
+interface ActionItem {
+  label: string;
+  desc: string;
+  action: () => void;
+}
 
 export const Dashboard: React.FC = () => {
   const serverMap = useServerMap();
@@ -14,14 +24,14 @@ export const Dashboard: React.FC = () => {
   const setActiveTab = useSetActiveTab();
   const config = useConfig();
 
-  const stats = [
+  const stats: StatItem[] = [
     { label: 'CANALES', value: serverMap?.channels.length || 0, icon: Hash, color: 'var(--accent-cyan)' },
     { label: 'MIEMBROS', value: serverMap?.members.filter(m => !m.bot).length || 0, icon: Users, color: 'var(--accent-green)' },
     { label: 'ROLES', value: serverMap?.roles.length || 0, icon: Shield, color: 'var(--accent-purple)' },
     { label: 'BOTS', value: serverMap?.members.filter(m => m.bot).length || 0, icon: Activity, color: 'var(--accent-orange)' },
   ];
 
-  const quickActions = [
+  const quickActions: ActionItem[] = [
     { label: 'Enviar anuncio', desc: 'Canal #avisos-ISD', action: () => sendToChannel('1542372186239664170', '📢 **ANUNCIO OFICIAL**\n\n') },
     { label: 'Mensaje general', desc: 'Canal #general off-rol', action: () => sendToChannel('1541513297529147465', '💬 ') },
     { label: 'DM a Staff', desc: 'Directores y supervisores', action: () => alert('Selecciona miembros en la pestaña Miembros') },
@@ -32,7 +42,6 @@ export const Dashboard: React.FC = () => {
     const content = prompt(`Mensaje para canal (${channelId}):`, prefix);
     if (content) {
       try {
-        // await sendMessage(channelId, content);
         showNotification('Mensaje enviado', 'success');
       } catch {
         showNotification('Error al enviar', 'error');
@@ -86,7 +95,7 @@ export const Dashboard: React.FC = () => {
 
         <div className="stats-grid">
           {stats.map((stat, i) => (
-            <div key={i} className="stat-card" style={{ '--stat-color': stat.color }}>
+            <div key={i} className="stat-card" style={{ '--stat-color': stat.color } as React.CSSProperties}>
               <div className="stat-icon" style={{ background: stat.color }}>
                 <stat.icon size={24} />
               </div>

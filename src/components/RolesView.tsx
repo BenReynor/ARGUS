@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useServerMap, useShowNotification } from '../store/useStore';
 import { listRoles } from '../api/tauri';
-import { Shield, Users, Hash, Copy, Search, Settings, Trash2, Plus, Edit2, Eye, EyeOff } from 'lucide-react';
+import { Shield, Users, Hash, Copy, Search, Settings, Trash2, Plus, Edit2, Eye, EyeOff, X } from 'lucide-react';
 import type { Role } from '../types';
 
 export const RolesView: React.FC = () => {
@@ -76,7 +76,7 @@ export const RolesView: React.FC = () => {
                 <td>
                   <span className="member-count">{role.member_count}</span>
                   {role.member_count > 0 && (
-                    <Users size={12} className="member-icon" title={`${role.member_count} miembros`} />
+                    <Users size={12} className="member-icon" aria-label={`${role.member_count} miembros`} />
                   )}
                 </td>
                 <td>

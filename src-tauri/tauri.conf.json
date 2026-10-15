@@ -40,10 +40,7 @@
     ]
   },
   "plugins": {
-    "store": {},
-    "log": {
-      "level": "info",
-      "format": "json"
-    }
+    "store": null,
+    "log": null
   }
 }

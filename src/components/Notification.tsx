@@ -34,7 +34,7 @@ export const Notification: React.FC = () => {
   const Icon = icons[notification.type];
 
   return (
-    <div className={`notification toast-${notification.type}`} style={{ '--toast-color': colors[notification.type] }}>
+    <div className={`notification toast-${notification.type}`} style={{ '--toast-color': colors[notification.type] } as React.CSSProperties}>
       <Icon size={20} />
       <span>{notification.message}</span>
       <button className="icon-btn" onClick={hideNotification}>

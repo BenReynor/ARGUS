@@ -124,6 +124,8 @@ export const useSelectedMember = () => useStore((s) => s.selectedMember);
 export const useSetSelectedMember = () => useStore((s) => s.setSelectedMember);
 export const useLogs = () => useStore((s) => s.logs);
 export const useAddLog = () => useStore((s) => s.addLog);
+export const useClearLogs = () => useStore((s) => s.clearLogs);
 export const useNotification = () => useStore((s) => s.notification);
 export const useShowNotification = () => useStore((s) => s.showNotification);
+export const useHideNotification = () => useStore((s) => s.hideNotification);
 export const useIsLoading = () => useStore((s) => s.isLoading);

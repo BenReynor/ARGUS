@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useServerMap, useSetSelectedMember, useAddLog, useShowNotification } from '../store/useStore';
+import { useServerMap, useSetSelectedMember, useSelectedMember, useAddLog, useShowNotification } from '../store/useStore';
 import { listMembers, sendDM, addRole, removeRole, timeoutMember, getMemberInfo } from '../api/tauri';
 import { Users, User, Bot, Mail, Shield, Ban, MoreVertical, Copy, Search, ChevronRight, X } from 'lucide-react';
 import type { Member, Role } from '../types';
@@ -7,6 +7,7 @@ import type { Member, Role } from '../types';
 export const MembersView: React.FC = () => {
   const serverMap = useServerMap();
   const setSelectedMember = useSetSelectedMember();
+  const selectedMember = useSelectedMember();
   const addLog = useAddLog();
   const showNotification = useShowNotification();
   const [search, setSearch] = useState('');
@@ -154,10 +155,10 @@ export const MembersView: React.FC = () => {
         </table>
       </div>
 
-      {useStore.getState().selectedMember && (
+      {selectedMember && (
         <div className="member-detail-panel">
           <div className="panel-header">
-            <h3>{useStore.getState().selectedMember!.nickname || useStore.getState().selectedMember!.username}</h3>
+            <h3>{selectedMember.nickname || selectedMember.username}</h3>
             <button className="icon-btn" onClick={() => setSelectedMember(null)}>
               <X size={16} />
             </button>
@@ -166,16 +167,16 @@ export const MembersView: React.FC = () => {
             <div className="detail-section">
               <h4>INFORMACIÓN</h4>
               <div className="detail-grid">
-                <div><label>ID</label><span className="mono">{useStore.getState().selectedMember!.user_id}</span></div>
-                <div><label>Username</label><span>@{useStore.getState().selectedMember!.username}</span></div>
-                <div><label>Nickname</label><span>{useStore.getState().selectedMember!.nickname || '—'}</span></div>
-                <div><label>Tipo</label><span>{useStore.getState().selectedMember!.bot ? 'Bot' : 'Humano'}</span></div>
+                <div><label>ID</label><span className="mono">{selectedMember.user_id}</span></div>
+                <div><label>Username</label><span>@{selectedMember.username}</span></div>
+                <div><label>Nickname</label><span>{selectedMember.nickname || '—'}</span></div>
+                <div><label>Tipo</label><span>{selectedMember.bot ? 'Bot' : 'Humano'}</span></div>
               </div>
             </div>
             <div className="detail-section">
               <h4>ROLES</h4>
               <div className="roles-list">
-                {useStore.getState().selectedMember!.roles.map((roleName) => {
+                {selectedMember.roles.map((roleName) => {
                   const role = roles.find(r => r.name === roleName);
                   return (
                     <span key={roleName} className="role-badge-detail" style={{ backgroundColor: role ? `#${role.color.toString(16).padStart(6, '0')}33` : 'var(--bg-tertiary)', borderColor: getRoleColor(roleName) }}>
@@ -186,17 +187,17 @@ export const MembersView: React.FC = () => {
               </div>
             </div>
             <div className="detail-actions">
-              {!useStore.getState().selectedMember!.bot && (
+              {!selectedMember.bot && (
                 <>
-                  <button className="btn-secondary" onClick={() => handleDM(useStore.getState().selectedMember!.user_id, useStore.getState().selectedMember!.username)}>
+                  <button className="btn-secondary" onClick={() => handleDM(selectedMember.user_id, selectedMember.username)}>
                     <Mail size={14} /> ENVIAR DM
                   </button>
-                  <button className="btn-warning" onClick={() => handleTimeout(useStore.getState().selectedMember!.user_id, useStore.getState().selectedMember!.username)}>
+                  <button className="btn-warning" onClick={() => handleTimeout(selectedMember.user_id, selectedMember.username)}>
                     <Ban size={14} /> TIMEOUT
                   </button>
                 </>
               )}
-              <button className="btn-ghost" onClick={() => copyId(useStore.getState().selectedMember!.user_id)}>
+              <button className="btn-ghost" onClick={() => copyId(selectedMember.user_id)}>
                 <Copy size={14} /> COPIAR ID
               </button>
             </div>

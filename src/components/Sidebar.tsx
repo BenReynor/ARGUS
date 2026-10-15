@@ -1,10 +1,9 @@
 import React from 'react';
-import { useStore } from '../store/useStore';
 import { useConfig, useBotStatus, useActiveTab, useSetActiveTab } from '../store/useStore';
 import { startBot, stopBot } from '../api/tauri';
 import {
   LayoutDashboard, Hash, Users, Shield, Terminal, Settings,
-  Power, Circle, Bot, Server, Wifi, WifiOff, ChevronRight
+  Power, Circle, Bot, Server
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -17,7 +16,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
   const activeTab = useActiveTab();
   const setActiveTab = useSetActiveTab();
 
-  const iconMap: Record<string, React.ComponentType<{ size?: number }>> = {
+  const iconMap: Record<string, any> = {
     'layout-dashboard': LayoutDashboard,
     'hash': Hash,
     'users': Users,

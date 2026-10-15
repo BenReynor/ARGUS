@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { useServerMap, useSetSelectedChannel, useAddLog, useShowNotification } from '../store/useStore';
-import { listChannels, sendMessage } from '../api/tauri';
+import React, { useState } from 'react';
+import { useServerMap, useSetSelectedChannel, useSelectedChannel, useAddLog, useShowNotification } from '../store/useStore';
+import { sendMessage } from '../api/tauri';
 import { Hash, MessageSquare, Volume2, Folder, Send, Copy, Search, ChevronRight } from 'lucide-react';
-import type { Channel } from '../types';
 
-const CHANNEL_TYPE_ICONS: Record<number, React.ComponentType<{ size?: number }>> = {
+const CHANNEL_TYPE_ICONS: Record<number, any> = {
   0: MessageSquare,
   2: Volume2,
   4: Folder,
@@ -14,6 +13,7 @@ const CHANNEL_TYPE_ICONS: Record<number, React.ComponentType<{ size?: number }>>
 export const ChannelsView: React.FC = () => {
   const serverMap = useServerMap();
   const setSelectedChannel = useSetSelectedChannel();
+  const selectedChannel = useSelectedChannel();
   const addLog = useAddLog();
   const showNotification = useShowNotification();
   const [search, setSearch] = useState('');
@@ -106,10 +106,10 @@ export const ChannelsView: React.FC = () => {
         })}
       </div>
 
-      {useStore.getState().selectedChannel && (
+      {selectedChannel && (
         <div className="channel-detail-panel">
           <div className="panel-header">
-            <h3>#{useStore.getState().selectedChannel!.name}</h3>
+            <h3>#{selectedChannel.name}</h3>
             <button className="icon-btn" onClick={() => setSelectedChannel(null)}>
               <ChevronRight size={16} className="rotate-180" />
             </button>
@@ -120,9 +120,9 @@ export const ChannelsView: React.FC = () => {
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder="Escribe un mensaje..."
               rows={3}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend(useStore.getState().selectedChannel!.id))}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend(selectedChannel.id))}
             />
-            <button className="btn-primary" onClick={() => handleSend(useStore.getState().selectedChannel!.id)}>
+            <button className="btn-primary" onClick={() => handleSend(selectedChannel.id)}>
               <Send size={16} />
               ENVIAR
             </button>

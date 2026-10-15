@@ -42,14 +42,14 @@ function App() {
     return () => clearInterval(interval);
   }, [setBotStatus, setServerMap]);
 
-  const tabs = [
+  const tabs: { id: string; label: string; icon: string }[] = [
     { id: 'dashboard', label: 'Panel', icon: 'layout-dashboard' },
     { id: 'channels', label: 'Canales', icon: 'hash' },
     { id: 'members', label: 'Miembros', icon: 'users' },
     { id: 'roles', label: 'Roles', icon: 'shield' },
     { id: 'logs', label: 'Logs', icon: 'terminal' },
     { id: 'settings', label: 'Config', icon: 'settings' },
-  ] as const;
+  ];
 
   const renderView = () => {
     switch (useStore.getState().activeTab) {
