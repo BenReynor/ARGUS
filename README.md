@@ -1,233 +1,100 @@
 # ARGUS
 
-> **Nota:** este documento describe la visión completa, no el estado actual. Lo que existe hoy, las decisiones vigentes (twilight, multi-bot, nada hardcodeado) y el orden de trabajo están en `CONTEXTO.md` y `plan.md`; si algo choca, mandan esos.
+Aplicación de escritorio para **administrar tus bots de Discord**: registra tus
+bots, elige con cuál trabajar y gestiona los servidores donde está (canales,
+roles, miembros y permisos), con el mapa del servidor actualizado en vivo.
 
-[![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri)](https://tauri.app)
-[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev)
-[![Rust](https://img.shields.io/badge/Rust-1.99-orange?logo=rust)](https://rust-lang.org)
-[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+Tauri 2 · React + TypeScript · Rust · SQLite · [twilight](https://twilight.rs)
 
-**Centro de control universal para bots de Discord.**  
-Multi-bot, multi-servidor, sync tiempo real, plantillas, personalidad dual (Executor + Responder), chat unificado, vigilancia configurable, backup automático, MCP propio, notificaciones Telegram, desinstalación atómica.
-
----
-
-## ✨ Características
-
-| Área | Detalle |
-|---|---|
-| **Multi-bot + Multi-servidor** | Múltiples bots configurables, selector de guild en header, mapa independiente por guild |
-| **Sync inteligente** | Full sync al iniciar + Gateway events (create/update/delete channels, roles, members, bans, threads, voice) |
-| **Plantillas** | JSON versionado: roles → categorías → canales → overwrites. Preview árbol + progreso pasos |
-| **Executor (Rust)** | `create_channel`, `create_role`, `apply_template`, `set_overwrite`, `send_message`... <300ms p95 |
-| **Responder (Configurable)** | **Nemotron 3 Ultra Free** (default, gratis), Ollama local, OpenRouter, OpenAI, Groq, CLI agents (opencode/codex/claude). Tools: todas las acciones Executor + `search_logs` + `get_map` |
-| **Chat unificado** | GUI: `/chat` (Nemotron/Ollama), `/exec` (Rust), `/plan` (CLI), `/ask` (CLI). Discord: mención + slash |
-| **Memoria híbrida** | JSONL histórico (inmutable, rotación mensual) + SQLite contexto activo (límites + limpieza manual/auto) |
-| **Vigilancia** | 4 presets + editor avanzado. Tabla virtualizada, filtros, FTS5, export CSV/JSON |
-| **Backup** | Automático cada N horas, ZIP versionado, retención configurable, restore 1-click |
-| **MCP propio** | `argus-mcp` stdio: tools + resources + instructions. Control desde opencode/Claude |
-| **Notificaciones Telegram** | Alertas críticas via webhook bot, eventos configurables |
-| **Desinstalación atómica** | Un botón: borra BD, config, logs, backups, cache, atajos, keys derivadas |
-| **i18n** | Español / Inglés (override en Settings) |
-| **Atajos** | Ctrl+K palette, Ctrl+1-9 tabs, `/` focus chat, Ctrl+B sidebar |
-| **Temas** | 9 curados (Dark, Light, Cyberpunk, Hacker, Zinc/Amber, Gray/Red, Stone/Emerald, Zinc/Sky, Slate/Teal) |
+> ARGUS trabaja con **bots propios** mediante la API oficial de Discord (token de
+> bot). No es un selfbot: automatizar cuentas de usuario viola los Términos de
+> Servicio de Discord.
 
 ---
 
-## 🚀 Inicio rápido
+## Estado
 
-### Requisitos
+En desarrollo. La base de datos, el cifrado de tokens, la configuración y la
+interfaz existen; la conexión real con Discord se está construyendo ahora.
 
-- **Rust 1.99+** (`cargo` en el PATH)
-- **Node 22+** (nvm)
-- **GTK/WebKit** deps (Linux): `libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev`
-- **Ollama** (opcional, para chat local): `curl -fsSL https://ollama.com/install.sh | sh`
-- **CLI Agents** (opcional, para `/plan` `/ask`): `opencode`, `codex`, `claude`
+| Fase | Contenido | Estado |
+|---|---|---|
+| 0 · Fundamentos | Modelo multi-servidor, persistencia, tipos Rust ↔ TS, selector de servidor | ✅ |
+| 1 · Bots genéricos | Registrar bots por token (nombre y avatar oficiales), elegir el bot activo, listar sus servidores | 🚧 |
+| 2 · Datos y acciones reales | Canales, roles y miembros reales; mensajes y DM; roles; timeout | ⏳ |
+| 3 · Mapa en vivo | Gateway: sincronización completa y cambios al instante | ⏳ |
 
-### Desarrollo
+Después del MVP: edición completa del servidor, plantillas de servidor,
+personalidad del bot (respuestas con un modelo de lenguaje configurable),
+vigilancia y logs, notificaciones, backup y servidor MCP propio. El detalle está
+en [`CONTEXTO.md`](CONTEXTO.md) y el orden de trabajo en [`plan.md`](plan.md).
+
+---
+
+## Requisitos
+
+- **Rust** estable (probado con 1.99) y **Node** 22+
+- Linux: `libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev`
+- Un bot de Discord creado en el [Developer Portal](https://discord.com/developers/applications)
+  e invitado a tu servidor con los permisos que vayas a usar
+  (Gestionar canales, Gestionar roles, Moderar miembros…).
+
+## Desarrollo
 
 ```bash
-# Clonar
 git clone https://github.com/BenReynor/ARGUS.git
 cd ARGUS
-
-# Rust env
-
-# Dependencias frontend
 npm install
-
-# Desarrollo (frontend + backend con hot-reload)
-npm run tauri dev
-# o ./launch-dev.sh
+npm run tauri dev        # app completa con recarga en caliente
 ```
 
-### Producción
+Comprobaciones (las mismas que exige el gate de Dédalo):
 
 ```bash
-# Build completo (binario + bundles .deb/.rpm/.AppImage)
+cargo fmt   --manifest-path src-tauri/Cargo.toml --check
+cargo check --manifest-path src-tauri/Cargo.toml
+cargo test  --manifest-path src-tauri/Cargo.toml
+npm run build            # tsc + vite build
+```
+
+Los tests no usan la red: el cliente de Discord se apunta a un Discord falso local.
+
+## Producción
+
+```bash
 npm run tauri build
-
-# Binario en: src-tauri/target/release/argus
-# Bundles en: src-tauri/target/release/bundle/
+# binario:  src-tauri/target/release/argus
+# paquetes: src-tauri/target/release/bundle/ (.deb, .rpm, .AppImage)
 ```
 
 ---
 
-## ⚙️ Configuración
+## Uso (al terminar la FASE 1)
 
-### Primer arranque
+1. **Ajustes → Añadir bot**: pega el token. ARGUS lo valida con Discord y muestra
+   el nombre y el avatar oficiales del bot.
+2. Elige el **bot activo** en la barra lateral.
+3. Elige el **servidor** en el selector de la cabecera: aparecen los servidores
+   donde está ese bot.
 
-1. Abre **Settings → IA / Agentes**
-2. **Proveedor chat**: **Nemotron 3 Ultra Free** (default, sin config), o Ollama (auto-detecta `http://localhost:11434`), o añade OpenRouter/OpenAI/Groq
-3. **Agentes CLI**: Auto-detecta `opencode`/`codex`/`claude` con sesión. Override manual si hace falta.
-4. **Bots**: Settings → Bots → "Añadir bot" → pega Bot Token + nombre + guilds permitidas
-5. **Probar conexión**: botón valida token y permisos (ManageGuild/Channels/Roles/ViewAuditLog)
-6. **Telegram** (opcional): Settings → General → Telegram → Bot Token + Chat ID + eventos a notificar
-7. **Personalidad**: Settings → IA → edita `system_prompt`, reglas, canales permitidos
+## Seguridad
 
-### Atajos de teclado (configurables)
+- Los tokens se guardan **cifrados** (AES-GCM) en la base de datos local
+  (`~/.config/argus/`); nunca en texto plano ni en el almacenamiento del navegador.
+- Nada de la app está atado a un servidor, canal o bot concreto.
+- Las acciones destructivas piden confirmación.
 
-| Acción | Default |
-|---|---|
-| Command Palette | `Ctrl+K` |
-| Focus chat | `/` |
-| Tabs 1-9 | `Ctrl+1` … `Ctrl+9` |
-| Toggle sidebar | `Ctrl+B` |
-| Nuevo `/exec` | `Ctrl+E` |
-| Nuevo `/plan` | `Ctrl+P` |
+## Documentación
 
----
+- [`CONTEXTO.md`](CONTEXTO.md): visión, decisiones y estado (fuente principal)
+- [`plan.md`](plan.md): tareas por fase, cada una con su criterio de aceptación
+- [`ARCHITECTURE_MAP.md`](ARCHITECTURE_MAP.md): qué hay en cada archivo
+- [`docs/FICHA_TECNICA.md`](docs/FICHA_TECNICA.md): stack, datos y comandos
+- [`docs/AUDITORIA_COMANDOS.md`](docs/AUDITORIA_COMANDOS.md): estado de cada comando Tauri
 
-## 🏗️ Arquitectura
+## Desarrollo con Dédalo
 
-```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│   USUARIO   │────►│  RESPONDER   │────►│  EXECUTOR   │
-│  (Discord/  │     │  (Nemotron/  │     │  (Rust)     │
-│   GUI Chat) │     │   Ollama/    │     │  "Hace"     │
-└─────────────┘     │   CLI Agent) │     └──────┬──────┘
-                    │  "Piensa"    │            │
-                    └──────────────┘            │
-                                                ▼
-                                        ┌─────────────┐
-                                        │   DISCORD   │
-                                        │   GATEWAY   │
-                                        └─────────────┘
-```
-
-- **Executor**: Rust nativo, acciones Discord directas, loading steps en UI
-- **Responder**: Proveedor configurable (Nemotron default), razona, decide, llama tools del Executor
-- **Gateway**: `twilight-gateway` → eventos → `server_maps` en memoria + BD + JSONL histórico
-- **REST**: `DiscordHttp` con rate limiter (buckets + backoff exponencial)
-
----
-
-## 📦 Estructura del proyecto
-
-```
-ARGUS/
-├── src/                    # Frontend React
-│   ├── components/         # UI (Header, Sidebar, Dashboard, Channels, Members, Roles, Settings, Logs, Chat, Templates, Metrics, CommandPalette)
-│   ├── store/              # Zustand + selectors
-│   ├── api/                # invoke wrappers
-│   ├── i18n/               # ES/EN
-│   ├── hooks/              # Custom hooks
-│   └── types/              # Tipos sincronizados con Rust
-├── src-tauri/              # Backend Rust
-│   ├── src/
-│   │   ├── main.rs         # Tauri setup + bot_core spawn
-│   │   ├── state.rs        # AppState + Config + BD
-│   │   ├── commands.rs     # 25+ comandos Tauri
-│   │   ├── db.rs           # SQLite pool + queries
-│   │   ├── crypto.rs       # AES-GCM tokens
-│   │   ├── bot_core/       # Gateway, Events, Sync, HTTP, Executor, Responder, IPC
-│   │   └── mcp/            # Servidor MCP propio
-│   ├── migrations/         # SQL versionado
-│   └── Cargo.toml
-├── docs/                   # FICHA_TECNICA.md, ARCHITECTURE_MAP.md
-├── plan.md                 # Plan de trabajo (formato Dédalo)
-├── CONTEXTO.md             # Contexto permanente
-└── info/                   # Credenciales (gitignored)
-```
-
----
-
-## 🛠️ Desarrollo
-
-### Comandos útiles
-
-```bash
-# Frontend only
-npm run build          # tsc + vite build
-npm run dev            # Vite dev server
-
-# Backend only
-cd src-tauri && cargo build
-cd src-tauri && cargo test
-cd src-tauri && cargo watch -x run
-
-# Full stack
-npm run tauri dev      # Desarrollo integrado
-npm run tauri build    # Producción
-
-# Lint / Format
-npm run lint           # ESLint + Prettier
-cd src-tauri && cargo fmt --check
-cd src-tauri && cargo clippy
-```
-
-### Tests
-
-```bash
-# Rust
-cd src-tauri && cargo test --workspace
-
-# Frontend
-npm run test           # Vitest + React Testing Library
-
-# CI local (simula GitHub Actions)
-act push
-```
-
----
-
-## 🔐 Seguridad
-
-- **Tokens cifrados**: AES-GCM, key derivada de machine-id + salt (no en repo)
-- **BD permisos**: `0600` archivo, `0700` directorio `~/.config/argus/`
-- **Validación permisos bot**: Al `start_bot` verifica `ManageGuild/Channels/Roles/ViewAuditLog`
-- **MCP stdio only**: Sin puertos de red expuestos
-- **Desinstalación atómica**: `uninstall_wipe()` borra todo rastro incluyendo keys derivadas
-
----
-
-## 📚 Documentación
-
-- [`docs/FICHA_TECNICA.md`](docs/FICHA_TECNICA.md) — Especificación técnica completa
-- [`docs/ARCHITECTURE_MAP.md`](docs/ARCHITECTURE_MAP.md) — Mapa de arquitectura detallado
-- [`CONTEXTO.md`](CONTEXTO.md) — Contexto permanente del proyecto
-- [`plan.md`](plan.md) — Plan de trabajo (formato Dédalo)
-
----
-
-## 🤝 Contribuir
-
-1. Fork + branch (`feat/nueva-funcionalidad`)
-2. Commits convencionales (`feat:`, `fix:`, `docs:`, `test:`)
-3. `npm run build && cd src-tauri && cargo test` deben pasar
-4. PR con descripción clara
-
----
-
-## 📄 Licencia
-
-MIT — ver [`LICENSE`](LICENSE).
-
----
-
-## 🙏 Créditos
-
-- **Dédalo** — Patrón arquitectura (motor separado + MCP + estado en archivos)
-- **Tauri** — Framework desktop Rust + Web
-- **twilight** — Discord library Rust
-- **Zustand** — State management simple
+El proyecto se desarrolla con [Dédalo](https://github.com/BenReynor/dedalo):
+`plan.md` usa su formato y cada tarea se verifica con el gate
+(cargo fmt/check/test, tsc y build). Las reglas para agentes están en
+[`AGENTS.md`](AGENTS.md).

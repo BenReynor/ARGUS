@@ -1,4 +1,4 @@
 #!/bin/bash
-source /home/benjametalsp/.cargo/env
-cd /home/benjametalsp/Escritorio/Programas_Propios/ARGUS
-npm run tauri dev
+# Lanza ARGUS en modo desarrollo desde la carpeta del proyecto.
+cd "$(dirname "$0")"
+exec npm run tauri dev
