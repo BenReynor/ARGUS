@@ -70,7 +70,7 @@ Que las vistas muestren el servidor real y las acciones funcionen. Cada tarea co
   criterio: al registrar el bot y en `start_bot` se leen los `flags` de `GET /applications/@me`; si no incluyen GATEWAY_GUILD_MEMBERS (1<<14) ni GATEWAY_GUILD_MEMBERS_LIMITED (1<<15) se devuelve un aviso (no un error) "Activa «Server Members Intent» en el Developer Portal → Bot" que la UI muestra junto al bot; tests con el Discord falso para el caso con y sin flag
 - [x] Leer canales y roles reales
   criterio: `list_channels` y `list_roles` llaman a `GET /guilds/{id}/channels` y `GET /guilds/{id}/roles` del servidor activo y convierten la respuesta a los tipos Channel y Role de state.rs (con overwrites y permisos); tests con el Discord falso
-- [ ] Leer miembros con paginación
+- [x] Leer miembros con paginación
   criterio: `list_members` pagina `GET /guilds/{id}/members?limit=1000&after=<último id>` hasta agotar; `get_member_info` usa `GET /guilds/{id}/members/{user_id}`; test con el Discord falso que sirve 2 páginas
 - [ ] Errores de Discord legibles
   criterio: un único conversor en discord.rs traduce las respuestas de error a mensajes en español: 401 token inválido, 403 "al bot le falta el permiso X" (cuando Discord lo indica), 404 no encontrado, 429 límite de peticiones (twilight reintenta; si se agota, mensaje claro); todos los comandos de Discord lo usan; tests de cada caso
