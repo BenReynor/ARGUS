@@ -49,6 +49,7 @@ pub fn run() {
             list_channels,
             list_members,
             list_roles,
+            bot_permissions,
             send_message,
             send_dm,
             get_member_info,

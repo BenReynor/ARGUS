@@ -187,6 +187,25 @@ async fn leer_miembro(
     crate::discord::fetch_guild_member(&token, base_url, guild_id, user_id).await
 }
 
+/// Permisos efectivos del bot activo en un servidor, con nombres en español.
+#[tauri::command]
+pub async fn bot_permissions(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<Vec<String>, String> {
+    permisos_del_bot(&state, &guild_id, None).await
+}
+
+async fn permisos_del_bot(
+    state: &AppState,
+    guild_id: &str,
+    base_url: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
+    let token = token_del_bot_activo(state)?;
+    crate::discord::fetch_bot_permissions(&token, base_url, guild_id, &bot.id).await
+}
+
 // Roles
 #[tauri::command]
 pub async fn list_roles(state: State<'_, AppState>, guild_id: String) -> Result<Vec<Role>, String> {
@@ -1175,6 +1194,62 @@ mod tests {
         assert_eq!(uno.nickname.as_deref(), Some("apodo"));
         assert!(!uno.bot);
         assert!(uno.joined_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn permisos_del_bot_con_el_discord_falso() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555"))
+            .and(header("authorization", "Bot token-pe"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "555", "name": "Servidor", "owner_id": "9",
+                "roles": [], "emojis": [], "features": [], "afk_timeout": 300,
+                "default_message_notifications": 0, "explicit_content_filter": 0,
+                "mfa_level": 0, "nsfw_level": 0, "premium_tier": 0,
+                "system_channel_flags": 0, "verification_level": 0
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": "555", "name": "@everyone", "color": 0, "hoist": false, "flags": 0,
+                 "position": 0, "permissions": "1024", "managed": false, "mentionable": false},
+                {"id": "600", "name": "Mod", "color": 0, "hoist": false, "flags": 0,
+                 "position": 1, "permissions": "268435456", "managed": false,
+                 "mentionable": false}
+            ])))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555/members/123456789"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "user": {"id": "123456789", "username": "bot", "discriminator": "0",
+                         "avatar": null, "bot": true},
+                "nick": null, "roles": ["600"],
+                "joined_at": "2024-01-02T03:04:05.000000+00:00",
+                "deaf": false, "mute": false, "flags": 0
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let state = estado_con_bot_activo("token-pe");
+        let addr = server.address().to_string();
+        let permisos = permisos_del_bot(&state, "555", Some(&addr))
+            .await
+            .expect("permisos");
+        assert_eq!(permisos, vec!["Ver canales", "Gestionar roles"]);
+    }
+
+    #[tokio::test]
+    async fn permisos_del_bot_sin_bot_activo_da_error() {
+        let state = AppState::new();
+        let err = permisos_del_bot(&state, "555", None).await.unwrap_err();
+        assert_eq!(err, "No hay bot seleccionado");
     }
 
     #[tokio::test]

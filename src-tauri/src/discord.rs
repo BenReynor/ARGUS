@@ -333,10 +333,184 @@ pub async fn fetch_guild_member(
     Ok(convertir_miembro(miembro))
 }
 
+/// Permisos de Discord: (posición del bit, nombre en español).
+const PERMISOS_DISCORD: &[(u32, &str)] = &[
+    (0, "Crear invitaciones"),
+    (1, "Expulsar miembros"),
+    (2, "Banear miembros"),
+    (3, "Administrador"),
+    (4, "Gestionar canales"),
+    (5, "Gestionar servidor"),
+    (6, "Añadir reacciones"),
+    (7, "Ver registro de auditoría"),
+    (8, "Voz prioritaria"),
+    (9, "Transmitir vídeo"),
+    (10, "Ver canales"),
+    (11, "Enviar mensajes"),
+    (12, "Enviar mensajes de texto a voz"),
+    (13, "Gestionar mensajes"),
+    (14, "Insertar enlaces"),
+    (15, "Adjuntar archivos"),
+    (16, "Leer el historial de mensajes"),
+    (17, "Mencionar a @everyone"),
+    (18, "Usar emojis externos"),
+    (19, "Ver estadísticas del servidor"),
+    (20, "Conectar a voz"),
+    (21, "Hablar en voz"),
+    (22, "Silenciar miembros en voz"),
+    (23, "Ensordecer miembros"),
+    (24, "Mover miembros de voz"),
+    (25, "Usar detección de voz"),
+    (26, "Cambiar apodo"),
+    (27, "Gestionar apodos"),
+    (28, "Gestionar roles"),
+    (29, "Gestionar webhooks"),
+    (30, "Gestionar expresiones"),
+    (31, "Usar comandos de aplicación"),
+    (32, "Pedir hablar"),
+    (33, "Gestionar eventos"),
+    (34, "Gestionar hilos"),
+    (35, "Crear hilos públicos"),
+    (36, "Crear hilos privados"),
+    (37, "Usar stickers externos"),
+    (38, "Enviar mensajes en hilos"),
+    (39, "Usar actividades"),
+    (40, "Moderar miembros"),
+    (41, "Ver analíticas de monetización"),
+    (42, "Usar el panel de sonidos"),
+    (43, "Crear expresiones"),
+    (44, "Crear eventos"),
+    (45, "Usar sonidos externos"),
+    (46, "Enviar mensajes de voz"),
+    (49, "Crear encuestas"),
+    (50, "Usar aplicaciones externas"),
+];
+
+const BIT_ADMINISTRADOR: u64 = 1 << 3;
+
+/// Todos los permisos que ARGUS conoce.
+fn todos_los_permisos() -> u64 {
+    PERMISOS_DISCORD
+        .iter()
+        .fold(0, |acc, (bit, _)| acc | (1 << bit))
+}
+
+/// Permisos efectivos de un miembro en un servidor (sin overwrites de canal):
+/// los del rol @everyone (su id es el del servidor) más los de sus roles.
+/// El dueño o quien tenga Administrator lo tiene todo.
+pub fn calcular_permisos(
+    guild_id: &str,
+    owner_id: Option<&str>,
+    user_id: &str,
+    roles_servidor: &[crate::state::Role],
+    roles_miembro: &[String],
+) -> u64 {
+    if owner_id == Some(user_id) {
+        return todos_los_permisos();
+    }
+    let bits = roles_servidor
+        .iter()
+        .filter(|r| r.id == guild_id || roles_miembro.contains(&r.id))
+        .filter_map(|r| r.permissions.parse::<u64>().ok())
+        .fold(0, |acc, p| acc | p);
+    if bits & BIT_ADMINISTRADOR != 0 {
+        todos_los_permisos()
+    } else {
+        bits
+    }
+}
+
+/// Nombres en español de los permisos activos en `bits`.
+pub fn nombres_de_permisos(bits: u64) -> Vec<String> {
+    PERMISOS_DISCORD
+        .iter()
+        .filter(|(bit, _)| bits & (1 << bit) != 0)
+        .map(|(_, nombre)| nombre.to_string())
+        .collect()
+}
+
+/// Permisos del bot en un servidor: `GET /guilds/{id}` (dueño),
+/// `GET /guilds/{id}/roles` y `GET /guilds/{id}/members/{bot_id}`.
+pub async fn fetch_bot_permissions(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+    bot_id: &str,
+) -> Result<Vec<String>, String> {
+    let gid = parse_guild_id(guild_id)?;
+    let client = build_client(token, base_url);
+    // Solo hace falta `owner_id`: no se deserializa el servidor completo.
+    let cuerpo = client
+        .guild(gid)
+        .await
+        .map_err(traducir_error)?
+        .bytes()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    let owner_id = serde_json::from_slice::<serde_json::Value>(&cuerpo)
+        .ok()
+        .and_then(|v| v.get("owner_id")?.as_str().map(str::to_string));
+    let roles = fetch_guild_roles(token, base_url, guild_id).await?;
+    let miembro = fetch_guild_member(token, base_url, guild_id, bot_id).await?;
+    let bits = calcular_permisos(
+        guild_id,
+        owner_id.as_deref(),
+        bot_id,
+        &roles,
+        &miembro.roles,
+    );
+    Ok(nombres_de_permisos(bits))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use wiremock::matchers::{header, method, path};
+
+    fn rol(id: &str, permisos: u64) -> crate::state::Role {
+        crate::state::Role {
+            id: id.to_string(),
+            name: format!("rol-{id}"),
+            color: 0,
+            position: 0,
+            permissions: permisos.to_string(),
+            permissions_bitfield: Some(permisos.to_string()),
+            member_count: 0,
+            mentionable: false,
+            hoist: false,
+        }
+    }
+
+    #[test]
+    fn permisos_sin_roles_son_los_de_everyone() {
+        let roles = vec![rol("555", (1 << 10) | (1 << 11)), rol("600", 1 << 28)];
+        let bits = calcular_permisos("555", Some("1"), "2", &roles, &[]);
+        assert_eq!(
+            nombres_de_permisos(bits),
+            vec!["Ver canales", "Enviar mensajes"]
+        );
+        assert_eq!(calcular_permisos("555", None, "2", &[], &[]), 0);
+    }
+
+    #[test]
+    fn permisos_con_rol_que_concede() {
+        let roles = vec![rol("555", 1 << 10), rol("600", 1 << 28), rol("601", 1 << 2)];
+        let bits = calcular_permisos("555", Some("1"), "2", &roles, &["600".to_string()]);
+        assert_eq!(
+            nombres_de_permisos(bits),
+            vec!["Ver canales", "Gestionar roles"]
+        );
+    }
+
+    #[test]
+    fn administrator_y_dueno_lo_tienen_todo() {
+        let roles = vec![rol("555", 1 << 10), rol("600", BIT_ADMINISTRADOR)];
+        let admin = calcular_permisos("555", Some("1"), "2", &roles, &["600".to_string()]);
+        assert_eq!(admin, todos_los_permisos());
+        assert_eq!(nombres_de_permisos(admin).len(), PERMISOS_DISCORD.len());
+        let dueno = calcular_permisos("555", Some("2"), "2", &roles, &[]);
+        assert_eq!(dueno, todos_los_permisos());
+    }
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
