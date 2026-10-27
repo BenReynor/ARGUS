@@ -8,6 +8,8 @@ use tauri::{
 use tauri_plugin_log::{Target, TargetKind};
 
 mod commands;
+mod crypto;
+mod db;
 mod state;
 
 use commands::*;
@@ -17,14 +19,19 @@ pub fn run() {
     let app_state = AppState::new();
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_log::Builder::new()
-            .targets([
-                Target::new(TargetKind::Stdout),
-                Target::new(TargetKind::LogDir { file_name: Some("argus.log".to_string()) }),
-                Target::new(TargetKind::Webview),
-            ])
-            .build())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .targets([
+                    Target::new(TargetKind::Stdout),
+                    Target::new(TargetKind::LogDir {
+                        file_name: Some("argus.log".to_string()),
+                    }),
+                    Target::new(TargetKind::Webview),
+                ])
+                .build(),
+        )
         .plugin(tauri_plugin_store::Builder::new().build())
+        // .plugin(tauri_plugin_sql::Builder::default().build())  // Disabled due to Send issues
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
@@ -51,11 +58,43 @@ pub fn run() {
             save_config,
             get_server_map,
             refresh_server_map,
+            get_active_guild,
+            set_active_guild,
+            get_config_full,
+            save_config_full,
+            list_bots,
+            add_bot,
+            update_bot,
+            delete_bot,
+            set_active_bot,
+            list_templates,
+            save_template,
+            delete_template,
+            apply_template,
+            get_vigilance_config,
+            save_vigilance_config,
+            list_cli_agents,
+            save_cli_agent,
+            search_messages,
+            cleanup_context,
+            export_all_data,
+            import_data,
+            uninstall_wipe,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
 
-            let show_item = MenuItem::with_id(&handle, "show", "Mostrar ARGUS", true, None::<&str>)?;
+            // Run migrations synchronously
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let pool = rt.block_on(db::get_pool(&handle)).unwrap();
+            rt.block_on(sqlx::migrate!("./migrations").run(&pool))
+                .unwrap();
+
+            // Note: Config loading is now done lazily when needed
+            let _app_state = app.state::<AppState>();
+
+            let show_item =
+                MenuItem::with_id(&handle, "show", "Mostrar ARGUS", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(&handle, "quit", "Salir", true, None::<&str>)?;
 
             let menu = Menu::with_items(&handle, &[&show_item, &quit_item])?;
@@ -65,7 +104,11 @@ pub fn run() {
                 .menu(&menu)
                 .show_menu_on_left_click(true)
                 .on_tray_icon_event(|tray, event| match event {
-                    TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } => {
+                    TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } => {
                         if let Some(window) = tray.app_handle().get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();

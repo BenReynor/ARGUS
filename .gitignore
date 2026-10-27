@@ -12,3 +12,9 @@ Cargo.lock
 *.swo
 .vscode/
 .idea/
+
+# Credenciales y info sensible — nunca subir
+info/
+
+# Dédalo: framework code and run state (never commit; the app recreates it)
+.dedalo/
