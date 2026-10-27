@@ -131,6 +131,7 @@ export const useStore = create<AppState>()(
         member_count: null,
         latency_ms: null,
         last_error: null,
+        warning: null,
       },
       setBotStatus: (status) => set((state) => ({ botStatus: { ...state.botStatus, ...status } })),
 

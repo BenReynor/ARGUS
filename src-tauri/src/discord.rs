@@ -62,6 +62,22 @@ pub async fn fetch_current_application(
         .map_err(|e| format!("Respuesta de Discord inválida: {e}"))
 }
 
+/// Aviso (no error) cuando la aplicación no tiene activo el intent de miembros.
+pub const AVISO_INTENT_MIEMBROS: &str =
+    "Activa «Server Members Intent» en el Developer Portal → Bot";
+
+/// Comprueba los `flags` de la aplicación: GATEWAY_GUILD_MEMBERS (1<<14) o
+/// GATEWAY_GUILD_MEMBERS_LIMITED (1<<15). Sin `flags` en la respuesta no hay
+/// base para avisar.
+pub fn aviso_intent_miembros(application: &twilight_model::oauth::Application) -> Option<String> {
+    let flags = application.flags?.bits();
+    if flags & ((1 << 14) | (1 << 15)) == 0 {
+        Some(AVISO_INTENT_MIEMBROS.to_string())
+    } else {
+        None
+    }
+}
+
 /// Permisos que ARGUS pide al invitar al bot a un servidor (bits de Discord):
 /// ver canales (1<<10), enviar mensajes (1<<11), leer historial (1<<16),
 /// gestionar canales (1<<4), gestionar roles (1<<28), moderar miembros

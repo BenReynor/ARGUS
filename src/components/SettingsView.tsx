@@ -23,6 +23,15 @@ export const SettingsView: React.FC = () => {
   const hasSavedBot = config.bots.length > 0;
   const [adding, setAdding] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  // Avisos (no errores) por bot, p. ej. falta el intent de miembros.
+  const [avisos, setAvisos] = useState<Record<string, string>>({});
+  const setAviso = (id: string, aviso: string | null) =>
+    setAvisos((prev) => {
+      const next = { ...prev };
+      if (aviso) next[id] = aviso;
+      else delete next[id];
+      return next;
+    });
 
   const [formData, setFormData] = useState({
     server_id: config.active_guild_id ?? '',
@@ -47,7 +56,8 @@ export const SettingsView: React.FC = () => {
     await saveConfig(next);
     if (token) {
       // El backend valida el token con Discord y guarda id, nombre y avatar oficiales.
-      await addBot(token);
+      const added = await addBot(token);
+      setAviso(added.id, added.warning);
       setToken('');
     }
     // El backend es la fuente de verdad (ids de bots, token ya cifrado)
@@ -79,7 +89,8 @@ export const SettingsView: React.FC = () => {
     setTestResult(null);
     try {
       await persist();
-      await startBot();
+      const started = await startBot();
+      if (config.active_bot_id) setAviso(config.active_bot_id, started.warning);
       const status = await getBotStatus();
       if (status.connected) {
         setTestResult('success');
@@ -106,8 +117,10 @@ export const SettingsView: React.FC = () => {
       // El backend valida el token con Discord y guarda nombre y avatar oficiales.
       const bot = await addBot(token);
       setToken('');
+      setAviso(bot.id, bot.warning);
       setConfig(await getConfig());
       showNotification(`Bot añadido: ${bot.name}`, 'success');
+      if (bot.warning) showNotification(bot.warning, 'warning');
     } catch (e) {
       showNotification(typeof e === 'string' ? e : 'No se pudo añadir el bot', 'error');
     } finally {
@@ -175,6 +188,11 @@ export const SettingsView: React.FC = () => {
           {config.bots.map((b) => (
             <div key={b.id} className="form-group">
               <label>{b.name}{b.id === config.active_bot_id ? ' (activo)' : ''}</label>
+              {avisos[b.id] && (
+                <p className="help-text" style={{ color: 'var(--warning, #f5a623)' }}>
+                  <AlertCircle size={14} /> {avisos[b.id]}
+                </p>
+              )}
               {confirmRemove === b.id ? (
                 <div className="input-with-actions">
                   <span>¿Quitar el bot «{b.name}»? Se borrará su token guardado.</span>

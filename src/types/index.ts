@@ -100,6 +100,11 @@ export interface BotStatus {
   member_count: number | null;
   latency_ms: number | null;
   last_error: string | null;
+  warning: string | null;
+}
+
+export interface BotRegistrado extends BotConfig {
+  warning: string | null;
 }
 
 export interface Guild {

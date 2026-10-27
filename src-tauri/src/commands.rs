@@ -27,6 +27,15 @@ async fn conectar_bot(state: &AppState, base_url: Option<&str>) -> Result<BotSta
         .map_err(|e| format!("Error descifrando token: {}", e))?;
 
     let resultado = crate::discord::fetch_current_user(&token, base_url).await;
+    // El intent de miembros es un aviso, nunca un error: si la aplicación no se
+    // puede leer, simplemente no se avisa.
+    let warning = match &resultado {
+        Ok(_) => crate::discord::fetch_current_application(&token, base_url)
+            .await
+            .ok()
+            .and_then(|a| crate::discord::aviso_intent_miembros(&a)),
+        Err(_) => None,
+    };
     let mut status = state.bot_status.lock().unwrap();
     match resultado {
         Ok(user) => {
@@ -34,6 +43,7 @@ async fn conectar_bot(state: &AppState, base_url: Option<&str>) -> Result<BotSta
             status.connected = true;
             status.bot_name = Some(user.name);
             status.last_error = None;
+            status.warning = warning;
             Ok(status.clone())
         }
         Err(e) => {
@@ -41,6 +51,7 @@ async fn conectar_bot(state: &AppState, base_url: Option<&str>) -> Result<BotSta
             status.connected = false;
             status.bot_name = None;
             status.last_error = Some(e.clone());
+            status.warning = None;
             Err(e)
         }
     }
@@ -320,9 +331,9 @@ pub async fn add_bot(
     app: AppHandle,
     state: State<'_, AppState>,
     token: String,
-) -> Result<BotConfig, String> {
+) -> Result<BotRegistrado, String> {
     let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
-    let bot = registrar_bot(&pool, &token, None).await?;
+    let (bot, warning) = registrar_bot(&pool, &token, None).await?;
 
     // Scoped, not drop(): the guard must not be live across an .await.
     {
@@ -330,7 +341,15 @@ pub async fn add_bot(
         config.bots.retain(|b| b.id != bot.id);
         config.bots.push(bot.clone());
     }
-    Ok(bot)
+    Ok(BotRegistrado { bot, warning })
+}
+
+/// Bot recién registrado más el aviso opcional (p. ej. intent de miembros).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BotRegistrado {
+    #[serde(flatten)]
+    pub bot: BotConfig,
+    pub warning: Option<String>,
 }
 
 /// Valida el token con `GET /users/@me` y guarda el bot (token cifrado) con
@@ -339,7 +358,7 @@ async fn registrar_bot(
     pool: &sqlx::SqlitePool,
     token: &str,
     base_url: Option<&str>,
-) -> Result<BotConfig, String> {
+) -> Result<(BotConfig, Option<String>), String> {
     let token = token.trim();
     if token.is_empty() {
         return Err("Token inválido".to_string());
@@ -362,7 +381,7 @@ async fn registrar_bot(
     db::upsert_bot(pool, &bot)
         .await
         .map_err(|e| e.to_string())?;
-    Ok(bot)
+    Ok((bot, crate::discord::aviso_intent_miembros(&application)))
 }
 
 /// Enlace para invitar al bot activo a un servidor. Si el bot se registró antes
@@ -742,6 +761,10 @@ mod tests {
     }
 
     async fn mock_aplicacion(server: &MockServer, auth: &str, id: &str) {
+        mock_aplicacion_flags(server, auth, id, 1 << 14).await;
+    }
+
+    async fn mock_aplicacion_flags(server: &MockServer, auth: &str, id: &str, flags: u64) {
         Mock::given(method("GET"))
             .and(path("/api/v10/oauth2/applications/@me"))
             .and(header("authorization", auth))
@@ -754,7 +777,8 @@ mod tests {
                 "summary": "",
                 "rpc_origins": [],
                 "verify_key": "abc",
-                "icon": null
+                "icon": null,
+                "flags": flags
             })))
             .expect(1)
             .mount(server)
@@ -804,9 +828,10 @@ mod tests {
 
         let pool = pool_en_memoria().await;
         let addr = server.address().to_string();
-        let bot = registrar_bot(&pool, "token-valido", Some(&addr))
+        let (bot, aviso) = registrar_bot(&pool, "token-valido", Some(&addr))
             .await
             .expect("registro");
+        assert_eq!(aviso, None);
 
         assert_eq!(bot.id, "123456789");
         assert_eq!(bot.name, "bot-oficial");
@@ -848,6 +873,67 @@ mod tests {
 
         assert_eq!(err, "Token inválido");
         assert!(db::list_bots(&pool).await.unwrap().is_empty());
+    }
+
+    async fn mock_usuario(server: &MockServer, auth: &str) {
+        Mock::given(method("GET"))
+            .and(path("/api/v10/users/@me"))
+            .and(header("authorization", auth))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "123456789",
+                "username": "bot-oficial",
+                "discriminator": "0",
+                "avatar": null,
+                "bot": true,
+                "mfa_enabled": false
+            })))
+            .mount(server)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn registrar_bot_avisa_sin_intent_de_miembros() {
+        let server = MockServer::start().await;
+        mock_usuario(&server, "Bot token-sin").await;
+        mock_aplicacion_flags(&server, "Bot token-sin", "5", 1 << 12).await;
+        let pool = pool_en_memoria().await;
+        let addr = server.address().to_string();
+        let (_, aviso) = registrar_bot(&pool, "token-sin", Some(&addr))
+            .await
+            .expect("el aviso no es un error");
+        assert_eq!(
+            aviso.as_deref(),
+            Some("Activa «Server Members Intent» en el Developer Portal → Bot")
+        );
+        assert_eq!(db::list_bots(&pool).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn registrar_bot_no_avisa_con_intent_limitado() {
+        let server = MockServer::start().await;
+        mock_usuario(&server, "Bot token-lim").await;
+        mock_aplicacion_flags(&server, "Bot token-lim", "5", 1 << 15).await;
+        let pool = pool_en_memoria().await;
+        let addr = server.address().to_string();
+        let (_, aviso) = registrar_bot(&pool, "token-lim", Some(&addr))
+            .await
+            .unwrap();
+        assert_eq!(aviso, None);
+    }
+
+    #[tokio::test]
+    async fn start_bot_avisa_sin_intent_y_no_avisa_con_intent() {
+        for (flags, esperado) in [(0u64, true), (1 << 14, false)] {
+            let server = MockServer::start().await;
+            mock_usuario(&server, "Bot token-flags").await;
+            mock_aplicacion_flags(&server, "Bot token-flags", "5", flags).await;
+            let state = estado_con_bot_activo("token-flags");
+            let addr = server.address().to_string();
+            let status = conectar_bot(&state, Some(&addr)).await.expect("conexión");
+            assert!(status.connected);
+            assert_eq!(status.warning.is_some(), esperado, "flags {flags}");
+            assert_eq!(state.bot_status.lock().unwrap().warning.is_some(), esperado);
+        }
     }
 
     fn estado_con_bot_activo(token: &str) -> AppState {

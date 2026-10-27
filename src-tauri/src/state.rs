@@ -220,6 +220,8 @@ pub struct BotStatus {
     pub member_count: Option<u32>,
     pub latency_ms: Option<u64>,
     pub last_error: Option<String>,
+    #[serde(default)]
+    pub warning: Option<String>,
 }
 
 impl Default for BotStatus {
@@ -233,6 +235,7 @@ impl Default for BotStatus {
             member_count: None,
             latency_ms: None,
             last_error: None,
+            warning: None,
         }
     }
 }

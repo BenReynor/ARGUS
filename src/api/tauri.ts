@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, Event } from '@tauri-apps/api/event';
 
-import type { BotConfig, BotStatus, Config, Guild, Channel, Member, Role, ServerMap } from '../types';
+import type { BotConfig, BotRegistrado, BotStatus, Config, Guild, Channel, Member, Role, ServerMap } from '../types';
 
 export type { BotStatus, Config, Guild, Channel, Member, Role, ServerMap };
 
@@ -29,7 +29,7 @@ export const getConfig = () => invoke<Config>('get_config');
 export const saveConfig = (config: Config) => invoke<string>('save_config', { config });
 
 // Bots: el backend cifra el token (AES-GCM); viaja una sola vez y no se guarda en la UI
-export const addBot = (token: string) => invoke<BotConfig>('add_bot', { token });
+export const addBot = (token: string) => invoke<BotRegistrado>('add_bot', { token });
 export const updateBot = (bot: BotConfig) => invoke<string>('update_bot', { bot });
 export const setActiveBot = (botId: string) => invoke<string>('set_active_bot', { botId });
 export const inviteUrl = () => invoke<string>('invite_url');
