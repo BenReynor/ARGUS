@@ -103,7 +103,7 @@ Leer todo al conectar y mantenerlo al día con los eventos de Discord.
   criterio: al conectar se carga guild + canales + roles + miembros del servidor activo por REST y se emite el evento Tauri `sync-progress` (paso actual y total); test de la función de sync con el Discord falso
 - [x] La UI se actualiza sin polling
   criterio: el backend emite `map-updated` tras aplicar eventos (agrupados con debounce de ~500 ms); App.tsx escucha `map-updated` y `sync-progress` y deja de consultar el estado cada 5 s; tsc y npm run build pasan
-- [ ] Guardar el mapa y el historial de cambios
+- [x] Guardar el mapa y el historial de cambios
   criterio: el mapa se guarda en `server_maps` como mucho cada 30 s si cambió, y cada cambio resumido se inserta en `incidents`; al arrancar se carga el último mapa guardado; tests de la persistencia con una BD SQLite temporal
 - [ ] Botón "Resincronizar mapa"
   criterio: un comando `resync_map` repite la sincronización completa y la UI tiene un botón en Dashboard que lo llama y muestra el progreso; tsc pasa
