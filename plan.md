@@ -32,7 +32,7 @@ npm run build): no hace falta una tarea de "verificar build".
   criterio: en src-tauri/src/state.rs `cleanup_user_context` es `async fn` y usa `.await`; no queda ningún `block_on` en state.rs; sus llamadas (si las hay) usan `.await`
 - [x] Añadir a `Config` (state.rs): `auto_sync_map`, `sync_interval_secs`, `bot_engine`
   criterio: Config tiene auto_sync_map: bool (por defecto true), sync_interval_secs: u64 (por defecto 300) y bot_engine: String (por defecto "rust"), con `#[serde(default = ...)]` para que una config guardada antigua siga cargando; un test `#[cfg(test)]` en state.rs deserializa un JSON de Config sin esos campos y comprueba los valores por defecto
-- [ ] Auditar `src-tauri/src/commands.rs` y listar los comandos mock a sustituir
+- [x] Auditar `src-tauri/src/commands.rs` y listar los comandos mock a sustituir
   criterio: existe docs/AUDITORIA_COMANDOS.md con una tabla de TODOS los `#[tauri::command]` de commands.rs (nombre, estado: real / mock / stub-TODO, endpoint de Discord que lo sustituirá si aplica); cada comando registrado en `generate_handler!` de main.rs aparece en la tabla
 - [ ] Sincronizar los tipos TS de `src/types` con los tipos Rust
   criterio: src/types/index.ts refleja los campos de Channel, Role, Member y Config de state.rs (los Option<T> de Rust como campos opcionales `?:`), incluidos overwrites, permissions_bitfield, joined_at, avatar, active_guild_id, auto_sync_map, sync_interval_secs y bot_engine; tsc pasa
