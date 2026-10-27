@@ -68,6 +68,8 @@ export const getBotStatus = () => invoke<BotStatus>('get_bot_status');
 
 // Discord operations
 export const listGuilds = () => invoke<Guild[]>('list_guilds');
+export const getActiveGuild = () => invoke<string | null>('get_active_guild');
+export const setActiveGuild = (guildId: string) => invoke<string>('set_active_guild', { guildId });
 export const listChannels = (guildId: string) => invoke<Channel[]>('list_channels', { guild_id: guildId });
 export const listMembers = (guildId: string) => invoke<Member[]>('list_members', { guild_id: guildId });
 export const listRoles = (guildId: string) => invoke<Role[]>('list_roles', { guild_id: guildId });

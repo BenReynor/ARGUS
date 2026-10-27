@@ -13,6 +13,10 @@ interface AppState {
   botStatus: BotStatus;
   setBotStatus: (status: Partial<BotStatus>) => void;
 
+  // Guild activa
+  activeGuildId: string | null;
+  setActiveGuildId: (id: string | null) => void;
+
   // Server data
   serverMap: ServerMap | null;
   setServerMap: (map: ServerMap) => void;
@@ -73,6 +77,10 @@ export const useStore = create<AppState>()(
       },
       setBotStatus: (status) => set((state) => ({ botStatus: { ...state.botStatus, ...status } })),
 
+      // Guild activa
+      activeGuildId: null,
+      setActiveGuildId: (id) => set({ activeGuildId: id }),
+
       // Server data
       serverMap: null,
       setServerMap: (map) => set({ serverMap: map }),
@@ -106,6 +114,7 @@ export const useStore = create<AppState>()(
       name: 'argus-storage',
       partialize: (state) => ({
         config: state.config,
+        activeGuildId: state.activeGuildId,
         activeTab: state.activeTab,
       }),
     }
@@ -115,6 +124,8 @@ export const useStore = create<AppState>()(
 // Selectors
 export const useConfig = () => useStore((s) => s.config);
 export const useBotStatus = () => useStore((s) => s.botStatus);
+export const useActiveGuildId = () => useStore((s) => s.activeGuildId);
+export const useSetActiveGuildId = () => useStore((s) => s.setActiveGuildId);
 export const useServerMap = () => useStore((s) => s.serverMap);
 export const useActiveTab = () => useStore((s) => s.activeTab);
 export const useSetActiveTab = () => useStore((s) => s.setActiveTab);

@@ -1,17 +1,48 @@
-import React from 'react';
-import { useConfig, useBotStatus } from '../store/useStore';
+import React, { useEffect, useState } from 'react';
+import { useConfig, useBotStatus, useActiveGuildId, useSetActiveGuildId } from '../store/useStore';
+import { listGuilds, setActiveGuild } from '../api/tauri';
+import type { Guild } from '../api/tauri';
 import { Server, Cpu, MemoryStick, Wifi, WifiOff, Zap } from 'lucide-react';
 
 export const Header: React.FC = () => {
   const config = useConfig();
   const botStatus = useBotStatus();
+  const activeGuildId = useActiveGuildId();
+  const setActiveGuildId = useSetActiveGuildId();
+  const [guilds, setGuilds] = useState<Guild[]>([]);
+
+  useEffect(() => {
+    listGuilds()
+      .then(setGuilds)
+      .catch(() => setGuilds([]));
+  }, []);
+
+  const handleGuildChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = e.target.value;
+    try {
+      await setActiveGuild(id);
+      setActiveGuildId(id);
+    } catch {
+      // se mantiene la guild anterior si falla
+    }
+  };
 
   return (
     <header className="header">
       <div className="header-left">
         <h1 className="page-title">PANEL DE CONTROL</h1>
         <span className="divider">/</span>
-        <span className="server-name">ISD Internal Security Department</span>
+        <select
+          className="server-name"
+          aria-label="Servidor activo"
+          value={activeGuildId ?? ''}
+          onChange={handleGuildChange}
+        >
+          {!activeGuildId && <option value="" disabled>Selecciona servidor</option>}
+          {guilds.map((g) => (
+            <option key={g.id} value={g.id}>{g.name}</option>
+          ))}
+        </select>
       </div>
       <div className="header-center">
         <div className={`connection-status ${botStatus.connected ? 'connected' : 'disconnected'}`}>
