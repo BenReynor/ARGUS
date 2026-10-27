@@ -11,6 +11,7 @@ mod commands;
 mod crypto;
 mod db;
 mod discord;
+mod mapa;
 mod state;
 
 use commands::*;
