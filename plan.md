@@ -52,7 +52,7 @@ Que cualquier usuario registre sus bots y elija uno, sin rastro de un servidor c
   criterio: `add_bot` recibe solo el token, llama a `GET /users/@me` y guarda el bot con el `id`, `username` y `avatar` oficiales (nuevas columnas por migración 002 si hacen falta) y el token cifrado; un token rechazado (401) devuelve "Token inválido" sin guardar nada; tests con el Discord falso para el caso válido y el 401
 - [x] Elegir el bot activo desde la UI
   criterio: la Sidebar lista los bots registrados con su nombre y avatar oficiales y permite elegir el activo (`set_active_bot`), que se persiste en la BD; SettingsView tiene "Añadir bot" (campo de token, sin nombre) y "Quitar bot" con confirmación; tsc y npm run build pasan
-- [ ] Retirar discord-mcp: `start_bot` valida el token del bot activo
+- [x] Retirar discord-mcp: `start_bot` valida el token del bot activo
   criterio: `start_bot` ya no lanza `npx @pasympa/discord-mcp` ni ningún proceso externo; descifra el token del bot activo, valida con `GET /users/@me` y deja `bot_status` como conectado con el nombre oficial; sin bot activo devuelve "No hay bot seleccionado"; test con el Discord falso
 - [ ] Listar los servidores del bot activo
   criterio: `list_guilds` llama a `GET /users/@me/guilds` con el bot activo, actualiza la tabla guilds y devuelve id, nombre e icono; el selector del Header usa esa lista; test con el Discord falso (2 guilds)
