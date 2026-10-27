@@ -68,6 +68,7 @@ pub fn run() {
             update_bot,
             delete_bot,
             set_active_bot,
+            invite_url,
             list_templates,
             save_template,
             delete_template,

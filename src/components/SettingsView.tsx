@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore, useConfig, useUiSettings, useSetActiveTab, useShowNotification } from '../store/useStore';
-import { getConfig, saveConfig, addBot, deleteBot, startBot, getBotStatus } from '../api/tauri';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { getConfig, saveConfig, addBot, deleteBot, startBot, getBotStatus, inviteUrl } from '../api/tauri';
 import { Save, Key, Trash2, Plus, Server, ToggleLeft, ToggleRight, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Copy } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -126,6 +127,14 @@ export const SettingsView: React.FC = () => {
     }
   };
 
+  const handleInvite = async () => {
+    try {
+      await openUrl(await inviteUrl());
+    } catch (e) {
+      showNotification(typeof e === 'string' ? e : 'No se pudo abrir el enlace de invitación', 'error');
+    }
+  };
+
   const copyToken = () => {
     navigator.clipboard.writeText(token);
     showNotification('Token copiado', 'info');
@@ -179,6 +188,13 @@ export const SettingsView: React.FC = () => {
               )}
             </div>
           ))}
+
+          <div className="form-group">
+            <button className="btn-secondary" onClick={handleInvite} disabled={!config.active_bot_id}>
+              <Server size={14} /> Invitar a un servidor
+            </button>
+            <p className="help-text">Abre en el navegador el enlace de Discord para añadir el bot activo a uno de tus servidores.</p>
+          </div>
 
           <div className="form-group">
             <label>Server ID (Guild ID)</label>

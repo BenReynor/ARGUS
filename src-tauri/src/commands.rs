@@ -345,6 +345,7 @@ async fn registrar_bot(
         return Err("Token inválido".to_string());
     }
     let user = crate::discord::fetch_current_user(token, base_url).await?;
+    let application = crate::discord::fetch_current_application(token, base_url).await?;
     let token_ciphertext =
         crypto::encrypt(token).map_err(|e| format!("Error cifrando token: {}", e))?;
     let now = Utc::now().to_rfc3339();
@@ -353,6 +354,7 @@ async fn registrar_bot(
         name: user.name.clone(),
         token_ciphertext,
         avatar: user.avatar.map(|a| a.to_string()),
+        application_id: Some(application.id.to_string()),
         allowed_guilds: Vec::new(),
         created_at: now.clone(),
         updated_at: now,
@@ -361,6 +363,42 @@ async fn registrar_bot(
         .await
         .map_err(|e| e.to_string())?;
     Ok(bot)
+}
+
+/// Enlace para invitar al bot activo a un servidor. Si el bot se registró antes
+/// de guardar su id de aplicación, se pide a Discord y se guarda.
+#[tauri::command]
+pub async fn invite_url(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+    let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
+    enlace_de_invitacion(&pool, &state, None).await
+}
+
+async fn enlace_de_invitacion(
+    pool: &sqlx::SqlitePool,
+    state: &AppState,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    let mut bot = state
+        .get_active_bot()
+        .ok_or_else(|| "No hay bot seleccionado".to_string())?;
+    if bot.application_id.is_none() {
+        let token = crypto::decrypt(&bot.token_ciphertext)
+            .map_err(|e| format!("Error descifrando token: {}", e))?;
+        let application = crate::discord::fetch_current_application(&token, base_url).await?;
+        bot.application_id = Some(application.id.to_string());
+        db::upsert_bot(pool, &bot)
+            .await
+            .map_err(|e| e.to_string())?;
+        // Scoped: el guard no debe vivir a través de un .await.
+        {
+            let mut config = state.config.lock().unwrap();
+            if let Some(b) = config.bots.iter_mut().find(|b| b.id == bot.id) {
+                b.application_id = bot.application_id.clone();
+            }
+        }
+    }
+    let id = bot.application_id.unwrap_or_default();
+    Ok(crate::discord::build_invite_url(&id))
 }
 
 #[tauri::command]
@@ -391,6 +429,7 @@ pub async fn update_bot(
         name: bot.name.clone(),
         token_ciphertext: bot.token_ciphertext.clone(),
         avatar: bot.avatar.clone(),
+        application_id: bot.application_id.clone(),
         allowed_guilds: bot.allowed_guilds.clone(),
         created_at: now.clone(),
         updated_at: now,
@@ -674,6 +713,7 @@ mod tests {
             name: "bot".into(),
             token_ciphertext: crypto::encrypt("token-guilds").unwrap(),
             avatar: None,
+            application_id: None,
             allowed_guilds: vec![],
             created_at: String::new(),
             updated_at: String::new(),
@@ -701,6 +741,48 @@ mod tests {
         assert!(en_bd.iter().all(|g| g.id != "999"));
     }
 
+    async fn mock_aplicacion(server: &MockServer, auth: &str, id: &str) {
+        Mock::given(method("GET"))
+            .and(path("/api/v10/oauth2/applications/@me"))
+            .and(header("authorization", auth))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": id,
+                "name": "app",
+                "description": "",
+                "bot_public": true,
+                "bot_require_code_grant": false,
+                "summary": "",
+                "rpc_origins": [],
+                "verify_key": "abc",
+                "icon": null
+            })))
+            .expect(1)
+            .mount(server)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn invite_url_usa_el_id_de_aplicacion_del_bot_activo() {
+        let server = MockServer::start().await;
+        mock_aplicacion(&server, "Bot token-inv", "777888999").await;
+
+        let pool = pool_en_memoria().await;
+        let state = estado_con_bot_activo("token-inv");
+        let addr = server.address().to_string();
+        let url = enlace_de_invitacion(&pool, &state, Some(&addr))
+            .await
+            .expect("enlace");
+
+        assert!(url.starts_with(
+            "https://discord.com/oauth2/authorize?client_id=777888999&scope=bot%20applications.commands&permissions="
+        ));
+        // Queda guardado para no volver a pedirlo.
+        assert_eq!(
+            state.get_active_bot().unwrap().application_id.as_deref(),
+            Some("777888999")
+        );
+    }
+
     #[tokio::test]
     async fn registra_bot_con_datos_oficiales_y_token_cifrado() {
         let server = MockServer::start().await;
@@ -718,6 +800,7 @@ mod tests {
             .expect(1)
             .mount(&server)
             .await;
+        mock_aplicacion(&server, "Bot token-valido", "555000111").await;
 
         let pool = pool_en_memoria().await;
         let addr = server.address().to_string();
@@ -727,6 +810,7 @@ mod tests {
 
         assert_eq!(bot.id, "123456789");
         assert_eq!(bot.name, "bot-oficial");
+        assert_eq!(bot.application_id.as_deref(), Some("555000111"));
         assert!(bot.avatar.is_some());
         assert_ne!(bot.token_ciphertext, "token-valido");
 
@@ -736,6 +820,7 @@ mod tests {
             .expect("bot guardado");
         assert_eq!(guardado.name, "bot-oficial");
         assert_eq!(guardado.avatar, bot.avatar);
+        assert_eq!(guardado.application_id.as_deref(), Some("555000111"));
         assert_eq!(
             crypto::decrypt(&guardado.token_ciphertext).unwrap(),
             "token-valido"
@@ -773,6 +858,7 @@ mod tests {
             name: "nombre-viejo".to_string(),
             token_ciphertext: crypto::encrypt(token).unwrap(),
             avatar: None,
+            application_id: None,
             allowed_guilds: Vec::new(),
             created_at: now.clone(),
             updated_at: now,
