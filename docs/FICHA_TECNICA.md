@@ -1,5 +1,7 @@
 # Ficha Técnica — ARGUS
 
+> **Nota:** este documento describe la visión completa, no el estado actual. Lo que existe hoy, las decisiones vigentes (twilight, multi-bot, nada hardcodeado) y el orden de trabajo están en `CONTEXTO.md` y `plan.md`; si algo choca, mandan esos.
+
 > Especificación técnica para desarrolladores y agentes IA.  
 > Estilo inspirado en [Dédalo](https://github.com/BenReynor/dedalo).
 
@@ -18,7 +20,7 @@ App de escritorio (Tauri 2 + React + TypeScript + Rust) para **controlar bots pr
 
 | Requisito | Versión |
 |---|---|
-| Rust | ≥ 1.99 (`source ~/.cargo/env`) |
+| Rust | ≥ 1.99 (`cargo` en el PATH) |
 | Node | ≥ 22 (nvm) |
 | Sistema | Linux (ref), macOS, Windows |
 | GTK/WebKit | `libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev` |
@@ -283,7 +285,6 @@ jobs:
 
 ```bash
 # Rust env
-source ~/.cargo/env
 
 # Frontend
 npm run dev              # Vite dev server

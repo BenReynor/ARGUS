@@ -1,5 +1,7 @@
 # ARGUS
 
+> **Nota:** este documento describe la visión completa, no el estado actual. Lo que existe hoy, las decisiones vigentes (twilight, multi-bot, nada hardcodeado) y el orden de trabajo están en `CONTEXTO.md` y `plan.md`; si algo choca, mandan esos.
+
 [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri)](https://tauri.app)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev)
 [![Rust](https://img.shields.io/badge/Rust-1.99-orange?logo=rust)](https://rust-lang.org)
@@ -36,7 +38,7 @@ Multi-bot, multi-servidor, sync tiempo real, plantillas, personalidad dual (Exec
 
 ### Requisitos
 
-- **Rust 1.99+** (`source ~/.cargo/env`)
+- **Rust 1.99+** (`cargo` en el PATH)
 - **Node 22+** (nvm)
 - **GTK/WebKit** deps (Linux): `libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev`
 - **Ollama** (opcional, para chat local): `curl -fsSL https://ollama.com/install.sh | sh`
@@ -50,7 +52,6 @@ git clone https://github.com/BenReynor/ARGUS.git
 cd ARGUS
 
 # Rust env
-source ~/.cargo/env
 
 # Dependencias frontend
 npm install

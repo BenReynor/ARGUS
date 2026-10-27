@@ -1,142 +1,91 @@
 # CONTEXTO.md — ARGUS
 
-## Qué es ARGUS
+Fuente única de visión y decisiones. Si otro documento (README, FICHA_TECNICA,
+ARCHITECTURE_MAP, AGENTS) contradice este, manda este.
 
-App de escritorio (Tauri 2 + React + TypeScript + Rust) para **controlar bots propios de Discord**: encender/apagar, mapa del servidor en tiempo real, gestión de canales/miembros/roles, logs de vigilancia, plantillas para armar servidores, personalidad dual (Executor + Responder), chat bidireccional (GUI + Discord), backup automático, MCP propio, desinstalación atómica.
+## Qué es
 
-**No es un selfbot** (viola ToS). Se maneja el bot propio vía **Discord API REST + Gateway** con token de bot legítimo.
+App de escritorio (Tauri 2 + React + TypeScript + Rust) para **administrar bots
+propios de Discord**: registrar tus bots, elegir con cuál trabajar, ver y editar
+los servidores donde está (canales, roles, miembros, permisos), mapa del servidor
+en vivo y, más adelante, darle personalidad y automatismos.
 
-El sistema es **multi-bot**: funciona con cualquier bot que el usuario configure (no hardcodeado a "Agente Albert").
+- **Producto general**, para cualquier usuario: nada atado a un servidor, canal o
+  bot concreto. Ningún ID, nombre de servidor ni nombre de bot en el código.
+- **Bots propios, no selfbots** (los selfbots violan los ToS de Discord): se usa la
+  API oficial (REST + Gateway) con el token del bot.
+- **Multi-bot**: el usuario registra uno o varios bots con su token; ARGUS lee su
+  nombre y avatar oficiales de Discord (`GET /users/@me`) y el usuario elige el
+  bot activo. Los servidores disponibles son los del bot activo.
 
-## Objetivo final
+## Decisiones tomadas
 
-Un **centro de orquestación completo** para bots personales que permita:
-
-1. **Multi-servidor + Multi-bot**: cambiar de guild en el header, mapa sincronizado por guild, múltiples bots configurables
-2. **Sync inteligente**: leer todo al prender + detectar cambios en tiempo real vía Gateway
-3. **Plantillas**: aplicar estructura completa (roles, categorías, canales, overwrites) a servidores donde el bot tiene permisos
-4. **Personalidad dual**: 
-   - **Executor (Rust)**: acciones Discord rápidas y confiables (ms)
-   - **Responder (proveedor configurable)**: razona, conversa, decide qué hacer (Nemotron 3 Ultra Free, Ollama local, OpenRouter, OpenAI, Groq, CLI agents como opencode/codex/claude)
-5. **Chat unificado**: en la app (`/chat`, `/exec`, `/plan`, `/ask`) y en Discord (mención, slash)
-6. **Vigilancia configurable**: joins, leaves, bans, role/channel changes, message deletes con presets + editor avanzado
-7. **Memoria persistente**: archivo histórico JSONL (inmutable) + contexto activo SQLite (límites configurables, limpieza manual/auto)
-8. **Backup automático**: cada N horas, ZIP versionado, retención configurable
-9. **MCP propio**: controlar ARGUS desde opencode/Claude Desktop
-10. **Desinstalación atómica**: un botón borra todo rastro
-11. **Notificaciones Telegram**: alerts críticos via webhook
-
-## Principios de diseño
-
-- **Privacidad first**: tokens cifrados localmente, proveedores locales por defecto, sin telemetría obligatoria
-- **Control total**: tú eliges proveedor IA por acción (`/chat`=Nemotron/Ollama, `/plan`=opencode, `/exec`=Rust nativo)
-- **Observabilidad**: estado en archivos/BD (estilo Dédalo), nada oculto
-- **Rendimiento**: Rust para paths calientes, React virtualizado, debounce, RwLock
-- **Accesibilidad**: WCAG 2.2 AA, navegación teclado, command palette, temas
-- **Extensibilidad**: plugin system (FASE 7), MCP, hooks
-
-## Stack técnico
-
-| Capa | Tecnología |
+| Tema | Decisión |
 |---|---|
-| Frontend | React 18 + TypeScript + Vite + Zustand |
-| UI | CSS custom properties + 9 temas curados + i18n (ES/EN) |
-| Backend | Rust + Tauri 2 + twilight-gateway/http + sqlx + tokio |
-| BD | SQLite (WAL) + FTS5 + JSONL histórico rotativo |
-| Cifrado | AES-GCM (aes-gcm crate) |
-| IA Chat Default | **Nemotron 3 Ultra Free** (gratis, rápido, sin API key) |
-| IA Chat Alternativos | Ollama local, OpenRouter, OpenAI, Groq (configurable) |
-| IA Code/Plan | opencode / codex / claude (CLI agents, auto-detect + manual override) |
-| MCP | Servidor stdio propio (`argus-mcp`) |
-| Update | Tauri Updater (GitHub Releases) |
-| CI/CD | GitHub Actions (test + build + release) |
-| Notificaciones | Telegram Bot API (webhook) |
+| Conexión a Discord | **twilight** en Rust: `twilight-http` (REST, gestiona rate-limit) y `twilight-gateway` (eventos, heartbeats, reconexión). Se retira `npx @pasympa/discord-mcp` y los clientes a mano (`reqwest`/`tokio-tungstenite` para Discord). |
+| Bots | Multi-bot. Token cifrado (AES-GCM) por bot en SQLite; nombre/avatar desde Discord, no escritos por el usuario. |
+| Servidor activo | Lo elige el usuario entre los guilds del bot activo. Sin valor por defecto en el código. |
+| Pruebas | Tests automáticos **sin red**: el cliente de Discord acepta una URL base de pruebas y los tests usan un Discord falso local. El loop de Dédalo nunca recibe un token real. La verificación real la hace el dueño en su **servidor de pruebas** (checklist manual al final de cada fase). |
+| MVP | Fases 1–3 de plan.md: bots genéricos, datos y acciones reales por REST, mapa en vivo por Gateway. |
 
-## Convenciones
+## Estado actual (lo que existe de verdad)
 
-- **Idioma**: Español (UI y conversación), Inglés opcional
-- **Commits**: Convencionales (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`)
-- **Tareas**: Una por commit, verificable (`npm run build && cargo test`)
-- **Config**: SQLite `config` table (key-value JSON) + `settings` table
-- **Rutas config**: `~/.config/argus/` (BD, logs, backups, cache)
-- **Formato fechas**: ISO 8601 UTC en BD, locale en UI
+- Backend Rust (`src-tauri/src`): `main.rs` (setup, tray, migraciones, carga de
+  config), `state.rs` (Config, AppState, tipos del mapa), `commands.rs` (41
+  comandos; casi todos los de Discord son mock: ver `docs/AUDITORIA_COMANDOS.md`),
+  `db.rs` (SQLite vía sqlx), `crypto.rs` (AES-GCM + tests).
+- BD (`src-tauri/migrations/001_init.sql`): config, bots, guilds, server_maps,
+  templates, cli_agents, vigilance, messages, incidents, settings.
+- Frontend (`src/`): Header (selector de guild), Sidebar, Dashboard, ChannelsView,
+  MembersView, RolesView, SettingsView, LogsView, Notification; store Zustand;
+  tipos en `src/types/index.ts` sincronizados con Rust.
+- Pendiente de limpiar: IDs, nombres y canales del servidor ISD y "Agente Albert"
+  escritos en código (primera tarea de la FASE 1).
 
-## Estructura de datos clave
+## Después del MVP (visión, sin criterios todavía)
 
-```typescript
-// Config principal (simplificada)
-interface Config {
-  // Bots configurables (no hardcodeado a uno solo)
-  bots: BotConfig[];               // cada bot: token, nombre, guilds permitidos
-  active_bot_id: string | null;
-  active_guild_id: string | null;
-  guilds: Guild[];
-  multi_guild_mode: boolean;
-  
-  // IA - Proveedor por defecto: Nemotron 3 Ultra Free
-  llm_chat_provider: "nemotron" | "ollama" | "openrouter" | "openai" | "groq" | "cli";
-  llm_chat_model: string;
-  llm_chat_url: string;
-  llm_chat_api_key: string;        // cifrado (vacío para Nemotron/Ollama local)
-  plan_provider: "auto" | "opencode" | "codex" | "claude" | "nemotron";
-  ask_provider: "auto" | "opencode" | "codex" | "claude" | "nemotron";
-  cli_agents: Record<string, CliAgentConfig>;
-  
-  // Contexto/Memoria
-  context_limit_per_user: number;      // default 10
-  context_limit_per_channel: number;   // default 50
-  auto_cleanup_enabled: boolean;
-  archive_retention_months: number;
-  
-  // Vigilancia
-  vigilance_preset: "minimal" | "standard" | "full" | "custom";
-  vigilance_enabled_events: string[];
-  vigilance_filters: VigilanceFilters;
-  
-  // Backup
-  backup_enabled: boolean;
-  backup_interval_hours: number;       // default 24
-  backup_retention_count: number;      // default 30
-  
-  // Telegram notifications
-  telegram_enabled: boolean;
-  telegram_bot_token: string;          // cifrado
-  telegram_chat_id: string;
-  telegram_events: string[];           // qué eventos notificar
-  
-  // General
-  language: "es" | "en";
-  auto_update: boolean;
-  telemetry_opt_in: boolean;
-  anti_spam_cooldown_secs: number;     // default 30
-  responder_triggers: ResponderTriggers;
-  alerts_config: AlertsConfig;
-}
-```
+Cada bloque se convierte en tareas con `criterio:` cuando le toque.
 
-## Flujo de trabajo típico
+1. **Edición completa del servidor**: crear/editar/borrar canales, categorías y
+   roles, permisos y overwrites, moderación (ban/kick/timeout), mensajes.
+2. **Plantillas**: guardar la estructura de un servidor y aplicarla a otro
+   (roles → categorías → canales → overwrites), con vista previa y validación de
+   permisos del bot.
+3. **Personalidad del bot**: perfiles (nombre, prompt de sistema, modelo, canales
+   permitidos, reglas), respuesta a menciones/slash, memoria corta por canal,
+   anti-spam, modo observador. Proveedor LLM configurable (Ollama local u otro
+   compatible con la API de OpenAI); proveedores y costes se verifican al empezar.
+4. **Vigilancia y logs**: eventos (altas/bajas, bans, cambios de rol/canal,
+   mensajes borrados) con filtros y timeline; alertas nativas.
+5. **Integraciones**: notificaciones Telegram, backup automático, MCP propio de
+   ARGUS, agentes CLI (opencode/codex/claude).
+6. **UX**: i18n ES/EN, temas, paleta de comandos, listas virtualizadas.
 
-1. **Arranque**: App carga config BD → valida token del bot activo → `start_bot` → spawn `bot_core`
-2. **Bot-core**: Conecta Gateway → `full_sync(active_guild)` → emite `map-updated`
-3. **UI**: Recibe mapa → render Channels/Members/Roles → usuario interactúa
-4. **Usuario en GUI**: `/exec crear_canal` → Executor (Rust) → steps loading → Discord API → `map-updated`
-5. **Usuario en Discord**: `@bot hola` → Gateway → Responder (proveedor configurado) → piensa → llama tools Executor → responde
-6. **Eventos Gateway**: Cualquier cambio → upsert `server_maps` + `insert_incident` → broadcast → UI actualiza
-7. **Backup**: Cada 24h → `export_all_data()` → ZIP → retención 30
-8. **Alertas**: Eventos críticos → notificación nativa + Telegram webhook
+## Principios
+
+- **Privacidad**: tokens y claves cifrados localmente; nunca en texto plano ni en
+  `localStorage`; sin telemetría.
+- **Nada hardcodeado** de un servidor, canal, bot o usuario.
+- **Observabilidad**: estado en BD/archivos, errores visibles en la UI en español.
+- **Rendimiento**: Rust en lo caliente; nada de bloquear el runtime (`block_on`
+  dentro de tokio) ni retener un `MutexGuard` a través de un `.await`.
 
 ## Seguridad
 
-- Tokens **nunca en texto plano**: `discord_token`, `llm_chat_api_key`, `telegram_bot_token` cifrados AES-GCM
-- Key derivada de `machine-id` + salt almacenado en config (no en repo)
-- BD permisos `0600`, directorio `0700`
-- Validación permisos bot al `start_bot` (ManageGuild/Channels/Roles/ViewAuditLog)
-- Desinstalación atómica borra todo incluyendo keys derivadas
-- MCP stdio only (sin puertos de red)
+- Tokens cifrados con AES-GCM; clave derivada del `machine-id` + sal en config.
+- Validar permisos del bot antes de una acción y mostrar un error claro si falta.
+- Las acciones destructivas (borrar canal/rol, ban) piden confirmación en la UI.
+
+## Convenciones
+
+- Español en UI y documentación; commits convencionales (`feat:`, `fix:`…).
+- Una tarea por commit, verificable por el gate: `cargo fmt/check/test` (en
+  `src-tauri/`), `tsc` y `npm run build`.
+- Rutas de datos: `~/.config/argus/` (BD, logs, backups).
+- Fechas: ISO 8601 UTC en BD, formato local en la UI.
 
 ## Integración con Dédalo
 
-- `plan.md` formato Dédalo (`- [ ]`/`- [x]`/`- [B]`)
-- `incidencias.jsonl` estilo Dédalo (rotación mensual)
-- `lecciones.md` para memoria de proyecto
-- MCP `dedalo` disponible para orquestar desarrollo de ARGUS mismo
+`plan.md` usa el formato de Dédalo (`- [ ]` / `- [x]` / `- [B]`, una línea
+`criterio:` por tarea). Las tareas manuales van como viñetas simples, sin casilla,
+para que el loop no las tome.
