@@ -1,6 +1,7 @@
 //! Cliente de Discord (REST) sobre twilight-http con URL base configurable.
 
 use twilight_http::client::ClientBuilder;
+use twilight_http::error::ErrorType;
 use twilight_http::Client;
 
 /// Construye un cliente de Discord a partir de un token.
@@ -17,6 +18,24 @@ pub fn build_client(token: &str, base_url: Option<&str>) -> Client {
             .build(),
         None => builder.build(),
     }
+}
+
+/// Obtiene el usuario del token (`GET /users/@me`). Un 401 se traduce a
+/// "Token inválido".
+pub async fn fetch_current_user(
+    token: &str,
+    base_url: Option<&str>,
+) -> Result<twilight_model::user::CurrentUser, String> {
+    let client = build_client(token, base_url);
+    let response = client.current_user().await.map_err(|e| match e.kind() {
+        ErrorType::Response { status, .. } if status.get() == 401 => "Token inválido".to_string(),
+        ErrorType::Unauthorized => "Token inválido".to_string(),
+        _ => format!("No se pudo contactar con Discord: {e}"),
+    })?;
+    response
+        .model()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))
 }
 
 #[cfg(test)]

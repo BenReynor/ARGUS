@@ -3,6 +3,7 @@ export interface BotConfig {
   id: string;
   name: string;
   token_ciphertext: string;
+  avatar: string | null;
   allowed_guilds: string[];
   created_at: string;
   updated_at: string;

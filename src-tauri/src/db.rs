@@ -53,6 +53,8 @@ pub struct BotConfig {
     pub id: String,
     pub name: String,
     pub token_ciphertext: String,
+    #[serde(default)]
+    pub avatar: Option<String>,
     pub allowed_guilds: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -60,7 +62,7 @@ pub struct BotConfig {
 
 pub async fn list_bots(pool: &SqlitePool) -> Result<Vec<BotConfig>> {
     let rows = sqlx::query(
-        "SELECT id, name, token_ciphertext, allowed_guilds, created_at, updated_at FROM bots",
+        "SELECT id, name, token_ciphertext, avatar, allowed_guilds, created_at, updated_at FROM bots",
     )
     .fetch_all(pool)
     .await?;
@@ -70,6 +72,7 @@ pub async fn list_bots(pool: &SqlitePool) -> Result<Vec<BotConfig>> {
             id: r.get("id"),
             name: r.get("name"),
             token_ciphertext: r.get("token_ciphertext"),
+            avatar: r.get("avatar"),
             allowed_guilds: serde_json::from_str(&r.get::<String, _>("allowed_guilds"))
                 .unwrap_or_default(),
             created_at: r.get("created_at"),
@@ -79,7 +82,7 @@ pub async fn list_bots(pool: &SqlitePool) -> Result<Vec<BotConfig>> {
 }
 
 pub async fn get_bot(pool: &SqlitePool, id: &str) -> Result<Option<BotConfig>> {
-    let row = sqlx::query("SELECT id, name, token_ciphertext, allowed_guilds, created_at, updated_at FROM bots WHERE id = ?")
+    let row = sqlx::query("SELECT id, name, token_ciphertext, avatar, allowed_guilds, created_at, updated_at FROM bots WHERE id = ?")
         .bind(id)
         .fetch_optional(pool)
         .await?;
@@ -87,6 +90,7 @@ pub async fn get_bot(pool: &SqlitePool, id: &str) -> Result<Option<BotConfig>> {
         id: r.get("id"),
         name: r.get("name"),
         token_ciphertext: r.get("token_ciphertext"),
+        avatar: r.get("avatar"),
         allowed_guilds: serde_json::from_str(&r.get::<String, _>("allowed_guilds"))
             .unwrap_or_default(),
         created_at: r.get("created_at"),
@@ -96,13 +100,14 @@ pub async fn get_bot(pool: &SqlitePool, id: &str) -> Result<Option<BotConfig>> {
 
 pub async fn upsert_bot(pool: &SqlitePool, bot: &BotConfig) -> Result<()> {
     sqlx::query(
-        "INSERT INTO bots (id, name, token_ciphertext, allowed_guilds, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(id) DO UPDATE SET name = excluded.name, token_ciphertext = excluded.token_ciphertext, allowed_guilds = excluded.allowed_guilds, updated_at = CURRENT_TIMESTAMP"
+        "INSERT INTO bots (id, name, token_ciphertext, avatar, allowed_guilds, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, token_ciphertext = excluded.token_ciphertext, avatar = excluded.avatar, allowed_guilds = excluded.allowed_guilds, updated_at = CURRENT_TIMESTAMP"
     )
     .bind(&bot.id)
     .bind(&bot.name)
     .bind(&bot.token_ciphertext)
+    .bind(&bot.avatar)
     .bind(serde_json::to_string(&bot.allowed_guilds)?)
     .bind(&bot.created_at)
     .execute(pool)

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useStore, useConfig, useUiSettings, useSetActiveTab, useShowNotification } from '../store/useStore';
-import { getConfig, saveConfig, addBot, updateBot, startBot, getBotStatus } from '../api/tauri';
+import { getConfig, saveConfig, addBot, startBot, getBotStatus } from '../api/tauri';
 import { Save, Key, Server, ToggleLeft, ToggleRight, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Copy } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -43,20 +43,8 @@ export const SettingsView: React.FC = () => {
     const next = { ...config, active_guild_id: formData.server_id || null };
     await saveConfig(next);
     if (token) {
-      const current = config.bots.find((b) => b.id === config.active_bot_id) ?? config.bots[0];
-      const now = new Date().toISOString();
-      if (current) {
-        await updateBot({ ...current, token_ciphertext: token, updated_at: now });
-      } else {
-        await addBot({
-          id: '',
-          name: 'Bot',
-          token_ciphertext: token,
-          allowed_guilds: [],
-          created_at: now,
-          updated_at: now,
-        });
-      }
+      // El backend valida el token con Discord y guarda id, nombre y avatar oficiales.
+      await addBot(token);
       setToken('');
     }
     // El backend es la fuente de verdad (ids de bots, token ya cifrado)
@@ -72,8 +60,8 @@ export const SettingsView: React.FC = () => {
     try {
       await persist();
       showNotification('Configuración guardada', 'success');
-    } catch {
-      showNotification('Error al guardar', 'error');
+    } catch (e) {
+      showNotification(typeof e === 'string' ? e : 'Error al guardar', 'error');
     } finally {
       setSaving(false);
     }

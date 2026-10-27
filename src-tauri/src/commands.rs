@@ -360,37 +360,48 @@ pub async fn list_bots(state: State<'_, AppState>) -> Result<Vec<BotConfig>, Str
 pub async fn add_bot(
     app: AppHandle,
     state: State<'_, AppState>,
-    mut bot: BotConfig,
-) -> Result<String, String> {
-    if bot.id.is_empty() {
-        bot.id = uuid::Uuid::new_v4().to_string();
-    }
-    // Encrypt token
-    bot.token_ciphertext = crypto::encrypt(&bot.token_ciphertext)
-        .map_err(|e| format!("Error cifrando token: {}", e))?;
+    token: String,
+) -> Result<BotConfig, String> {
+    let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
+    let bot = registrar_bot(&pool, &token, None).await?;
 
-    // Scoped, not drop(): the guard must not be live across the .await below.
+    // Scoped, not drop(): the guard must not be live across an .await.
     {
         let mut config = state.config.lock().unwrap();
+        config.bots.retain(|b| b.id != bot.id);
         config.bots.push(bot.clone());
     }
+    Ok(bot)
+}
 
-    // Save to DB
-    let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
+/// Valida el token con `GET /users/@me` y guarda el bot (token cifrado) con
+/// los datos oficiales de Discord. Un token rechazado no guarda nada.
+async fn registrar_bot(
+    pool: &sqlx::SqlitePool,
+    token: &str,
+    base_url: Option<&str>,
+) -> Result<BotConfig, String> {
+    let token = token.trim();
+    if token.is_empty() {
+        return Err("Token inválido".to_string());
+    }
+    let user = crate::discord::fetch_current_user(token, base_url).await?;
+    let token_ciphertext =
+        crypto::encrypt(token).map_err(|e| format!("Error cifrando token: {}", e))?;
     let now = Utc::now().to_rfc3339();
-    let bot_db = db::BotConfig {
-        id: bot.id.clone(),
-        name: bot.name.clone(),
-        token_ciphertext: bot.token_ciphertext.clone(),
-        allowed_guilds: bot.allowed_guilds.clone(),
+    let bot = BotConfig {
+        id: user.id.to_string(),
+        name: user.name.clone(),
+        token_ciphertext,
+        avatar: user.avatar.map(|a| a.to_string()),
+        allowed_guilds: Vec::new(),
         created_at: now.clone(),
         updated_at: now,
     };
-    db::upsert_bot(&pool, &bot_db)
+    db::upsert_bot(pool, &bot)
         .await
         .map_err(|e| e.to_string())?;
-
-    Ok("Bot añadido".to_string())
+    Ok(bot)
 }
 
 #[tauri::command]
@@ -420,6 +431,7 @@ pub async fn update_bot(
         id: bot.id.clone(),
         name: bot.name.clone(),
         token_ciphertext: bot.token_ciphertext.clone(),
+        avatar: bot.avatar.clone(),
         allowed_guilds: bot.allowed_guilds.clone(),
         created_at: now.clone(),
         updated_at: now,
@@ -625,4 +637,86 @@ pub async fn import_data(state: State<'_, AppState>, _data: Vec<u8>) -> Result<S
 pub async fn uninstall_wipe(state: State<'_, AppState>) -> Result<String, String> {
     // TODO: Implement full wipe (DB, config, logs, backups, shortcuts)
     Ok("Desinstalación completa".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn pool_en_memoria() -> sqlx::SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("BD en memoria");
+        db::run_migrations(&pool).await.expect("migraciones");
+        pool
+    }
+
+    #[tokio::test]
+    async fn registra_bot_con_datos_oficiales_y_token_cifrado() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/users/@me"))
+            .and(header("authorization", "Bot token-valido"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "123456789",
+                "username": "bot-oficial",
+                "discriminator": "0",
+                "avatar": "abcdef0123456789abcdef0123456789",
+                "bot": true,
+                "mfa_enabled": false
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let pool = pool_en_memoria().await;
+        let addr = server.address().to_string();
+        let bot = registrar_bot(&pool, "token-valido", Some(&addr))
+            .await
+            .expect("registro");
+
+        assert_eq!(bot.id, "123456789");
+        assert_eq!(bot.name, "bot-oficial");
+        assert!(bot.avatar.is_some());
+        assert_ne!(bot.token_ciphertext, "token-valido");
+
+        let guardado = db::get_bot(&pool, "123456789")
+            .await
+            .unwrap()
+            .expect("bot guardado");
+        assert_eq!(guardado.name, "bot-oficial");
+        assert_eq!(guardado.avatar, bot.avatar);
+        assert_eq!(
+            crypto::decrypt(&guardado.token_ciphertext).unwrap(),
+            "token-valido"
+        );
+    }
+
+    #[tokio::test]
+    async fn token_rechazado_401_no_guarda_nada() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/users/@me"))
+            .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+                "message": "401: Unauthorized",
+                "code": 0
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let pool = pool_en_memoria().await;
+        let addr = server.address().to_string();
+        let err = registrar_bot(&pool, "token-malo", Some(&addr))
+            .await
+            .expect_err("debe fallar");
+
+        assert_eq!(err, "Token inválido");
+        assert!(db::list_bots(&pool).await.unwrap().is_empty());
+    }
 }

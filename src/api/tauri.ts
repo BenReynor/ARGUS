@@ -29,7 +29,7 @@ export const getConfig = () => invoke<Config>('get_config');
 export const saveConfig = (config: Config) => invoke<string>('save_config', { config });
 
 // Bots: el backend cifra el token (AES-GCM); viaja una sola vez y no se guarda en la UI
-export const addBot = (bot: BotConfig) => invoke<string>('add_bot', { bot });
+export const addBot = (token: string) => invoke<BotConfig>('add_bot', { token });
 export const updateBot = (bot: BotConfig) => invoke<string>('update_bot', { bot });
 
 // Server map
