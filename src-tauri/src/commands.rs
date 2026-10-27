@@ -128,8 +128,33 @@ pub async fn list_channels(
     state: State<'_, AppState>,
     guild_id: String,
 ) -> Result<Vec<Channel>, String> {
-    let map = state.get_map(&guild_id).ok_or("Mapa no disponible")?;
-    Ok(map.channels)
+    leer_canales(&state, &guild_id, None).await
+}
+
+/// Descifra el token del bot activo.
+fn token_del_bot_activo(state: &AppState) -> Result<String, String> {
+    let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
+    crypto::decrypt(&bot.token_ciphertext).map_err(|e| format!("Error descifrando token: {}", e))
+}
+
+/// `GET /guilds/{id}/channels` convertido a `Channel` (con overwrites).
+async fn leer_canales(
+    state: &AppState,
+    guild_id: &str,
+    base_url: Option<&str>,
+) -> Result<Vec<Channel>, String> {
+    let token = token_del_bot_activo(state)?;
+    crate::discord::fetch_guild_channels(&token, base_url, guild_id).await
+}
+
+/// `GET /guilds/{id}/roles` convertido a `Role`.
+async fn leer_roles(
+    state: &AppState,
+    guild_id: &str,
+    base_url: Option<&str>,
+) -> Result<Vec<Role>, String> {
+    let token = token_del_bot_activo(state)?;
+    crate::discord::fetch_guild_roles(&token, base_url, guild_id).await
 }
 
 // Members
@@ -145,8 +170,7 @@ pub async fn list_members(
 // Roles
 #[tauri::command]
 pub async fn list_roles(state: State<'_, AppState>, guild_id: String) -> Result<Vec<Role>, String> {
-    let map = state.get_map(&guild_id).ok_or("Mapa no disponible")?;
-    Ok(map.roles)
+    leer_roles(&state, &guild_id, None).await
 }
 
 // Discord operations
@@ -1013,5 +1037,72 @@ mod tests {
         let status = state.bot_status.lock().unwrap();
         assert!(!status.connected && !status.running);
         assert_eq!(status.last_error.as_deref(), Some("Token inválido"));
+    }
+
+    #[tokio::test]
+    async fn lee_canales_y_roles_del_discord_falso() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .and(header("authorization", "Bot token-cr"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": "10", "type": 4, "name": "Categoría", "position": 0,
+                 "permission_overwrites": []},
+                {"id": "11", "type": 0, "name": "general", "position": 2, "parent_id": "10",
+                 "permission_overwrites": [
+                    {"id": "555", "type": 0, "allow": "0", "deny": "1024"},
+                    {"id": "77", "type": 1, "allow": "2048", "deny": "0"}
+                 ]}
+            ])))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .and(header("authorization", "Bot token-cr"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": "555", "name": "@everyone", "color": 0, "hoist": false, "flags": 0,
+                 "position": 0, "permissions": "1024", "managed": false, "mentionable": false},
+                {"id": "600", "name": "Admin", "color": 16711680, "hoist": true, "flags": 0,
+                 "position": 3, "permissions": "8", "managed": false, "mentionable": true}
+            ])))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let state = estado_con_bot_activo("token-cr");
+        let addr = server.address().to_string();
+
+        let canales = leer_canales(&state, "555", Some(&addr))
+            .await
+            .expect("canales");
+        assert_eq!(canales.len(), 2);
+        assert_eq!(canales[0].channel_type, 4);
+        assert_eq!(canales[0].parent_id, None);
+        assert_eq!(canales[1].name, "general");
+        assert_eq!(canales[1].position, 2);
+        assert_eq!(canales[1].parent_id.as_deref(), Some("10"));
+        let ow = canales[1].overwrites.as_ref().expect("overwrites");
+        assert_eq!(ow.len(), 2);
+        assert_eq!((ow[0].id.as_str(), ow[0].type_), ("555", 0));
+        assert_eq!(ow[0].deny, "1024");
+        assert_eq!((ow[1].id.as_str(), ow[1].type_), ("77", 1));
+        assert_eq!(ow[1].allow, "2048");
+
+        let roles = leer_roles(&state, "555", Some(&addr)).await.expect("roles");
+        assert_eq!(roles.len(), 2);
+        assert_eq!(roles[1].name, "Admin");
+        assert_eq!(roles[1].color, 16711680);
+        assert_eq!(roles[1].position, 3);
+        assert_eq!(roles[1].permissions, "8");
+        assert_eq!(roles[1].permissions_bitfield.as_deref(), Some("8"));
+        assert!(roles[1].hoist && roles[1].mentionable);
+    }
+
+    #[tokio::test]
+    async fn leer_canales_sin_bot_activo_da_error() {
+        let state = AppState::new();
+        let err = leer_canales(&state, "555", None).await.unwrap_err();
+        assert_eq!(err, "No hay bot seleccionado");
     }
 }

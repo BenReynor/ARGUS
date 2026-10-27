@@ -114,6 +114,101 @@ pub async fn fetch_current_user_guilds(
         .map_err(|e| format!("Respuesta de Discord inválida: {e}"))
 }
 
+fn traducir_error(e: twilight_http::Error) -> String {
+    match e.kind() {
+        ErrorType::Response { status, .. } if status.get() == 401 => "Token inválido".to_string(),
+        ErrorType::Unauthorized => "Token inválido".to_string(),
+        _ => format!("No se pudo contactar con Discord: {e}"),
+    }
+}
+
+/// Convierte un canal de Discord al tipo `Channel` de ARGUS, con sus overwrites.
+pub fn convertir_canal(c: twilight_model::channel::Channel) -> crate::state::Channel {
+    use twilight_model::channel::permission_overwrite::PermissionOverwriteType;
+    let overwrites = c.permission_overwrites.map(|v| {
+        v.into_iter()
+            .map(|o| crate::state::Overwrite {
+                id: o.id.to_string(),
+                type_: match o.kind {
+                    PermissionOverwriteType::Member => 1,
+                    _ => 0,
+                },
+                allow: o.allow.bits().to_string(),
+                deny: o.deny.bits().to_string(),
+            })
+            .collect()
+    });
+    crate::state::Channel {
+        id: c.id.to_string(),
+        name: c.name.unwrap_or_default(),
+        channel_type: u8::from(c.kind),
+        parent_id: c.parent_id.map(|p| p.to_string()),
+        position: c.position.unwrap_or(0),
+        overwrites,
+        // `GET /guilds/{id}/channels` no trae permisos calculados del bot.
+        permissions_bitfield: None,
+    }
+}
+
+/// Convierte un rol de Discord al tipo `Role` de ARGUS. Discord no informa de
+/// cuántos miembros tiene cada rol, así que `member_count` queda en 0.
+pub fn convertir_rol(r: twilight_model::guild::Role) -> crate::state::Role {
+    let permisos = r.permissions.bits().to_string();
+    crate::state::Role {
+        id: r.id.to_string(),
+        name: r.name,
+        color: r.color,
+        position: r.position as i32,
+        permissions: permisos.clone(),
+        permissions_bitfield: Some(permisos),
+        member_count: 0,
+        mentionable: r.mentionable,
+        hoist: r.hoist,
+    }
+}
+
+fn parse_guild_id(
+    guild_id: &str,
+) -> Result<twilight_model::id::Id<twilight_model::id::marker::GuildMarker>, String> {
+    guild_id
+        .parse::<u64>()
+        .ok()
+        .and_then(twilight_model::id::Id::new_checked)
+        .ok_or_else(|| "ID de servidor inválido".to_string())
+}
+
+/// Lee los canales de un servidor (`GET /guilds/{id}/channels`).
+pub async fn fetch_guild_channels(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+) -> Result<Vec<crate::state::Channel>, String> {
+    let gid = parse_guild_id(guild_id)?;
+    let client = build_client(token, base_url);
+    let response = client.guild_channels(gid).await.map_err(traducir_error)?;
+    let canales = response
+        .models()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    Ok(canales.into_iter().map(convertir_canal).collect())
+}
+
+/// Lee los roles de un servidor (`GET /guilds/{id}/roles`).
+pub async fn fetch_guild_roles(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+) -> Result<Vec<crate::state::Role>, String> {
+    let gid = parse_guild_id(guild_id)?;
+    let client = build_client(token, base_url);
+    let response = client.roles(gid).await.map_err(traducir_error)?;
+    let roles = response
+        .models()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    Ok(roles.into_iter().map(convertir_rol).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
