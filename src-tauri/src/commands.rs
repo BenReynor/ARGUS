@@ -284,21 +284,39 @@ pub async fn get_member_info(
 #[tauri::command]
 pub async fn add_role(
     state: State<'_, AppState>,
-    _guild_id: String,
+    guild_id: String,
     user_id: String,
     role_id: String,
 ) -> Result<String, String> {
-    Ok(format!("Rol {} añadido a usuario {}", role_id, user_id))
+    cambiar_rol(&state, &guild_id, &user_id, &role_id, true, None).await
 }
 
 #[tauri::command]
 pub async fn remove_role(
     state: State<'_, AppState>,
-    _guild_id: String,
+    guild_id: String,
     user_id: String,
     role_id: String,
 ) -> Result<String, String> {
-    Ok(format!("Rol {} quitado a usuario {}", role_id, user_id))
+    cambiar_rol(&state, &guild_id, &user_id, &role_id, false, None).await
+}
+
+/// `PUT`/`DELETE /guilds/{id}/members/{user_id}/roles/{role_id}`.
+async fn cambiar_rol(
+    state: &AppState,
+    guild_id: &str,
+    user_id: &str,
+    role_id: &str,
+    anadir: bool,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    let token = token_del_bot_activo(state)?;
+    crate::discord::set_member_role(&token, base_url, guild_id, user_id, role_id, anadir).await?;
+    Ok(if anadir {
+        format!("Rol {role_id} añadido a usuario {user_id}")
+    } else {
+        format!("Rol {role_id} quitado a usuario {user_id}")
+    })
 }
 
 #[tauri::command]
@@ -1436,6 +1454,57 @@ mod tests {
         assert!(e3.contains("vacío"), "{e3}");
         // 2000 caracteres exactos sí pasan la validación.
         assert!(crate::discord::validar_contenido(&"ñ".repeat(2000)).is_ok());
+    }
+
+    #[tokio::test]
+    async fn anade_y_quita_rol_con_el_discord_falso() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/api/v10/guilds/555/members/1001/roles/7"))
+            .and(header("authorization", "Bot token-rol"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path("/api/v10/guilds/555/members/1001/roles/7"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-rol");
+        let addr = server.address().to_string();
+        let r = cambiar_rol(&state, "555", "1001", "7", true, Some(&addr))
+            .await
+            .expect("añadir");
+        assert!(r.contains("añadido"), "{r}");
+        let r = cambiar_rol(&state, "555", "1001", "7", false, Some(&addr))
+            .await
+            .expect("quitar");
+        assert!(r.contains("quitado"), "{r}");
+    }
+
+    #[tokio::test]
+    async fn rol_sin_permiso_o_id_invalido_da_error_en_espanol() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .respond_with(
+                ResponseTemplate::new(403).set_body_json(
+                    serde_json::json!({"code":50013,"message":"Missing Permissions"}),
+                ),
+            )
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-rol403");
+        let addr = server.address().to_string();
+        let e = cambiar_rol(&state, "555", "1001", "7", true, Some(&addr))
+            .await
+            .unwrap_err();
+        assert!(e.contains("le falta un permiso"), "{e}");
+        let e = cambiar_rol(&state, "555", "abc", "7", true, Some(&addr))
+            .await
+            .unwrap_err();
+        assert!(e.contains("inválido"), "{e}");
     }
 
     #[tokio::test]

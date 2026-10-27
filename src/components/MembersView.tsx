@@ -38,13 +38,17 @@ export const MembersView: React.FC = () => {
     }
   };
 
-  const handleRole = async (userId: string, roleId: string, add: boolean) => {
+  const handleRole = async (member: Member, role: Role, add: boolean) => {
     try {
       if (!guildId) throw new Error('No hay servidor seleccionado');
-      if (add) await addRole(guildId, userId, roleId);
-      else await removeRole(guildId, userId, roleId);
+      if (add) await addRole(guildId, member.user_id, role.id);
+      else await removeRole(guildId, member.user_id, role.id);
+      setSelectedMember({
+        ...member,
+        roles: add ? [...member.roles, role.name] : member.roles.filter(n => n !== role.name),
+      });
       showNotification(add ? 'Rol añadido' : 'Rol quitado', 'success');
-    } catch { showNotification('Error', 'error'); }
+    } catch (e) { showNotification(typeof e === 'string' ? e : 'Error al cambiar el rol', 'error'); }
   };
 
   const handleTimeout = async (userId: string, username: string) => {
@@ -186,6 +190,16 @@ export const MembersView: React.FC = () => {
                     <span key={roleName} className="role-badge-detail" style={{ backgroundColor: role ? `#${role.color.toString(16).padStart(6, '0')}33` : 'var(--bg-tertiary)', borderColor: getRoleColor(roleName) }}>
                       {roleName}
                     </span>
+                  );
+                })}
+              </div>
+              <div className="roles-list">
+                {roles.filter(r => r.name !== '@everyone').map((role) => {
+                  const tiene = selectedMember.roles.includes(role.name);
+                  return (
+                    <button key={role.id} className="btn-ghost" onClick={() => handleRole(selectedMember, role, !tiene)} title={tiene ? 'Quitar rol' : 'Añadir rol'}>
+                      {tiene ? '− ' : '+ '}{role.name}
+                    </button>
                   );
                 })}
               </div>

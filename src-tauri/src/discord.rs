@@ -402,6 +402,34 @@ pub async fn send_direct_message(
     send_channel_message(token, base_url, &canal.id.to_string(), content).await
 }
 
+/// Añade (`PUT`) o quita (`DELETE`) un rol a un miembro:
+/// `/guilds/{id}/members/{user_id}/roles/{role_id}`.
+pub async fn set_member_role(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+    user_id: &str,
+    role_id: &str,
+    anadir: bool,
+) -> Result<(), String> {
+    let gid = parse_guild_id(guild_id)?;
+    let uid = parse_id(user_id, "usuario")?;
+    let rid = parse_id(role_id, "rol")?;
+    let client = build_client(token, base_url);
+    if anadir {
+        client
+            .add_guild_member_role(gid, uid, rid)
+            .await
+            .map_err(traducir_error)?;
+    } else {
+        client
+            .remove_guild_member_role(gid, uid, rid)
+            .await
+            .map_err(traducir_error)?;
+    }
+    Ok(())
+}
+
 /// Permisos de Discord: (posición del bit, nombre en español).
 const PERMISOS_DISCORD: &[(u32, &str)] = &[
     (0, "Crear invitaciones"),
