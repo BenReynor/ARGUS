@@ -1,13 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { useStore, useConfig, useUiSettings, useSetActiveTab, useShowNotification } from '../store/useStore';
+import { useStore, useConfig, useUiSettings, useSetActiveTab, useShowNotification, useActiveGuildId, useGuildSettings } from '../store/useStore';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { getConfig, saveConfig, addBot, deleteBot, startBot, getBotStatus, inviteUrl } from '../api/tauri';
+import { getConfig, saveConfig, saveGuildSettings, addBot, deleteBot, startBot, getBotStatus, inviteUrl } from '../api/tauri';
 import { Save, Key, Trash2, Plus, Server, ToggleLeft, ToggleRight, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Copy } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
   const config = useConfig();
   const setActiveTab = useSetActiveTab();
   const showNotification = useShowNotification();
+  const activeGuildId = useActiveGuildId();
+  const guildSettings = useGuildSettings();
+  const setGuildSettings = useStore((s) => s.setGuildSettings);
+  const [savingGuild, setSavingGuild] = useState(false);
+
+  const handleGuildChange = (patch: Partial<NonNullable<typeof guildSettings>>) => {
+    if (guildSettings) setGuildSettings({ ...guildSettings, ...patch });
+  };
+
+  const handleSaveGuild = async () => {
+    if (!activeGuildId || !guildSettings) return;
+    setSavingGuild(true);
+    try {
+      await saveGuildSettings(activeGuildId, guildSettings);
+      showNotification('Ajustes del servidor guardados', 'success');
+    } catch (e) {
+      showNotification(`Error guardando los ajustes del servidor: ${e}`, 'error');
+    } finally {
+      setSavingGuild(false);
+    }
+  };
   const [showToken, setShowToken] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -279,6 +300,67 @@ export const SettingsView: React.FC = () => {
               <span>Minimizar a bandeja del sistema al cerrar ventana</span>
             </label>
           </div>
+        </section>
+
+        <section className="settings-section">
+          <h3><Server size={18} /> ESTE SERVIDOR</h3>
+          {!activeGuildId ? (
+            <p>Elige un servidor en la cabecera para configurarlo.</p>
+          ) : !guildSettings ? (
+            <p>Cargando ajustes del servidor…</p>
+          ) : (
+            <>
+              <div className="form-group">
+                <label>Alias</label>
+                <input
+                  type="text"
+                  value={guildSettings.alias ?? ''}
+                  placeholder="Nombre propio para este servidor"
+                  onChange={(e) => handleGuildChange({ alias: e.target.value || null })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Notas</label>
+                <textarea
+                  value={guildSettings.notes}
+                  rows={3}
+                  onChange={(e) => handleGuildChange({ notes: e.target.value })}
+                />
+              </div>
+              <div className="toggles">
+                <label className="toggle-label">
+                  <input
+                    type="checkbox"
+                    checked={guildSettings.vigilance_enabled}
+                    onChange={(e) => handleGuildChange({ vigilance_enabled: e.target.checked })}
+                  />
+                  <ToggleRight size={20} />
+                  <span>Vigilancia</span>
+                </label>
+                <label className="toggle-label">
+                  <input
+                    type="checkbox"
+                    checked={guildSettings.personality_enabled}
+                    onChange={(e) => handleGuildChange({ personality_enabled: e.target.checked })}
+                  />
+                  <ToggleRight size={20} />
+                  <span>Personalidad</span>
+                </label>
+                <label className="toggle-label">
+                  <input
+                    type="checkbox"
+                    checked={guildSettings.templates_enabled}
+                    onChange={(e) => handleGuildChange({ templates_enabled: e.target.checked })}
+                  />
+                  <ToggleRight size={20} />
+                  <span>Plantillas</span>
+                </label>
+              </div>
+              <button className="btn btn-primary" onClick={handleSaveGuild} disabled={savingGuild}>
+                {savingGuild ? <Loader2 size={16} className="spin" /> : <Save size={16} />} Guardar ajustes del servidor
+              </button>
+            </>
+          )}
         </section>
 
         <section className="settings-section">

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { guildInfo, botPermissions } from '../api/tauri';
-import type { Config, UiSettings, BotStatus, ServerMap, Channel, Member, Role, Guild } from '../types';
+import { guildInfo, botPermissions, getGuildSettings } from '../api/tauri';
+import type { GuildSettings, Config, UiSettings, BotStatus, ServerMap, Channel, Member, Role, Guild } from '../types';
 
 /** Datos del servidor activo y permisos del bot en él. */
 export interface GuildPanel {
@@ -34,6 +34,11 @@ interface AppState {
   // Panel del servidor activo
   guildPanel: GuildPanel;
   loadGuildPanel: (guildId: string | null) => Promise<void>;
+
+  // Ajustes propios del servidor activo
+  guildSettings: GuildSettings | null;
+  setGuildSettings: (settings: GuildSettings | null) => void;
+  loadGuildSettings: (guildId: string | null) => Promise<void>;
 
   // Config
   config: Config;
@@ -185,6 +190,21 @@ export const useStore = create<AppState>()(
         }
       },
 
+      // Ajustes propios del servidor activo
+      guildSettings: null,
+      setGuildSettings: (settings) => set({ guildSettings: settings }),
+      loadGuildSettings: async (guildId) => {
+        set({ guildSettings: null });
+        if (!guildId) return;
+        try {
+          const settings = await getGuildSettings(guildId);
+          if (get().activeGuildId !== guildId) return; // el usuario cambió de servidor
+          set({ guildSettings: settings });
+        } catch {
+          // sin ajustes legibles la sección muestra el error al guardar
+        }
+      },
+
       // Guild activa
       activeGuildId: null,
       setActiveGuildId: (id) => set({ activeGuildId: id }),
@@ -252,7 +272,8 @@ export const useConfig = () => useStore((s) => s.config);
 export const useUiSettings = () => useStore((s) => s.uiSettings);
 export const useBotStatus = () => useStore((s) => s.botStatus);
 export const useGuildPanel = () => useStore((s) => s.guildPanel);
-export const useLoadGuildPanel = () => useStore((s) => s.loadGuildPanel);
+export const useGuildSettings = () => useStore((s) => s.guildSettings);
+export const useLoadGuildPanel =() => useStore((s) => s.loadGuildPanel);
 export const useActiveGuildId = () => useStore((s) => s.activeGuildId);
 export const useSetActiveGuildId = () => useStore((s) => s.setActiveGuildId);
 export const useServerMap = () => useStore((s) => s.serverMap);

@@ -76,6 +76,8 @@ pub fn run() {
             delete_template,
             apply_template,
             get_vigilance_config,
+            get_guild_settings,
+            save_guild_settings,
             save_vigilance_config,
             list_cli_agents,
             save_cli_agent,

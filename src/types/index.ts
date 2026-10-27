@@ -107,6 +107,15 @@ export interface BotRegistrado extends BotConfig {
   warning: string | null;
 }
 
+/** Ajustes propios de un servidor (sincronizado con `GuildSettings` de db.rs). */
+export interface GuildSettings {
+  alias: string | null;
+  notes: string;
+  vigilance_enabled: boolean;
+  personality_enabled: boolean;
+  templates_enabled: boolean;
+}
+
 export interface Guild {
   id: string;
   name: string;

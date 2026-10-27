@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, Event } from '@tauri-apps/api/event';
 
-import type { BotConfig, BotRegistrado, BotStatus, Config, Guild, Channel, Member, Role, ServerMap } from '../types';
+import type { BotConfig, BotRegistrado, BotStatus, Config, Guild, GuildSettings, Channel, Member, Role, ServerMap } from '../types';
 
 export type { BotStatus, Config, Guild, Channel, Member, Role, ServerMap };
 
@@ -16,7 +16,10 @@ export const getActiveGuild = () => invoke<string | null>('get_active_guild');
 export const setActiveGuild = (guildId: string) => invoke<string>('set_active_guild', { guildId });
 export const guildInfo = (guildId: string) => invoke<Guild>('guild_info', { guildId });
 export const botPermissions = (guildId: string) => invoke<string[]>('bot_permissions', { guildId });
-export const listChannels = (guildId: string) => invoke<Channel[]>('list_channels', { guild_id: guildId });
+export const getGuildSettings = (guildId: string) => invoke<GuildSettings>('get_guild_settings', { guildId });
+export const saveGuildSettings = (guildId: string, settings: GuildSettings) =>
+  invoke<string>('save_guild_settings', { guildId, settings });
+export const listChannels =(guildId: string) => invoke<Channel[]>('list_channels', { guild_id: guildId });
 export const listMembers = (guildId: string) => invoke<Member[]>('list_members', { guild_id: guildId });
 export const listRoles = (guildId: string) => invoke<Role[]>('list_roles', { guild_id: guildId });
 export const sendMessage = (channelId: string, content: string) => invoke<string>('send_message', { channel_id: channelId, content });

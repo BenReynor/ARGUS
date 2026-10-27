@@ -664,6 +664,35 @@ pub async fn save_vigilance_config(
     Ok("Configuración de vigilancia guardada".to_string())
 }
 
+// Ajustes propios de cada servidor (del bot activo)
+#[tauri::command]
+pub async fn get_guild_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<db::GuildSettings, String> {
+    let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
+    let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
+    db::get_guild_settings(&pool, &bot.id, &guild_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn save_guild_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    settings: db::GuildSettings,
+) -> Result<String, String> {
+    let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
+    let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
+    db::save_guild_settings(&pool, &bot.id, &guild_id, &settings)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok("Ajustes del servidor guardados".to_string())
+}
+
 // CLI Agents
 #[tauri::command]
 pub async fn list_cli_agents(state: State<'_, AppState>) -> Result<Vec<CliAgentConfig>, String> {

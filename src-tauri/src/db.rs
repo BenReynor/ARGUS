@@ -594,3 +594,117 @@ pub async fn set_setting(pool: &SqlitePool, key: &str, value: &str) -> Result<()
     .await?;
     Ok(())
 }
+
+// Ajustes propios de cada servidor (por bot)
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct GuildSettings {
+    pub alias: Option<String>,
+    pub notes: String,
+    pub vigilance_enabled: bool,
+    pub personality_enabled: bool,
+    pub templates_enabled: bool,
+}
+
+pub async fn get_guild_settings(
+    pool: &SqlitePool,
+    bot_id: &str,
+    guild_id: &str,
+) -> Result<GuildSettings> {
+    let row = sqlx::query("SELECT data FROM guild_settings WHERE bot_id = ? AND guild_id = ?")
+        .bind(bot_id)
+        .bind(guild_id)
+        .fetch_optional(pool)
+        .await?;
+    match row {
+        Some(r) => {
+            let data: String = r.get("data");
+            Ok(serde_json::from_str(&data).unwrap_or_default())
+        }
+        None => Ok(GuildSettings::default()),
+    }
+}
+
+pub async fn save_guild_settings(
+    pool: &SqlitePool,
+    bot_id: &str,
+    guild_id: &str,
+    settings: &GuildSettings,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO guild_settings (bot_id, guild_id, data, updated_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(bot_id, guild_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+    )
+    .bind(bot_id)
+    .bind(guild_id)
+    .bind(serde_json::to_string(settings)?)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod guild_settings_tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn pool_temporal(nombre: &str) -> (SqlitePool, std::path::PathBuf) {
+        let ruta =
+            std::env::temp_dir().join(format!("argus_test_{}_{}.db", nombre, std::process::id()));
+        let _ = std::fs::remove_file(&ruta);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect(&format!("sqlite://{}?mode=rwc", ruta.display()))
+            .await
+            .expect("BD temporal");
+        run_migrations(&pool).await.expect("migraciones");
+        (pool, ruta)
+    }
+
+    #[tokio::test]
+    async fn sin_ajustes_guardados_devuelve_valores_por_defecto() {
+        let (pool, ruta) = pool_temporal("defecto").await;
+        let s = get_guild_settings(&pool, "b1", "g1").await.unwrap();
+        assert_eq!(s, GuildSettings::default());
+        assert!(!s.vigilance_enabled && !s.personality_enabled && !s.templates_enabled);
+        pool.close().await;
+        let _ = std::fs::remove_file(ruta);
+    }
+
+    #[tokio::test]
+    async fn guarda_y_lee_ajustes_separados_por_servidor_y_bot() {
+        let (pool, ruta) = pool_temporal("guardar").await;
+        let a = GuildSettings {
+            alias: Some("Principal".into()),
+            notes: "notas".into(),
+            vigilance_enabled: true,
+            ..Default::default()
+        };
+        save_guild_settings(&pool, "b1", "g1", &a).await.unwrap();
+        assert_eq!(get_guild_settings(&pool, "b1", "g1").await.unwrap(), a);
+        assert_eq!(
+            get_guild_settings(&pool, "b1", "g2").await.unwrap(),
+            GuildSettings::default()
+        );
+        assert_eq!(
+            get_guild_settings(&pool, "b2", "g1").await.unwrap(),
+            GuildSettings::default()
+        );
+        let b = GuildSettings {
+            templates_enabled: true,
+            ..a.clone()
+        };
+        save_guild_settings(&pool, "b1", "g1", &b).await.unwrap();
+        assert_eq!(get_guild_settings(&pool, "b1", "g1").await.unwrap(), b);
+        pool.close().await;
+        let _ = std::fs::remove_file(ruta);
+    }
+
+    #[test]
+    fn json_parcial_usa_valores_por_defecto() {
+        let s: GuildSettings = serde_json::from_str("{\"notes\":\"x\"}").unwrap();
+        assert_eq!(s.notes, "x");
+        assert!(!s.personality_enabled);
+    }
+}
