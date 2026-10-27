@@ -27,11 +27,7 @@ pub async fn fetch_current_user(
     base_url: Option<&str>,
 ) -> Result<twilight_model::user::CurrentUser, String> {
     let client = build_client(token, base_url);
-    let response = client.current_user().await.map_err(|e| match e.kind() {
-        ErrorType::Response { status, .. } if status.get() == 401 => "Token inválido".to_string(),
-        ErrorType::Unauthorized => "Token inválido".to_string(),
-        _ => format!("No se pudo contactar con Discord: {e}"),
-    })?;
+    let response = client.current_user().await.map_err(traducir_error)?;
     response
         .model()
         .await
@@ -49,13 +45,7 @@ pub async fn fetch_current_application(
     let response = client
         .current_user_application()
         .await
-        .map_err(|e| match e.kind() {
-            ErrorType::Response { status, .. } if status.get() == 401 => {
-                "Token inválido".to_string()
-            }
-            ErrorType::Unauthorized => "Token inválido".to_string(),
-            _ => format!("No se pudo contactar con Discord: {e}"),
-        })?;
+        .map_err(traducir_error)?;
     response
         .model()
         .await
@@ -98,26 +88,84 @@ pub async fn fetch_current_user_guilds(
     base_url: Option<&str>,
 ) -> Result<Vec<twilight_model::user::CurrentUserGuild>, String> {
     let client = build_client(token, base_url);
-    let response = client
-        .current_user_guilds()
-        .await
-        .map_err(|e| match e.kind() {
-            ErrorType::Response { status, .. } if status.get() == 401 => {
-                "Token inválido".to_string()
-            }
-            ErrorType::Unauthorized => "Token inválido".to_string(),
-            _ => format!("No se pudo contactar con Discord: {e}"),
-        })?;
+    let response = client.current_user_guilds().await.map_err(traducir_error)?;
     response
         .models()
         .await
         .map_err(|e| format!("Respuesta de Discord inválida: {e}"))
 }
 
-fn traducir_error(e: twilight_http::Error) -> String {
+/// Nombre en español de un permiso de Discord (nombre de la API en mayúsculas).
+fn nombre_permiso(api: &str) -> String {
+    match api {
+        "ADMINISTRATOR" => "Administrador",
+        "VIEW_CHANNEL" => "Ver canales",
+        "SEND_MESSAGES" => "Enviar mensajes",
+        "READ_MESSAGE_HISTORY" => "Leer el historial de mensajes",
+        "MANAGE_CHANNELS" => "Gestionar canales",
+        "MANAGE_ROLES" => "Gestionar roles",
+        "MANAGE_GUILD" => "Gestionar el servidor",
+        "MANAGE_MESSAGES" => "Gestionar mensajes",
+        "KICK_MEMBERS" => "Expulsar miembros",
+        "BAN_MEMBERS" => "Banear miembros",
+        "MODERATE_MEMBERS" => "Moderar miembros",
+        otro => return otro.to_string(),
+    }
+    .to_string()
+}
+
+/// Busca en el texto de Discord un nombre de permiso (`MANAGE_ROLES`…).
+fn permiso_en_texto(texto: &str) -> Option<String> {
+    texto
+        .split(|c: char| !(c.is_ascii_uppercase() || c == '_'))
+        .find(|p| (p.len() > 4 && p.contains('_')) || *p == "ADMINISTRATOR")
+        .map(nombre_permiso)
+}
+
+/// Único conversor de respuestas de error de Discord a mensajes en español.
+/// `cuerpo` es el JSON de error de Discord (puede venir vacío o no ser JSON).
+pub fn traducir_respuesta(status: u16, cuerpo: &[u8]) -> String {
+    let json: Option<serde_json::Value> = serde_json::from_slice(cuerpo).ok();
+    let texto = json
+        .as_ref()
+        .and_then(|j| j.get("message"))
+        .and_then(|m| m.as_str())
+        .unwrap_or("");
+    match status {
+        401 => "Token inválido".to_string(),
+        403 => match permiso_en_texto(texto) {
+            Some(p) => format!("Al bot le falta el permiso «{p}»"),
+            None => "Al bot le falta un permiso para hacer esto en el servidor".to_string(),
+        },
+        404 => {
+            "No encontrado: el servidor, canal, rol o miembro no existe o el bot no tiene acceso"
+                .to_string()
+        }
+        429 => {
+            let espera = json
+                .as_ref()
+                .and_then(|j| j.get("retry_after"))
+                .and_then(|r| r.as_f64());
+            match espera {
+                Some(s) => format!(
+                    "Discord limitó las peticiones; vuelve a intentarlo en {:.0} s",
+                    s.ceil()
+                ),
+                None => "Discord limitó las peticiones; vuelve a intentarlo en unos segundos"
+                    .to_string(),
+            }
+        }
+        _ if texto.is_empty() => format!("Discord respondió con un error ({status})"),
+        _ => format!("Discord respondió con un error ({status}): {texto}"),
+    }
+}
+
+/// Convierte un error de twilight-http en un mensaje en español. Lo usan todas
+/// las funciones de este módulo, y con ellas todos los comandos de Discord.
+pub fn traducir_error(e: twilight_http::Error) -> String {
     match e.kind() {
-        ErrorType::Response { status, .. } if status.get() == 401 => "Token inválido".to_string(),
-        ErrorType::Unauthorized => "Token inválido".to_string(),
+        ErrorType::Response { status, body, .. } => traducir_respuesta(status.get(), body),
+        ErrorType::Unauthorized => traducir_respuesta(401, b""),
         _ => format!("No se pudo contactar con Discord: {e}"),
     }
 }
@@ -349,6 +397,71 @@ mod tests {
             .await
             .expect("aplicación");
         assert_eq!(app.id.get(), 987654321);
+    }
+
+    #[test]
+    fn traduce_cada_codigo_de_error() {
+        assert_eq!(traducir_respuesta(401, b"{}"), "Token inválido");
+        assert_eq!(
+            traducir_respuesta(
+                403,
+                br#"{"code":50013,"message":"Missing Permissions: MANAGE_ROLES"}"#
+            ),
+            "Al bot le falta el permiso «Gestionar roles»"
+        );
+        assert!(
+            traducir_respuesta(403, br#"{"message":"Missing Permissions"}"#)
+                .contains("le falta un permiso")
+        );
+        assert!(traducir_respuesta(404, b"").starts_with("No encontrado"));
+        assert!(traducir_respuesta(429, br#"{"retry_after":1.5}"#).contains("en 2 s"));
+        assert!(traducir_respuesta(429, b"").contains("limitó las peticiones"));
+        assert!(traducir_respuesta(500, b"").contains("(500)"));
+    }
+
+    async fn error_de_estado(status: u16, cuerpo: serde_json::Value) -> String {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/users/@me"))
+            .respond_with(ResponseTemplate::new(status).set_body_json(cuerpo))
+            .mount(&server)
+            .await;
+        let addr = server.address().to_string();
+        fetch_current_user("token-falso", Some(&addr))
+            .await
+            .expect_err("debía fallar")
+    }
+
+    #[tokio::test]
+    async fn errores_http_del_discord_falso_salen_en_espanol() {
+        assert_eq!(
+            error_de_estado(
+                401,
+                serde_json::json!({"code":0,"message":"401: Unauthorized"})
+            )
+            .await,
+            "Token inválido"
+        );
+        assert_eq!(
+            error_de_estado(
+                403,
+                serde_json::json!({"code":50013,"message":"Missing Permissions: BAN_MEMBERS"})
+            )
+            .await,
+            "Al bot le falta el permiso «Banear miembros»"
+        );
+        assert!(error_de_estado(
+            404,
+            serde_json::json!({"code":10004,"message":"Unknown Guild"})
+        )
+        .await
+        .starts_with("No encontrado"));
+        let limite = error_de_estado(
+            429,
+            serde_json::json!({"message":"You are being rate limited.","retry_after":3.0,"global":false}),
+        )
+        .await;
+        assert!(limite.contains("limitó las peticiones"), "{limite}");
     }
 
     #[test]
