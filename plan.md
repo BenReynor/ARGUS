@@ -24,7 +24,7 @@ npm run build): no hace falta una tarea de "verificar build".
 - [x] Cambiar `AppState` para soportar guilds + mapas por guild (`server_maps: HashMap<String, ServerMap>`, `guilds_cache`)
 - [x] Definir tipos enriquecidos (`Channel`, `Role`, `Member`) con permisos bitfield, overwrites, avatar, joined_at
 - [x] Añadir comandos Tauri `get_active_guild` / `set_active_guild`
-- [ ] Corregir `save_config` / `save_config_full`: ignoran la config recibida
+- [x] Corregir `save_config` / `save_config_full`: ignoran la config recibida
   criterio: en src-tauri/src/commands.rs, save_config y save_config_full guardan el parámetro `config` en `state.config` antes de llamar a `save_config_to_db`; `cargo check` ya no avisa `unused variable: config`
 - [ ] Cargar la configuración guardada al arrancar
   criterio: el setup de src-tauri/src/main.rs llama a `load_config_from_db` (con `tauri::async_runtime`) y un error solo se registra en el log sin abortar el arranque; `cargo check` ya no avisa que `load_config_from_db` nunca se usa
