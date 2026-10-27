@@ -265,6 +265,7 @@ pub async fn save_config(
     state: State<'_, AppState>,
     config: Config,
 ) -> Result<String, String> {
+    *state.config.lock().unwrap() = config;
     state
         .save_config_to_db(&app)
         .await
@@ -278,6 +279,7 @@ pub async fn save_config_full(
     state: State<'_, AppState>,
     config: Config,
 ) -> Result<String, String> {
+    *state.config.lock().unwrap() = config;
     state
         .save_config_to_db(&app)
         .await
