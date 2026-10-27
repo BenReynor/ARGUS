@@ -26,7 +26,7 @@ npm run build): no hace falta una tarea de "verificar build".
 - [x] Añadir comandos Tauri `get_active_guild` / `set_active_guild`
 - [x] Corregir `save_config` / `save_config_full`: ignoran la config recibida
   criterio: en src-tauri/src/commands.rs, save_config y save_config_full guardan el parámetro `config` en `state.config` antes de llamar a `save_config_to_db`; `cargo check` ya no avisa `unused variable: config`
-- [ ] Cargar la configuración guardada al arrancar
+- [x] Cargar la configuración guardada al arrancar
   criterio: el setup de src-tauri/src/main.rs llama a `load_config_from_db` (con `tauri::async_runtime`) y un error solo se registra con `tracing::error!` (el crate `log` no es dependencia) sin abortar el arranque; `cargo check` ya no avisa que `load_config_from_db` nunca se usa
 - [ ] Quitar el `block_on` de `cleanup_user_context` (hace panic dentro del runtime de tokio)
   criterio: en src-tauri/src/state.rs `cleanup_user_context` es `async fn` y usa `.await`; no queda ningún `block_on` en state.rs; sus llamadas (si las hay) usan `.await`
