@@ -429,6 +429,38 @@ pub fn nombres_de_permisos(bits: u64) -> Vec<String> {
         .collect()
 }
 
+/// Datos del servidor con recuento aproximado de miembros
+/// (`GET /guilds/{id}?with_counts=true`).
+pub async fn fetch_guild_info(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+) -> Result<crate::state::Guild, String> {
+    let gid = parse_guild_id(guild_id)?;
+    let client = build_client(token, base_url);
+    let cuerpo = client
+        .guild(gid)
+        .with_counts(true)
+        .await
+        .map_err(traducir_error)?
+        .bytes()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    let json: serde_json::Value = serde_json::from_slice(&cuerpo)
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    let texto = |k: &str| json.get(k).and_then(|v| v.as_str()).map(str::to_string);
+    Ok(crate::state::Guild {
+        id: texto("id").unwrap_or_else(|| guild_id.to_string()),
+        name: texto("name").unwrap_or_default(),
+        icon: texto("icon"),
+        member_count: json
+            .get("approximate_member_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as _,
+        joined_at: None,
+    })
+}
+
 /// Permisos del bot en un servidor: `GET /guilds/{id}` (dueño),
 /// `GET /guilds/{id}/roles` y `GET /guilds/{id}/members/{bot_id}`.
 pub async fn fetch_bot_permissions(

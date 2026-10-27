@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useServerMap, useSetSelectedMember, useSelectedMember, useAddLog, useShowNotification, useConfig } from '../store/useStore';
+import { useServerMap, useSetSelectedMember, useSelectedMember, useAddLog, useShowNotification, useConfig, useGuildPanel, motivoPermisoAusente } from '../store/useStore';
 import { listMembers, sendDM, addRole, removeRole, timeoutMember, getMemberInfo } from '../api/tauri';
 import { Users, User, Bot, Mail, Shield, Ban, MoreVertical, Copy, Search, ChevronRight, X } from 'lucide-react';
 import type { Member, Role } from '../types';
@@ -11,6 +11,7 @@ export const MembersView: React.FC = () => {
   const addLog = useAddLog();
   const guildId = useConfig().active_guild_id;
   const showNotification = useShowNotification();
+  const motivoTimeout = motivoPermisoAusente(useGuildPanel().permissions, 'Moderar miembros');
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'roles' | 'status'>('name');
 
@@ -142,7 +143,7 @@ export const MembersView: React.FC = () => {
                         <button className="icon-btn" onClick={(e) => { e.stopPropagation(); handleDM(member.user_id, member.username); }} title="DM">
                           <Mail size={12} />
                         </button>
-                        <button className="icon-btn" onClick={(e) => { e.stopPropagation(); handleTimeout(member.user_id, member.username); }} title="Timeout">
+                        <button className="icon-btn" disabled={!!motivoTimeout} onClick={(e) => { e.stopPropagation(); handleTimeout(member.user_id, member.username); }} title={motivoTimeout ?? 'Timeout'}>
                           <Ban size={12} />
                         </button>
                       </>
@@ -195,9 +196,10 @@ export const MembersView: React.FC = () => {
                   <button className="btn-secondary" onClick={() => handleDM(selectedMember.user_id, selectedMember.username)}>
                     <Mail size={14} /> ENVIAR DM
                   </button>
-                  <button className="btn-warning" onClick={() => handleTimeout(selectedMember.user_id, selectedMember.username)}>
+                  <button className="btn-warning" disabled={!!motivoTimeout} title={motivoTimeout ?? undefined} onClick={() => handleTimeout(selectedMember.user_id, selectedMember.username)}>
                     <Ban size={14} /> TIMEOUT
                   </button>
+                  {motivoTimeout && <span className="member-username">{motivoTimeout}</span>}
                 </>
               )}
               <button className="btn-ghost" onClick={() => copyId(selectedMember.user_id)}>

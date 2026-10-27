@@ -1,8 +1,40 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { guildInfo, botPermissions } from '../api/tauri';
 import type { Config, UiSettings, BotStatus, ServerMap, Channel, Member, Role, Guild } from '../types';
 
+/** Datos del servidor activo y permisos del bot en él. */
+export interface GuildPanel {
+  loading: boolean;
+  guild: Guild | null;
+  /** Permisos efectivos del bot; null mientras no se conocen. */
+  permissions: string[] | null;
+  error: string | null;
+}
+
+/** Permisos que ARGUS pide al invitar al bot (nombres en español, como los da Rust). */
+export const PERMISOS_REQUERIDOS: string[] = [
+  'Ver canales',
+  'Enviar mensajes',
+  'Leer el historial de mensajes',
+  'Gestionar canales',
+  'Gestionar roles',
+  'Moderar miembros',
+  'Expulsar miembros',
+  'Banear miembros',
+];
+
+/** Texto que explica por qué una acción está desactivada, o null si se puede usar. */
+export const motivoPermisoAusente = (permissions: string[] | null, requerido: string): string | null =>
+  permissions && !permissions.includes(requerido)
+    ? `El bot no tiene el permiso «${requerido}» en este servidor`
+    : null;
+
 interface AppState {
+  // Panel del servidor activo
+  guildPanel: GuildPanel;
+  loadGuildPanel: (guildId: string | null) => Promise<void>;
+
   // Config
   config: Config;
   setConfig: (config: Partial<Config>) => void;
@@ -135,6 +167,24 @@ export const useStore = create<AppState>()(
       },
       setBotStatus: (status) => set((state) => ({ botStatus: { ...state.botStatus, ...status } })),
 
+      // Panel del servidor activo
+      guildPanel: { loading: false, guild: null, permissions: null, error: null },
+      loadGuildPanel: async (guildId) => {
+        if (!guildId) {
+          set({ guildPanel: { loading: false, guild: null, permissions: null, error: null } });
+          return;
+        }
+        set({ guildPanel: { loading: true, guild: null, permissions: null, error: null } });
+        try {
+          const [guild, permissions] = await Promise.all([guildInfo(guildId), botPermissions(guildId)]);
+          if (get().activeGuildId !== guildId) return; // el usuario cambió de servidor
+          set({ guildPanel: { loading: false, guild, permissions, error: null } });
+        } catch (e) {
+          if (get().activeGuildId !== guildId) return;
+          set({ guildPanel: { loading: false, guild: null, permissions: null, error: String(e) } });
+        }
+      },
+
       // Guild activa
       activeGuildId: null,
       setActiveGuildId: (id) => set({ activeGuildId: id }),
@@ -201,6 +251,8 @@ export const useStore = create<AppState>()(
 export const useConfig = () => useStore((s) => s.config);
 export const useUiSettings = () => useStore((s) => s.uiSettings);
 export const useBotStatus = () => useStore((s) => s.botStatus);
+export const useGuildPanel = () => useStore((s) => s.guildPanel);
+export const useLoadGuildPanel = () => useStore((s) => s.loadGuildPanel);
 export const useActiveGuildId = () => useStore((s) => s.activeGuildId);
 export const useSetActiveGuildId = () => useStore((s) => s.setActiveGuildId);
 export const useServerMap = () => useStore((s) => s.serverMap);

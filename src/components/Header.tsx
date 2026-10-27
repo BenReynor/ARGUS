@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useConfig, useBotStatus, useActiveGuildId, useSetActiveGuildId } from '../store/useStore';
+import { useConfig, useBotStatus, useActiveGuildId, useSetActiveGuildId, useLoadGuildPanel } from '../store/useStore';
 import { listGuilds, setActiveGuild } from '../api/tauri';
 import type { Guild } from '../api/tauri';
 import { Server, Cpu, MemoryStick, Wifi, WifiOff, Zap } from 'lucide-react';
@@ -16,6 +16,13 @@ export const Header: React.FC = () => {
       .then(setGuilds)
       .catch(() => setGuilds([]));
   }, [config.active_bot_id]);
+
+  const loadGuildPanel = useLoadGuildPanel();
+
+  // El panel se recarga al cambiar de servidor o de bot.
+  useEffect(() => {
+    loadGuildPanel(activeGuildId);
+  }, [activeGuildId, config.active_bot_id]);
 
   const handleGuildChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;

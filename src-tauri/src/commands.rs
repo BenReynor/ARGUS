@@ -196,6 +196,21 @@ pub async fn bot_permissions(
     permisos_del_bot(&state, &guild_id, None).await
 }
 
+/// Nombre, icono y miembros aproximados del servidor.
+#[tauri::command]
+pub async fn guild_info(state: State<'_, AppState>, guild_id: String) -> Result<Guild, String> {
+    informacion_del_servidor(&state, &guild_id, None).await
+}
+
+async fn informacion_del_servidor(
+    state: &AppState,
+    guild_id: &str,
+    base_url: Option<&str>,
+) -> Result<Guild, String> {
+    let token = token_del_bot_activo(state)?;
+    crate::discord::fetch_guild_info(&token, base_url, guild_id).await
+}
+
 async fn permisos_del_bot(
     state: &AppState,
     guild_id: &str,
@@ -1243,6 +1258,31 @@ mod tests {
             .await
             .expect("permisos");
         assert_eq!(permisos, vec!["Ver canales", "Gestionar roles"]);
+    }
+
+    #[tokio::test]
+    async fn informacion_del_servidor_con_recuento_aproximado() {
+        use wiremock::matchers::query_param;
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555"))
+            .and(query_param("with_counts", "true"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "555", "name": "Servidor", "icon": "abc123", "owner_id": "9",
+                "approximate_member_count": 42, "approximate_presence_count": 7
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let state = estado_con_bot_activo("token-pe");
+        let addr = server.address().to_string();
+        let g = informacion_del_servidor(&state, "555", Some(&addr))
+            .await
+            .expect("guild");
+        assert_eq!(g.name, "Servidor");
+        assert_eq!(g.icon.as_deref(), Some("abc123"));
+        assert_eq!(g.member_count, 42);
     }
 
     #[tokio::test]

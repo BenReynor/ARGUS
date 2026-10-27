@@ -1,7 +1,7 @@
 import React from 'react';
-import { useServerMap, useBotStatus, useAddLog, useShowNotification, useSetActiveTab, useConfig } from '../store/useStore';
+import { useServerMap, useBotStatus, useAddLog, useShowNotification, useSetActiveTab, useConfig, useActiveGuildId, useGuildPanel, PERMISOS_REQUERIDOS } from '../store/useStore';
 import { startBot, stopBot } from '../api/tauri';
-import { Users, Hash, Shield, Activity, Zap, Circle } from 'lucide-react';
+import { Users, Hash, Shield, Activity, Zap, Circle, Server } from 'lucide-react';
 
 interface StatItem {
   label: string;
@@ -23,6 +23,8 @@ export const Dashboard: React.FC = () => {
   const showNotification = useShowNotification();
   const setActiveTab = useSetActiveTab();
   const config = useConfig();
+  const activeGuildId = useActiveGuildId();
+  const guildPanel = useGuildPanel();
 
   const stats: StatItem[] = [
     { label: 'CANALES', value: serverMap?.channels.length || 0, icon: Hash, color: 'var(--accent-cyan)' },
@@ -58,6 +60,47 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="dashboard">
+      <section className="dashboard-section">
+        <h2>SERVIDOR ACTIVO</h2>
+        {!activeGuildId && <p>Ningún servidor seleccionado. Elige uno en la cabecera.</p>}
+        {activeGuildId && guildPanel.loading && <p>Cargando datos del servidor...</p>}
+        {activeGuildId && guildPanel.error && <p className="error">{guildPanel.error}</p>}
+        {guildPanel.guild && (
+          <>
+            <div className="member-cell">
+              {guildPanel.guild.icon ? (
+                <img
+                  src={`https://cdn.discordapp.com/icons/${guildPanel.guild.id}/${guildPanel.guild.icon}.png?size=64`}
+                  alt=""
+                  width={48}
+                  height={48}
+                  style={{ borderRadius: '50%' }}
+                />
+              ) : (
+                <Server size={48} />
+              )}
+              <div>
+                <span className="member-name">{guildPanel.guild.name}</span>
+                <span className="member-username">
+                  ~{guildPanel.guild.member_count} miembros (aproximado)
+                </span>
+              </div>
+            </div>
+            <h3>PERMISOS DEL BOT</h3>
+            <ul>
+              {PERMISOS_REQUERIDOS.map((permiso) => {
+                const tiene = guildPanel.permissions?.includes(permiso) ?? false;
+                return (
+                  <li key={permiso} style={{ color: tiene ? 'var(--accent-green)' : 'var(--accent-orange)' }}>
+                    {tiene ? '✓' : '✗ Falta:'} {permiso}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+      </section>
+
       <section className="dashboard-section">
         <div className="section-header">
           <h2>ESTADO DEL SISTEMA</h2>

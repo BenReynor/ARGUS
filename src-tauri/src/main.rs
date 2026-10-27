@@ -50,6 +50,7 @@ pub fn run() {
             list_members,
             list_roles,
             bot_permissions,
+            guild_info,
             send_message,
             send_dm,
             get_member_info,

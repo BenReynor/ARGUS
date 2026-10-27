@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useServerMap, useSetSelectedChannel, useSelectedChannel, useAddLog, useShowNotification } from '../store/useStore';
+import { useServerMap, useSetSelectedChannel, useSelectedChannel, useAddLog, useShowNotification, useGuildPanel, motivoPermisoAusente } from '../store/useStore';
 import { sendMessage } from '../api/tauri';
 import { Hash, MessageSquare, Volume2, Folder, Send, Copy, Search, ChevronRight } from 'lucide-react';
 
@@ -16,6 +16,7 @@ export const ChannelsView: React.FC = () => {
   const selectedChannel = useSelectedChannel();
   const addLog = useAddLog();
   const showNotification = useShowNotification();
+  const motivoEnviar = motivoPermisoAusente(useGuildPanel().permissions, 'Enviar mensajes');
   const [search, setSearch] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [newMessage, setNewMessage] = useState('');
@@ -115,10 +116,11 @@ export const ChannelsView: React.FC = () => {
               rows={3}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend(selectedChannel.id))}
             />
-            <button className="btn-primary" onClick={() => handleSend(selectedChannel.id)}>
+            <button className="btn-primary" disabled={!!motivoEnviar} title={motivoEnviar ?? undefined} onClick={() => handleSend(selectedChannel.id)}>
               <Send size={16} />
               ENVIAR
             </button>
+            {motivoEnviar && <span className="channel-count">{motivoEnviar}</span>}
           </div>
         </div>
       )}
