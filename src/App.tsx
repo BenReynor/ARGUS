@@ -10,7 +10,7 @@ import { SettingsView } from './components/SettingsView';
 import { LogsView } from './components/LogsView';
 import { Notification } from './components/Notification';
 import { useBotStatus, useShowNotification } from './store/useStore';
-import { getBotStatus, refreshServerMap } from './api/tauri';
+import { getBotStatus, refreshServerMap, getServerMap, onMapUpdated, onSyncProgress, onBotStatusChange } from './api/tauri';
 
 function App() {
   const { botStatus, setBotStatus, serverMap, setServerMap, isLoading, setIsLoading } = useStore();
@@ -29,17 +29,26 @@ function App() {
     };
     init();
 
-    // Poll status every 5 seconds
-    const interval = setInterval(async () => {
+    // Sin polling: el backend avisa con eventos.
+    const recargarMapa = async () => {
       try {
-        const status = await getBotStatus();
-        setBotStatus(status);
+        const map = await getServerMap();
+        if (map) setServerMap(map);
       } catch (e) {
-        console.error('Status poll error:', e);
+        console.error('Map reload error:', e);
       }
-    }, 5000);
+    };
+    const desuscribir = [
+      onMapUpdated(recargarMapa),
+      onSyncProgress((p) => {
+        if (p.step >= p.total) recargarMapa();
+      }),
+      onBotStatusChange(setBotStatus),
+    ];
 
-    return () => clearInterval(interval);
+    return () => {
+      desuscribir.forEach((u) => u.then((fn) => fn()).catch(() => {}));
+    };
   }, [setBotStatus, setServerMap]);
 
   const tabs: { id: string; label: string; icon: string }[] = [

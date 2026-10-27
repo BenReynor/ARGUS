@@ -15,7 +15,7 @@ fn require_active_guild(state: &AppState) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn start_bot(app: AppHandle, state: State<'_, AppState>) -> Result<BotStatus, String> {
-    let status = conectar_bot(&state, None).await?;
+    let status = conectar_bot(Some(&app), &state, None).await?;
     lanzar_sincronizacion(app, &state);
     Ok(status)
 }
@@ -54,7 +54,11 @@ fn lanzar_sincronizacion(app: AppHandle, state: &AppState) {
 
 /// Descifra el token del bot activo, lo valida con `GET /users/@me` y deja
 /// `bot_status` como conectado con el nombre oficial. Sin procesos externos.
-async fn conectar_bot(state: &AppState, base_url: Option<&str>) -> Result<BotStatus, String> {
+async fn conectar_bot(
+    app: Option<&AppHandle>,
+    state: &AppState,
+    base_url: Option<&str>,
+) -> Result<BotStatus, String> {
     let active_bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
 
     let token = crypto::decrypt(&active_bot.token_ciphertext)
@@ -71,46 +75,60 @@ async fn conectar_bot(state: &AppState, base_url: Option<&str>) -> Result<BotSta
         Err(_) => None,
     };
     // Los tests pasan una URL base falsa: sin red real no hay Gateway.
-    if resultado.is_ok() && base_url.is_none() {
-        let tarea = crate::gateway::lanzar(token, state.server_maps.clone());
+    if let (true, true, Some(app)) = (resultado.is_ok(), base_url.is_none(), app) {
+        let tarea = crate::gateway::lanzar(
+            app.clone(),
+            token,
+            state.server_maps.clone(),
+            state.bot_status.clone(),
+        );
         let anterior = state.gateway_task.lock().unwrap().replace(tarea);
         if let Some(anterior) = anterior {
             anterior.abort();
         }
     }
-    let mut status = state.bot_status.lock().unwrap();
-    match resultado {
-        Ok(user) => {
-            status.running = true;
-            status.connected = true;
-            status.bot_name = Some(user.name);
-            status.last_error = None;
-            status.warning = warning;
-            Ok(status.clone())
+    let (nuevo, salida) = {
+        let mut status = state.bot_status.lock().unwrap();
+        match resultado {
+            Ok(user) => {
+                status.running = true;
+                status.connected = true;
+                status.bot_name = Some(user.name);
+                status.last_error = None;
+                status.warning = warning;
+                (status.clone(), Ok(status.clone()))
+            }
+            Err(e) => {
+                status.running = false;
+                status.connected = false;
+                status.bot_name = None;
+                status.last_error = Some(e.clone());
+                status.warning = None;
+                (status.clone(), Err(e))
+            }
         }
-        Err(e) => {
-            status.running = false;
-            status.connected = false;
-            status.bot_name = None;
-            status.last_error = Some(e.clone());
-            status.warning = None;
-            Err(e)
-        }
+    };
+    if let Some(app) = app {
+        crate::gateway::emitir_estado(app, &nuevo);
     }
+    salida
 }
 
 #[tauri::command]
-pub async fn stop_bot(state: State<'_, AppState>) -> Result<BotStatus, String> {
+pub async fn stop_bot(app: AppHandle, state: State<'_, AppState>) -> Result<BotStatus, String> {
     let tarea = state.gateway_task.lock().unwrap().take();
     if let Some(tarea) = tarea {
         tarea.abort();
     }
-    let mut status = state.bot_status.lock().unwrap();
-    status.running = false;
-    status.connected = false;
-    status.bot_name = None;
-
-    Ok(status.clone())
+    let nuevo = {
+        let mut status = state.bot_status.lock().unwrap();
+        status.running = false;
+        status.connected = false;
+        status.bot_name = None;
+        status.clone()
+    };
+    crate::gateway::emitir_estado(&app, &nuevo);
+    Ok(nuevo)
 }
 
 #[tauri::command]
@@ -1129,7 +1147,9 @@ mod tests {
             mock_aplicacion_flags(&server, "Bot token-flags", "5", flags).await;
             let state = estado_con_bot_activo("token-flags");
             let addr = server.address().to_string();
-            let status = conectar_bot(&state, Some(&addr)).await.expect("conexión");
+            let status = conectar_bot(None, &state, Some(&addr))
+                .await
+                .expect("conexión");
             assert!(status.connected);
             assert_eq!(status.warning.is_some(), esperado, "flags {flags}");
             assert_eq!(state.bot_status.lock().unwrap().warning.is_some(), esperado);
@@ -1160,7 +1180,9 @@ mod tests {
     #[tokio::test]
     async fn start_bot_sin_bot_activo_falla() {
         let state = AppState::new();
-        let err = conectar_bot(&state, None).await.expect_err("debe fallar");
+        let err = conectar_bot(None, &state, None)
+            .await
+            .expect_err("debe fallar");
         assert_eq!(err, "No hay bot seleccionado");
     }
 
@@ -1184,7 +1206,9 @@ mod tests {
 
         let state = estado_con_bot_activo("token-valido");
         let addr = server.address().to_string();
-        let status = conectar_bot(&state, Some(&addr)).await.expect("conexión");
+        let status = conectar_bot(None, &state, Some(&addr))
+            .await
+            .expect("conexión");
 
         assert!(status.running && status.connected);
         assert_eq!(status.bot_name.as_deref(), Some("bot-oficial"));
@@ -1205,7 +1229,7 @@ mod tests {
 
         let state = estado_con_bot_activo("token-malo");
         let addr = server.address().to_string();
-        let err = conectar_bot(&state, Some(&addr))
+        let err = conectar_bot(None, &state, Some(&addr))
             .await
             .expect_err("debe fallar");
 

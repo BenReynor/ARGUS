@@ -52,5 +52,18 @@ export const refreshServerMap = () => invoke<ServerMap>('refresh_server_map');
 export const onBotStatusChange = (callback: (status: BotStatus) => void) => 
   listen<BotStatus>('bot-status-change', (event: Event<BotStatus>) => callback(event.payload));
 
+export interface SyncProgress {
+  guild_id: string;
+  step: number;
+  total: number;
+  message: string;
+}
+
+export const onMapUpdated = (callback: () => void) =>
+  listen<null>('map-updated', () => callback());
+
+export const onSyncProgress = (callback: (progress: SyncProgress) => void) =>
+  listen<SyncProgress>('sync-progress', (event: Event<SyncProgress>) => callback(event.payload));
+
 export const onLog = (callback: (log: string) => void) =>
   listen<string>('bot-log', (event: Event<string>) => callback(event.payload));
