@@ -27,7 +27,7 @@ fn es_hilo(channel_type: u8) -> bool {
 
 /// Reconstruye `categories` igual que la sincronización completa: canales (no
 /// hilos) agrupados por su `parent_id`.
-fn reconstruir_categorias(mapa: &mut ServerMap) {
+pub fn reconstruir_categorias(mapa: &mut ServerMap) {
     mapa.categories.clear();
     for canal in mapa.channels.iter().filter(|c| !es_hilo(c.channel_type)) {
         if let Some(padre) = &canal.parent_id {

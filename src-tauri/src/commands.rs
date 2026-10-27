@@ -14,8 +14,42 @@ fn require_active_guild(state: &AppState) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn start_bot(state: State<'_, AppState>) -> Result<BotStatus, String> {
-    conectar_bot(&state, None).await
+pub async fn start_bot(app: AppHandle, state: State<'_, AppState>) -> Result<BotStatus, String> {
+    let status = conectar_bot(&state, None).await?;
+    lanzar_sincronizacion(app, &state);
+    Ok(status)
+}
+
+/// Sincroniza el servidor activo en segundo plano (si hay uno elegido): carga
+/// el mapa por REST, lo guarda en `server_maps` y emite `sync-progress`.
+fn lanzar_sincronizacion(app: AppHandle, state: &AppState) {
+    let Some(guild_id) = state.get_active_guild() else {
+        return;
+    };
+    let Some(bot) = state.get_active_bot() else {
+        return;
+    };
+    let maps = state.server_maps.clone();
+    tauri::async_runtime::spawn(async move {
+        let token = match crypto::decrypt(&bot.token_ciphertext) {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::error!("Error descifrando token: {e}");
+                return;
+            }
+        };
+        let emisor = app.clone();
+        let resultado = crate::sync::sincronizar_servidor(&token, None, &guild_id, |p| {
+            crate::sync::emitir_progreso(&emisor, &p)
+        })
+        .await;
+        match resultado {
+            Ok(mapa) => {
+                maps.lock().unwrap().insert(guild_id, mapa);
+            }
+            Err(e) => tracing::error!("Falló la sincronización del servidor: {e}"),
+        }
+    });
 }
 
 /// Descifra el token del bot activo, lo valida con `GET /users/@me` y deja

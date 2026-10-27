@@ -14,6 +14,7 @@ mod discord;
 mod gateway;
 mod mapa;
 mod state;
+mod sync;
 
 use commands::*;
 use state::AppState;
