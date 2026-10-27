@@ -99,7 +99,7 @@ Leer todo al conectar y mantenerlo al día con los eventos de Discord.
   criterio: en src-tauri/src/mapa.rs, una función aplica un evento de `twilight_model` (GUILD_UPDATE, CHANNEL_CREATE/UPDATE/DELETE, ROLE_*, GUILD_MEMBER_ADD/UPDATE/REMOVE, THREAD_*) a un `ServerMap` y devuelve un resumen del cambio; tests unitarios por tipo de evento, sin red
 - [x] Conectar el Gateway mientras el bot está activo
   criterio: `start_bot` lanza una tarea tokio con `twilight-gateway` (intents: GUILDS, GUILD_MEMBERS) que aplica cada evento al mapa con la función anterior; `stop_bot` la detiene; ningún `MutexGuard` cruza un `.await`; cargo test pasa
-- [ ] Sincronización completa al conectar
+- [x] Sincronización completa al conectar
   criterio: al conectar se carga guild + canales + roles + miembros del servidor activo por REST y se emite el evento Tauri `sync-progress` (paso actual y total); test de la función de sync con el Discord falso
 - [ ] La UI se actualiza sin polling
   criterio: el backend emite `map-updated` tras aplicar eventos (agrupados con debounce de ~500 ms); App.tsx escucha `map-updated` y `sync-progress` y deja de consultar el estado cada 5 s; tsc y npm run build pasan
