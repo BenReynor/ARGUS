@@ -95,7 +95,7 @@ Verificación manual en tu servidor de pruebas:
 ## FASE 3 — Mapa en vivo (Gateway)
 Leer todo al conectar y mantenerlo al día con los eventos de Discord.
 
-- [ ] Aplicar eventos al mapa como función pura
+- [x] Aplicar eventos al mapa como función pura
   criterio: en src-tauri/src/mapa.rs, una función aplica un evento de `twilight_model` (GUILD_UPDATE, CHANNEL_CREATE/UPDATE/DELETE, ROLE_*, GUILD_MEMBER_ADD/UPDATE/REMOVE, THREAD_*) a un `ServerMap` y devuelve un resumen del cambio; tests unitarios por tipo de evento, sin red
 - [ ] Conectar el Gateway mientras el bot está activo
   criterio: `start_bot` lanza una tarea tokio con `twilight-gateway` (intents: GUILDS, GUILD_MEMBERS) que aplica cada evento al mapa con la función anterior; `stop_bot` la detiene; ningún `MutexGuard` cruza un `.await`; cargo test pasa
