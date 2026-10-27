@@ -82,7 +82,7 @@ Que las vistas muestren el servidor real y las acciones funcionen. Cada tarea co
   criterio: migración 003 crea `guild_settings (bot_id, guild_id, data, updated_at, PRIMARY KEY(bot_id, guild_id))`; comandos `get_guild_settings` / `save_guild_settings` con un struct `GuildSettings` (alias opcional, notas, módulos activados: vigilancia, personalidad y plantillas, todos false por defecto; `#[serde(default)]`); al cambiar de servidor la UI carga los ajustes de ese servidor y SettingsView tiene una sección "Este servidor"; tests de guardar y leer con una BD SQLite temporal
 - [x] Enviar mensajes a un canal y por DM
   criterio: `send_message` usa `POST /channels/{id}/messages`; `send_dm` abre el DM (`POST /users/@me/channels`) y envía; validan longitud (≤ 2000) antes de llamar; tests con el Discord falso
-- [ ] Gestionar roles de un miembro
+- [x] Gestionar roles de un miembro
   criterio: `add_role` / `remove_role` usan `PUT`/`DELETE /guilds/{id}/members/{user_id}/roles/{role_id}`; MembersView usa el servidor activo (no un ID fijo); tests con el Discord falso
 - [ ] Silenciar (timeout) a un miembro
   criterio: `timeout_member` usa `PATCH /guilds/{id}/members/{user_id}` con `communication_disabled_until` (máx. 28 días; 0 minutos quita el timeout); test con el Discord falso
