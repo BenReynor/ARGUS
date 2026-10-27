@@ -110,6 +110,26 @@ pub struct Config {
     pub anti_spam_cooldown_secs: u32,
     pub responder_triggers: ResponderTriggers,
     pub alerts: AlertsConfig,
+
+    // Sync / motor del bot
+    #[serde(default = "default_auto_sync_map")]
+    pub auto_sync_map: bool,
+    #[serde(default = "default_sync_interval_secs")]
+    pub sync_interval_secs: u64,
+    #[serde(default = "default_bot_engine")]
+    pub bot_engine: String,
+}
+
+fn default_auto_sync_map() -> bool {
+    true
+}
+
+fn default_sync_interval_secs() -> u64 {
+    300
+}
+
+fn default_bot_engine() -> String {
+    "rust".to_string()
 }
 
 impl Default for Config {
@@ -182,6 +202,10 @@ impl Default for Config {
             anti_spam_cooldown_secs: 30,
             responder_triggers: ResponderTriggers::default(),
             alerts: AlertsConfig::default(),
+
+            auto_sync_map: default_auto_sync_map(),
+            sync_interval_secs: default_sync_interval_secs(),
+            bot_engine: default_bot_engine(),
         }
     }
 }
@@ -385,5 +409,24 @@ impl AppState {
         let pool = crate::db::get_pool(app).await?;
         crate::db::cleanup_user_context(&pool, guild_id, user_id, limit).await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_config_without_sync_fields_gets_defaults() {
+        let mut json = serde_json::to_value(Config::default()).unwrap();
+        let obj = json.as_object_mut().unwrap();
+        for key in ["auto_sync_map", "sync_interval_secs", "bot_engine"] {
+            assert!(obj.remove(key).is_some());
+        }
+
+        let config: Config = serde_json::from_value(json).unwrap();
+        assert!(config.auto_sync_map);
+        assert_eq!(config.sync_interval_secs, 300);
+        assert_eq!(config.bot_engine, "rust");
     }
 }
