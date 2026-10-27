@@ -19,15 +19,16 @@ pub fn intents() -> Intents {
 }
 
 /// Aplica un evento a todos los mapas (cada uno ignora los de otros servidores).
+/// Devuelve cada cambio con el id de su servidor.
 /// El lock se toma y se suelta aquí, sin `.await` de por medio.
 pub fn aplicar_a_mapas(
     mapas: &Mutex<HashMap<String, ServerMap>>,
     evento: &Event,
-) -> Vec<ResumenCambio> {
+) -> Vec<(String, ResumenCambio)> {
     let mut mapas = mapas.lock().unwrap();
     mapas
         .values_mut()
-        .filter_map(|m| aplicar_evento(m, evento))
+        .filter_map(|m| aplicar_evento(m, evento).map(|c| (m.guild.id.clone(), c)))
         .collect()
 }
 
@@ -72,6 +73,7 @@ pub fn lanzar(
     token: String,
     mapas: Arc<Mutex<HashMap<String, ServerMap>>>,
     estado: Arc<Mutex<crate::state::BotStatus>>,
+    pool: Option<sqlx::SqlitePool>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let notify = Arc::new(Notify::new());
@@ -89,8 +91,15 @@ pub fn lanzar(
             match shard.next_event().await {
                 Ok(evento) => {
                     let cambios = aplicar_a_mapas(&mapas, &evento);
-                    for cambio in &cambios {
+                    for (guild_id, cambio) in &cambios {
                         tracing::info!("Mapa actualizado: {}", cambio.tipo);
+                        if let Some(pool) = &pool {
+                            if let Err(e) =
+                                crate::persistencia::registrar_cambio(pool, guild_id, cambio).await
+                            {
+                                tracing::warn!("No se pudo registrar el cambio: {e}");
+                            }
+                        }
                     }
                     if !cambios.is_empty() {
                         notify.notify_one();

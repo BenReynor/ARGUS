@@ -13,6 +13,7 @@ mod db;
 mod discord;
 mod gateway;
 mod mapa;
+mod persistencia;
 mod state;
 mod sync;
 
@@ -103,6 +104,28 @@ pub fn run() {
             let app_state = app.state::<AppState>();
             if let Err(e) = tauri::async_runtime::block_on(app_state.load_config_from_db(&handle)) {
                 tracing::error!("no se pudo cargar la configuración guardada: {e}");
+            }
+
+            // Recupera el último mapa guardado y lo guarda cada 30 s si cambió
+            match tauri::async_runtime::block_on(async {
+                let pool = db::get_pool(&handle).await?;
+                let guardados = persistencia::cargar_mapas(&pool).await?;
+                Ok::<_, state::DynError>((pool, guardados))
+            }) {
+                Ok((pool, guardados)) => {
+                    let ultimo = persistencia::instantanea(&guardados);
+                    app_state.server_maps.lock().unwrap().extend(guardados);
+                    let mapas = app_state.server_maps.clone();
+                    tauri::async_runtime::spawn(async move {
+                        persistencia::lanzar_guardado(
+                            pool,
+                            mapas,
+                            ultimo,
+                            persistencia::INTERVALO_GUARDADO,
+                        );
+                    });
+                }
+                Err(e) => tracing::error!("no se pudo cargar el mapa guardado: {e}"),
             }
 
             let show_item =

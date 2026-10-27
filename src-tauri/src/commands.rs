@@ -76,11 +76,13 @@ async fn conectar_bot(
     };
     // Los tests pasan una URL base falsa: sin red real no hay Gateway.
     if let (true, true, Some(app)) = (resultado.is_ok(), base_url.is_none(), app) {
+        let pool = db::get_pool(app).await.ok();
         let tarea = crate::gateway::lanzar(
             app.clone(),
             token,
             state.server_maps.clone(),
             state.bot_status.clone(),
+            pool,
         );
         let anterior = state.gateway_task.lock().unwrap().replace(tarea);
         if let Some(anterior) = anterior {

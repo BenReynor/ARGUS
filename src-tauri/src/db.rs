@@ -189,6 +189,17 @@ pub async fn get_server_map(pool: &SqlitePool, guild_id: &str) -> Result<Option<
     Ok(row.map(|r| r.get("data")))
 }
 
+/// Todos los mapas guardados: (guild_id, JSON).
+pub async fn list_server_maps(pool: &SqlitePool) -> Result<Vec<(String, String)>> {
+    let rows = sqlx::query("SELECT guild_id, data FROM server_maps")
+        .fetch_all(pool)
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.get("guild_id"), r.get("data")))
+        .collect())
+}
+
 pub async fn upsert_server_map(pool: &SqlitePool, guild_id: &str, data: &str) -> Result<()> {
     sqlx::query(
         "INSERT INTO server_maps (guild_id, data, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
