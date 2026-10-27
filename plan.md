@@ -36,7 +36,7 @@ npm run build): no hace falta una tarea de "verificar build".
   criterio: existe docs/AUDITORIA_COMANDOS.md con una tabla de TODOS los `#[tauri::command]` de commands.rs (nombre, estado: real / mock / stub-TODO, endpoint de Discord que lo sustituirá si aplica); cada comando registrado en `generate_handler!` de main.rs aparece en la tabla
 - [B] Sincronizar los tipos TS de `src/types` con los tipos Rust
   criterio: src/types/index.ts refleja los campos de Channel, Role, Member y Config de state.rs (los Option<T> de Rust como campos opcionales `?:`), incluidos overwrites, permissions_bitfield, joined_at, avatar, active_guild_id, auto_sync_map, sync_interval_secs y bot_engine; tsc pasa
-- [ ] Añadir selector de servidor (guild) en el Header
+- [x] Añadir selector de servidor (guild) en el Header
   criterio: src/api/tauri.ts exporta getActiveGuild/setActiveGuild (invoke de get_active_guild/set_active_guild); Header.tsx muestra un `<select>` con los guilds de listGuilds y al cambiarlo llama a setActiveGuild y guarda la guild activa en src/store/useStore.ts; tsc y npm run build pasan
 
 ## FASE 1 — Conexión real a Discord API (sustituir mocks)
