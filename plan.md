@@ -44,7 +44,7 @@ npm run build): no hace falta una tarea de "verificar build".
 ## FASE 1 — Bots genéricos (multi-bot de verdad, sin nada hardcodeado)
 Que cualquier usuario registre sus bots y elija uno, sin rastro de un servidor concreto.
 
-- [ ] Quitar del código todo lo específico de un servidor o bot
+- [x] Quitar del código todo lo específico de un servidor o bot
   criterio: en src/ y src-tauri/src no queda ningún ID numérico de Discord, ni "ISD", "Site-14" ni "Agente Albert" (incluidos ChannelsView, Dashboard, MembersView, Sidebar, Header, SettingsView, useStore, state.rs y commands.rs); `Config::default()` y el store de TS tienen `active_guild_id` = null; los comandos que necesitan guild devuelven el error "No hay servidor seleccionado" si no hay ninguno (sin valor por defecto); tsc y cargo test pasan
 - [ ] Módulo cliente de Discord con twilight-http y URL base configurable
   criterio: src-tauri/src/discord.rs expone una función que construye un `twilight_http::Client` a partir de un token y una URL base opcional (para tests: `ClientBuilder::proxy("127.0.0.1:PUERTO".into(), true)` y `.ratelimiter(None)`); se añade `wiremock` como dev-dependency; un test levanta un Discord falso que responde a `GET /api/v10/users/@me` y comprueba que el cliente obtiene el usuario; ningún test usa red real
