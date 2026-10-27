@@ -56,7 +56,7 @@ export const Dashboard: React.FC = () => {
         addLog('[SYSTEM] Bot detenido manualmente');
         showNotification('Bot detenido', 'info');
       } else {
-        if (!config.discord_token) {
+        if (config.bots.length === 0) {
           showNotification('Configura el token primero', 'warning');
           return;
         }

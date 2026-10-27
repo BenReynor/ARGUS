@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Config, BotStatus, ServerMap, Channel, Member, Role, Guild } from '../types';
+import type { Config, UiSettings, BotStatus, ServerMap, Channel, Member, Role, Guild } from '../types';
 
 interface AppState {
   // Config
   config: Config;
   setConfig: (config: Partial<Config>) => void;
+  uiSettings: UiSettings;
+  setUiSettings: (settings: Partial<UiSettings>) => void;
   loadConfig: () => Promise<void>;
   saveConfig: () => Promise<void>;
 
@@ -47,16 +49,70 @@ interface AppState {
   setIsLoading: (loading: boolean) => void;
 }
 
+// Debe coincidir con Config::default() de src-tauri/src/state.rs
+const defaultConfig = (): Config => ({
+  bots: [],
+  active_bot_id: null,
+  active_guild_id: '1541513296375717921',
+  guilds_cache: [],
+  multi_guild_mode: false,
+
+  llm_chat_provider: 'nemotron',
+  llm_chat_model: 'nvidia/nemotron-3-ultra',
+  llm_chat_url: 'https://openrouter.ai/api/v1',
+  llm_chat_api_key_ciphertext: '',
+  plan_provider: 'auto',
+  ask_provider: 'auto',
+  cli_agents: {
+    opencode: { id: 'opencode', name: 'opencode', mode: 'auto', binary_path: null, model: 'auto', config: {}, enabled: true },
+    codex: { id: 'codex', name: 'codex', mode: 'auto', binary_path: null, model: null, config: {}, enabled: true },
+    claude: { id: 'claude', name: 'claude', mode: 'auto', binary_path: null, model: 'sonnet', config: {}, enabled: true },
+  },
+
+  context_limit_per_user: 10,
+  context_limit_per_channel: 50,
+  auto_cleanup_enabled: true,
+  archive_retention_months: 12,
+
+  vigilance: { preset: '', enabled_events: [], filters: null },
+  backup: { enabled: true, interval_hours: 24, retention_count: 30 },
+
+  language: 'es',
+  auto_update: true,
+  telemetry_opt_in: false,
+  anti_spam_cooldown_secs: 30,
+  responder_triggers: {
+    mention: true,
+    slash_command: true,
+    prefix: '!',
+    allowed_channels: [],
+    blocked_channels: [],
+    respond_to_bots: false,
+    respond_in_dms: true,
+  },
+  alerts: {
+    enabled: true,
+    sound: true,
+    only_when_unfocused: true,
+    telegram_enabled: false,
+    telegram_events: ['critical', 'ban', 'role_change'],
+  },
+
+  auto_sync_map: true,
+  sync_interval_secs: 300,
+  bot_engine: 'rust',
+});
+
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
       // Config
-      config: {
-        discord_token: '',
-        server_id: '1541513296375717921',
+      config: defaultConfig(),
+      uiSettings: {
         auto_start: false,
         minimize_to_tray: true,
       },
+      setUiSettings: (settings) => set((state) => ({ uiSettings: { ...state.uiSettings, ...settings } })),
       setConfig: (config) => set((state) => ({ config: { ...state.config, ...config } })),
       loadConfig: async () => {
         // Cargar desde tauri store
@@ -112,8 +168,26 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'argus-storage',
+      version: 1,
+      // v0 guardaba una Config con otra forma (discord_token, server_id...)
+      migrate: (persisted: any, version) => {
+        if (version < 1 && persisted) {
+          const { config: old, ...rest } = persisted;
+          return {
+            ...rest,
+            // el token en claro de v0 se descarta: se reintroduce y el backend lo cifra
+            config: { ...defaultConfig(), active_guild_id: old?.server_id ?? defaultConfig().active_guild_id },
+            uiSettings: {
+              auto_start: old?.auto_start ?? false,
+              minimize_to_tray: old?.minimize_to_tray ?? true,
+            },
+          };
+        }
+        return persisted;
+      },
       partialize: (state) => ({
         config: state.config,
+        uiSettings: state.uiSettings,
         activeGuildId: state.activeGuildId,
         activeTab: state.activeTab,
       }),
@@ -123,6 +197,7 @@ export const useStore = create<AppState>()(
 
 // Selectors
 export const useConfig = () => useStore((s) => s.config);
+export const useUiSettings = () => useStore((s) => s.uiSettings);
 export const useBotStatus = () => useStore((s) => s.botStatus);
 export const useActiveGuildId = () => useStore((s) => s.activeGuildId);
 export const useSetActiveGuildId = () => useStore((s) => s.setActiveGuildId);

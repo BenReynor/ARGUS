@@ -1,65 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, Event } from '@tauri-apps/api/event';
 
-export interface BotStatus {
-  running: boolean;
-  connected: boolean;
-  guild_name: string | null;
-  guild_id: string | null;
-  member_count: number | null;
-  latency_ms: number | null;
-  last_error: string | null;
-}
+import type { BotConfig, BotStatus, Config, Guild, Channel, Member, Role, ServerMap } from '../types';
 
-export interface Config {
-  discord_token: string;
-  server_id: string;
-  auto_start: boolean;
-  minimize_to_tray: boolean;
-}
-
-export interface Guild {
-  id: string;
-  name: string;
-  member_count: number;
-  icon: string | null;
-}
-
-export interface Channel {
-  id: string;
-  name: string;
-  channel_type: number;
-  parent_id: string | null;
-  position: number;
-}
-
-export interface Member {
-  user_id: string;
-  username: string;
-  nickname: string | null;
-  roles: string[];
-  bot: boolean;
-}
-
-export interface Role {
-  id: string;
-  name: string;
-  color: number;
-  position: number;
-  permissions: string;
-  member_count: number;
-  mentionable: boolean;
-  hoist: boolean;
-}
-
-export interface ServerMap {
-  guild: Guild;
-  channels: Channel[];
-  members: Member[];
-  roles: Role[];
-  categories: Record<string, Channel[]>;
-  last_updated: string;
-}
+export type { BotStatus, Config, Guild, Channel, Member, Role, ServerMap };
 
 // Bot control
 export const startBot = () => invoke<BotStatus>('start_bot');
@@ -83,6 +27,10 @@ export const timeoutMember = (guildId: string, userId: string, durationMinutes: 
 // Config
 export const getConfig = () => invoke<Config>('get_config');
 export const saveConfig = (config: Config) => invoke<string>('save_config', { config });
+
+// Bots: el backend cifra el token (AES-GCM); viaja una sola vez y no se guarda en la UI
+export const addBot = (bot: BotConfig) => invoke<string>('add_bot', { bot });
+export const updateBot = (bot: BotConfig) => invoke<string>('update_bot', { bot });
 
 // Server map
 export const getServerMap = () => invoke<ServerMap | null>('get_server_map');

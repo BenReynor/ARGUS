@@ -12,6 +12,7 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
   const config = useConfig();
+  const hasToken = config.bots.length > 0;
   const botStatus = useBotStatus();
   const activeTab = useActiveTab();
   const setActiveTab = useSetActiveTab();
@@ -75,7 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
                 if (botStatus.running) {
                   await stopBot();
                 } else {
-                  if (!config.discord_token) {
+                  if (!hasToken) {
                     alert('Configura el token en Ajustes');
                     return;
                   }
@@ -85,7 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
                 console.error('Bot toggle error:', e);
               }
             }}
-            disabled={!config.discord_token && !botStatus.running}
+            disabled={!hasToken && !botStatus.running}
           >
             {botStatus.running ? (
               <>

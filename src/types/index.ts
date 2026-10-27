@@ -1,6 +1,90 @@
+// Refleja src-tauri/src/state.rs y db.rs. Un `Option<T>` de Rust llega como `T | null`.
+export interface BotConfig {
+  id: string;
+  name: string;
+  token_ciphertext: string;
+  allowed_guilds: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CliAgentConfig {
+  id: string;
+  name: string;
+  mode: string; // "auto" | "manual"
+  binary_path: string | null;
+  model: string | null;
+  config: unknown;
+  enabled: boolean;
+}
+
+export interface VigilanceConfig {
+  preset: string;
+  enabled_events: string[];
+  filters: unknown;
+}
+
+export interface ResponderTriggers {
+  mention: boolean;
+  slash_command: boolean;
+  prefix: string | null;
+  allowed_channels: string[];
+  blocked_channels: string[];
+  respond_to_bots: boolean;
+  respond_in_dms: boolean;
+}
+
+export interface AlertsConfig {
+  enabled: boolean;
+  sound: boolean;
+  only_when_unfocused: boolean;
+  telegram_enabled: boolean;
+  telegram_events: string[];
+}
+
+export interface BackupConfig {
+  enabled: boolean;
+  interval_hours: number;
+  retention_count: number;
+}
+
 export interface Config {
-  discord_token: string;
-  server_id: string;
+  bots: BotConfig[];
+  active_bot_id: string | null;
+  active_guild_id: string | null;
+  guilds_cache: Guild[];
+  multi_guild_mode: boolean;
+
+  llm_chat_provider: string;
+  llm_chat_model: string;
+  llm_chat_url: string;
+  llm_chat_api_key_ciphertext: string;
+  plan_provider: string;
+  ask_provider: string;
+  cli_agents: Record<string, CliAgentConfig>;
+
+  context_limit_per_user: number;
+  context_limit_per_channel: number;
+  auto_cleanup_enabled: boolean;
+  archive_retention_months: number;
+
+  vigilance: VigilanceConfig;
+  backup: BackupConfig;
+
+  language: string;
+  auto_update: boolean;
+  telemetry_opt_in: boolean;
+  anti_spam_cooldown_secs: number;
+  responder_triggers: ResponderTriggers;
+  alerts: AlertsConfig;
+
+  auto_sync_map: boolean;
+  sync_interval_secs: number;
+  bot_engine: string;
+}
+
+// Ajustes solo de la interfaz: no existen en la Config de Rust.
+export interface UiSettings {
   auto_start: boolean;
   minimize_to_tray: boolean;
 }
@@ -20,6 +104,7 @@ export interface Guild {
   name: string;
   member_count: number;
   icon: string | null;
+  joined_at: string | null;
 }
 
 export interface Channel {
@@ -28,6 +113,15 @@ export interface Channel {
   channel_type: number;
   parent_id: string | null;
   position: number;
+  overwrites: Overwrite[] | null;
+  permissions_bitfield: string | null;
+}
+
+export interface Overwrite {
+  id: string;
+  type_: number; // 0 = rol, 1 = miembro
+  allow: string;
+  deny: string;
 }
 
 export interface Member {
@@ -36,6 +130,9 @@ export interface Member {
   nickname: string | null;
   roles: string[];
   bot: boolean;
+  joined_at: string | null;
+  avatar: string | null;
+  flags: number | null;
 }
 
 export interface Role {
@@ -44,6 +141,7 @@ export interface Role {
   color: number;
   position: number;
   permissions: string;
+  permissions_bitfield: string | null;
   member_count: number;
   mentionable: boolean;
   hoist: boolean;

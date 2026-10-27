@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useConfig, useSetActiveTab, useShowNotification } from '../store/useStore';
-import { getConfig, saveConfig, startBot, getBotStatus } from '../api/tauri';
+import { useStore, useConfig, useUiSettings, useSetActiveTab, useShowNotification } from '../store/useStore';
+import { getConfig, saveConfig, addBot, updateBot, startBot, getBotStatus } from '../api/tauri';
 import { Save, Key, Server, ToggleLeft, ToggleRight, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Copy } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -12,30 +12,65 @@ export const SettingsView: React.FC = () => {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
 
+  const uiSettings = useUiSettings();
+  const setUiSettings = useStore((s) => s.setUiSettings);
+  const setConfig = useStore((s) => s.setConfig);
+
+  // El token solo vive en este estado local: nunca se persiste en la UI.
+  // El backend lo cifra (AES-GCM) al recibirlo vía add_bot/update_bot.
+  const [token, setToken] = useState('');
+  const hasSavedBot = config.bots.length > 0;
+
   const [formData, setFormData] = useState({
-    discord_token: config.discord_token,
-    server_id: config.server_id,
-    auto_start: config.auto_start,
-    minimize_to_tray: config.minimize_to_tray,
+    server_id: config.active_guild_id ?? '',
+    auto_start: uiSettings.auto_start,
+    minimize_to_tray: uiSettings.minimize_to_tray,
   });
 
   useEffect(() => {
     setFormData({
-      discord_token: config.discord_token,
-      server_id: config.server_id,
-      auto_start: config.auto_start,
-      minimize_to_tray: config.minimize_to_tray,
+      server_id: config.active_guild_id ?? '',
+      auto_start: uiSettings.auto_start,
+      minimize_to_tray: uiSettings.minimize_to_tray,
     });
-  }, [config]);
+  }, [config, uiSettings]);
 
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const persist = async () => {
+    const next = { ...config, active_guild_id: formData.server_id || null };
+    await saveConfig(next);
+    if (token) {
+      const current = config.bots.find((b) => b.id === config.active_bot_id) ?? config.bots[0];
+      const now = new Date().toISOString();
+      if (current) {
+        await updateBot({ ...current, token_ciphertext: token, updated_at: now });
+      } else {
+        await addBot({
+          id: '',
+          name: 'Bot',
+          token_ciphertext: token,
+          allowed_guilds: [],
+          created_at: now,
+          updated_at: now,
+        });
+      }
+      setToken('');
+    }
+    // El backend es la fuente de verdad (ids de bots, token ya cifrado)
+    setConfig(await getConfig());
+    setUiSettings({
+      auto_start: formData.auto_start,
+      minimize_to_tray: formData.minimize_to_tray,
+    });
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
-      await saveConfig(formData);
+      await persist();
       showNotification('Configuración guardada', 'success');
     } catch {
       showNotification('Error al guardar', 'error');
@@ -45,13 +80,14 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleTestConnection = async () => {
-    if (!formData.discord_token) {
+    if (!token && !hasSavedBot) {
       showNotification('Ingresa un token primero', 'warning');
       return;
     }
     setTesting(true);
     setTestResult(null);
     try {
+      await persist();
       await startBot();
       const status = await getBotStatus();
       if (status.connected) {
@@ -70,7 +106,7 @@ export const SettingsView: React.FC = () => {
   };
 
   const copyToken = () => {
-    navigator.clipboard.writeText(formData.discord_token);
+    navigator.clipboard.writeText(token);
     showNotification('Token copiado', 'info');
   };
 
@@ -88,9 +124,9 @@ export const SettingsView: React.FC = () => {
             <div className="input-with-actions">
               <input
                 type={showToken ? 'text' : 'password'}
-                value={formData.discord_token}
-                onChange={(e) => handleChange('discord_token', e.target.value)}
-                placeholder="MTU2MDE0MTU0NDE4MTMzNDEzOA.GJ58RC..."
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder={hasSavedBot ? '•••••• token guardado (cifrado). Escribe uno nuevo para reemplazarlo' : 'MTU2MDE0MTU0NDE4MTMzNDEzOA.GJ58RC...'}
               />
               <button className="icon-btn" onClick={() => setShowToken(!showToken)}>
                 {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -119,7 +155,7 @@ export const SettingsView: React.FC = () => {
           </div>
 
           <div className="test-connection">
-            <button className="btn-secondary" onClick={handleTestConnection} disabled={testing || !formData.discord_token}>
+            <button className="btn-secondary" onClick={handleTestConnection} disabled={testing || (!token && !hasSavedBot)}>
               {testing ? (
                 <>
                   <Loader2 size={16} className="spin" />
