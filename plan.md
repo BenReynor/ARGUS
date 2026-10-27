@@ -64,12 +64,22 @@ Verificación manual en tu servidor de pruebas:
 ## FASE 2 — Datos y acciones reales por REST
 Que las vistas muestren el servidor real y las acciones funcionen. Cada tarea con test contra el Discord falso.
 
+- [ ] Enlace para invitar el bot a un servidor
+  criterio: al registrar el bot se obtiene su id de aplicación con `GET /applications/@me` (twilight `current_user_application`) y se guarda; un comando `invite_url` construye `https://discord.com/oauth2/authorize?client_id=<id>&scope=bot%20applications.commands&permissions=<n>` con los permisos que ARGUS usa (ver canales, enviar mensajes, leer historial, gestionar canales, gestionar roles, moderar miembros, expulsar, banear) definidos en una constante documentada; la UI tiene un botón "Invitar a un servidor" que abre el enlace con tauri-plugin-opener; test unitario del enlace y test con el Discord falso de `/applications/@me`
+- [ ] Avisar si falta el intent de miembros
+  criterio: al registrar el bot y en `start_bot` se leen los `flags` de `GET /applications/@me`; si no incluyen GATEWAY_GUILD_MEMBERS (1<<14) ni GATEWAY_GUILD_MEMBERS_LIMITED (1<<15) se devuelve un aviso (no un error) "Activa «Server Members Intent» en el Developer Portal → Bot" que la UI muestra junto al bot; tests con el Discord falso para el caso con y sin flag
 - [ ] Leer canales y roles reales
   criterio: `list_channels` y `list_roles` llaman a `GET /guilds/{id}/channels` y `GET /guilds/{id}/roles` del servidor activo y convierten la respuesta a los tipos Channel y Role de state.rs (con overwrites y permisos); tests con el Discord falso
 - [ ] Leer miembros con paginación
   criterio: `list_members` pagina `GET /guilds/{id}/members?limit=1000&after=<último id>` hasta agotar; `get_member_info` usa `GET /guilds/{id}/members/{user_id}`; test con el Discord falso que sirve 2 páginas
 - [ ] Errores de Discord legibles
   criterio: un único conversor en discord.rs traduce las respuestas de error a mensajes en español: 401 token inválido, 403 "al bot le falta el permiso X" (cuando Discord lo indica), 404 no encontrado, 429 límite de peticiones (twilight reintenta; si se agota, mensaje claro); todos los comandos de Discord lo usan; tests de cada caso
+- [ ] Permisos del bot en el servidor activo
+  criterio: un comando `bot_permissions(guild_id)` calcula los permisos efectivos del bot en ese servidor (rol @everyone + roles del miembro bot vía `GET /guilds/{id}/members/{bot_id}` y los roles del servidor; Administrator o ser dueño = todos) y devuelve la lista con nombres en español; tests unitarios del cálculo (sin roles, con rol que concede, con Administrator) y test con el Discord falso
+- [ ] Panel del servidor activo
+  criterio: Dashboard muestra nombre, icono, número aproximado de miembros (`GET /guilds/{id}?with_counts=true`) y los permisos del bot en ese servidor, marcando los que faltan; las acciones de MembersView/ChannelsView que necesitan un permiso ausente se desactivan con un texto que lo explica; al cambiar de servidor en el Header el panel se recarga; tsc y npm run build pasan
+- [ ] Configuración propia de cada servidor
+  criterio: migración 003 crea `guild_settings (bot_id, guild_id, data, updated_at, PRIMARY KEY(bot_id, guild_id))`; comandos `get_guild_settings` / `save_guild_settings` con un struct `GuildSettings` (alias opcional, notas, módulos activados: vigilancia, personalidad y plantillas, todos false por defecto; `#[serde(default)]`); al cambiar de servidor la UI carga los ajustes de ese servidor y SettingsView tiene una sección "Este servidor"; tests de guardar y leer con una BD SQLite temporal
 - [ ] Enviar mensajes a un canal y por DM
   criterio: `send_message` usa `POST /channels/{id}/messages`; `send_dm` abre el DM (`POST /users/@me/channels`) y envía; validan longitud (≤ 2000) antes de llamar; tests con el Discord falso
 - [ ] Gestionar roles de un miembro
@@ -80,6 +90,7 @@ Que las vistas muestren el servidor real y las acciones funcionen. Cada tarea co
 Verificación manual en tu servidor de pruebas:
 - Canales, roles y miembros coinciden con Discord.
 - Enviar un mensaje y un DM; dar y quitar un rol; silenciar 1 minuto.
+- Invitar el bot a un segundo servidor con el botón y cambiar entre ambos: cada uno muestra sus permisos y su propia configuración.
 
 ## FASE 3 — Mapa en vivo (Gateway)
 Leer todo al conectar y mantenerlo al día con los eventos de Discord.
@@ -100,6 +111,20 @@ Leer todo al conectar y mantenerlo al día con los eventos de Discord.
 Verificación manual en tu servidor de pruebas:
 - Crear y borrar un canal y un rol en Discord y ver el cambio en ARGUS sin recargar.
 - Desconectar la red 1 minuto y comprobar que se reconecta solo.
+
+## FASE 4 — Prueba real (cierre del MVP)
+Comprobar con Discord de verdad, en tus servidores de prueba y con otro usuario, que todo lo anterior funciona.
+
+- [ ] Tests de integración contra un servidor real, desactivados por defecto
+  criterio: src-tauri/tests/integracion_discord.rs con tests `#[ignore]` que leen ARGUS_TEST_TOKEN, ARGUS_TEST_GUILD, ARGUS_TEST_CHANNEL, ARGUS_TEST_ROLE y ARGUS_TEST_USER del entorno y, si falta alguna, terminan sin hacer nada; usan las mismas funciones que los comandos para: validar el token, comprobar que ARGUS_TEST_GUILD está entre los servidores del bot, leer canales/roles/miembros, calcular los permisos del bot, enviar un mensaje a ARGUS_TEST_CHANNEL, enviar un DM a ARGUS_TEST_USER, dar y quitar ARGUS_TEST_ROLE a ARGUS_TEST_USER y aplicar y retirar un timeout de 1 minuto; ningún valor real queda en el repo; `cargo test` normal no los ejecuta; docs/PRUEBA_REAL.md explica cómo preparar el servidor y correrlos con `cargo test -- --ignored`
+
+Prueba final manual (el dueño, con la app compilada desde el acceso directo):
+- Correr los tests de integración contra el servidor de pruebas (docs/PRUEBA_REAL.md).
+- Registrar dos bots y cambiar entre ellos; con cada uno, cambiar entre dos servidores.
+- En cada servidor: canales, roles y miembros correctos; permisos del bot correctos; configuración propia que se conserva al volver.
+- Con otro usuario de Discord: recibir el DM, recibir y perder el rol, timeout de 1 minuto.
+- Cambios hechos en Discord (canal, rol, miembro que entra o sale) aparecen en ARGUS sin recargar.
+- Quitar el bot de un servidor: desaparece de la lista sin errores.
 
 ## Después del MVP (sin criterios todavía: se detallan al empezar cada bloque)
 - Edición completa del servidor: crear/editar/borrar canales, categorías y roles; permisos y overwrites; ban/kick con confirmación.
