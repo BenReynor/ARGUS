@@ -333,6 +333,75 @@ pub async fn fetch_guild_member(
     Ok(convertir_miembro(miembro))
 }
 
+/// Longitud máxima de un mensaje de Discord (caracteres).
+pub const MAX_LONGITUD_MENSAJE: usize = 2000;
+
+/// Valida el contenido antes de llamar a Discord: no vacío y ≤ 2000 caracteres.
+pub fn validar_contenido(content: &str) -> Result<(), String> {
+    if content.trim().is_empty() {
+        return Err("El mensaje no puede estar vacío".to_string());
+    }
+    let n = content.chars().count();
+    if n > MAX_LONGITUD_MENSAJE {
+        return Err(format!(
+            "El mensaje es demasiado largo ({n} caracteres; el máximo es {MAX_LONGITUD_MENSAJE})"
+        ));
+    }
+    Ok(())
+}
+
+fn parse_id<M>(texto: &str, que: &str) -> Result<twilight_model::id::Id<M>, String> {
+    texto
+        .parse::<u64>()
+        .ok()
+        .and_then(twilight_model::id::Id::new_checked)
+        .ok_or_else(|| format!("ID de {que} inválido"))
+}
+
+/// Envía un mensaje a un canal (`POST /channels/{id}/messages`) y devuelve el
+/// id del mensaje creado.
+pub async fn send_channel_message(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+    content: &str,
+) -> Result<String, String> {
+    validar_contenido(content)?;
+    let cid = parse_id(channel_id, "canal")?;
+    let client = build_client(token, base_url);
+    let mensaje = client
+        .create_message(cid)
+        .content(content)
+        .map_err(|e| format!("Mensaje inválido: {e}"))?
+        .await
+        .map_err(traducir_error)?
+        .model()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    Ok(mensaje.id.to_string())
+}
+
+/// Abre (o recupera) el DM con un usuario (`POST /users/@me/channels`) y le
+/// envía el mensaje. Devuelve el id del mensaje creado.
+pub async fn send_direct_message(
+    token: &str,
+    base_url: Option<&str>,
+    user_id: &str,
+    content: &str,
+) -> Result<String, String> {
+    validar_contenido(content)?;
+    let uid = parse_id(user_id, "usuario")?;
+    let client = build_client(token, base_url);
+    let canal = client
+        .create_private_channel(uid)
+        .await
+        .map_err(traducir_error)?
+        .model()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    send_channel_message(token, base_url, &canal.id.to_string(), content).await
+}
+
 /// Permisos de Discord: (posición del bit, nombre en español).
 const PERMISOS_DISCORD: &[(u32, &str)] = &[
     (0, "Crear invitaciones"),

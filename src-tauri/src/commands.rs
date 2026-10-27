@@ -234,8 +234,20 @@ pub async fn send_message(
     channel_id: String,
     content: String,
 ) -> Result<String, String> {
-    println!("Enviando a canal {}: {}", channel_id, content);
-    Ok(format!("Mensaje enviado a canal {}", channel_id))
+    enviar_a_canal(&state, &channel_id, &content, None).await
+}
+
+/// Valida la longitud y envía a `POST /channels/{id}/messages`.
+async fn enviar_a_canal(
+    state: &AppState,
+    channel_id: &str,
+    content: &str,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    crate::discord::validar_contenido(content)?;
+    let token = token_del_bot_activo(state)?;
+    let id = crate::discord::send_channel_message(&token, base_url, channel_id, content).await?;
+    Ok(format!("Mensaje enviado a canal {channel_id} (id {id})"))
 }
 
 #[tauri::command]
@@ -244,8 +256,20 @@ pub async fn send_dm(
     user_id: String,
     content: String,
 ) -> Result<String, String> {
-    println!("Enviando DM a {}: {}", user_id, content);
-    Ok(format!("DM enviado a usuario {}", user_id))
+    enviar_dm(&state, &user_id, &content, None).await
+}
+
+/// Valida la longitud, abre el DM (`POST /users/@me/channels`) y envía.
+async fn enviar_dm(
+    state: &AppState,
+    user_id: &str,
+    content: &str,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    crate::discord::validar_contenido(content)?;
+    let token = token_del_bot_activo(state)?;
+    let id = crate::discord::send_direct_message(&token, base_url, user_id, content).await?;
+    Ok(format!("DM enviado a usuario {user_id} (id {id})"))
 }
 
 #[tauri::command]
@@ -1326,5 +1350,111 @@ mod tests {
         let state = AppState::new();
         let err = leer_canales(&state, "555", None).await.unwrap_err();
         assert_eq!(err, "No hay bot seleccionado");
+    }
+
+    fn mensaje_json(id: &str, canal: &str) -> serde_json::Value {
+        serde_json::json!({
+            "id": id, "channel_id": canal, "content": "hola", "timestamp": "2026-10-27T10:00:00.000000+00:00",
+            "edited_timestamp": null, "tts": false, "mention_everyone": false, "mentions": [],
+            "mention_roles": [], "attachments": [], "embeds": [], "pinned": false, "type": 0,
+            "author": {"id": "1", "username": "bot", "discriminator": "0", "avatar": null}
+        })
+    }
+
+    #[tokio::test]
+    async fn envia_mensaje_a_canal_con_el_discord_falso() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/channels/42/messages"))
+            .and(header("authorization", "Bot token-msg"))
+            .and(wiremock::matchers::body_partial_json(
+                serde_json::json!({"content": "hola"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mensaje_json("900", "42")))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-msg");
+        let addr = server.address().to_string();
+        let r = enviar_a_canal(&state, "42", "hola", Some(&addr))
+            .await
+            .expect("envío");
+        assert!(r.contains("900"), "{r}");
+    }
+
+    #[tokio::test]
+    async fn envia_dm_abriendo_el_canal_privado() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/users/@me/channels"))
+            .and(wiremock::matchers::body_partial_json(
+                serde_json::json!({"recipient_id": "77"}),
+            ))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"id": "4242", "type": 1})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/channels/4242/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mensaje_json("901", "4242")))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-dm");
+        let addr = server.address().to_string();
+        let r = enviar_dm(&state, "77", "hola", Some(&addr))
+            .await
+            .expect("dm");
+        assert!(r.contains("901"), "{r}");
+    }
+
+    #[tokio::test]
+    async fn mensaje_demasiado_largo_no_llama_a_discord() {
+        let server = MockServer::start().await;
+        Mock::given(wiremock::matchers::any())
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-largo");
+        let addr = server.address().to_string();
+        let largo = "a".repeat(2001);
+        let e1 = enviar_a_canal(&state, "42", &largo, Some(&addr))
+            .await
+            .unwrap_err();
+        assert!(e1.contains("demasiado largo"), "{e1}");
+        let e2 = enviar_dm(&state, "77", &largo, Some(&addr))
+            .await
+            .unwrap_err();
+        assert!(e2.contains("demasiado largo"), "{e2}");
+        let e3 = enviar_a_canal(&state, "42", "  ", Some(&addr))
+            .await
+            .unwrap_err();
+        assert!(e3.contains("vacío"), "{e3}");
+        // 2000 caracteres exactos sí pasan la validación.
+        assert!(crate::discord::validar_contenido(&"ñ".repeat(2000)).is_ok());
+    }
+
+    #[tokio::test]
+    async fn enviar_sin_permiso_da_error_en_espanol() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/channels/42/messages"))
+            .respond_with(
+                ResponseTemplate::new(403).set_body_json(
+                    serde_json::json!({"code":50013,"message":"Missing Permissions"}),
+                ),
+            )
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-403");
+        let addr = server.address().to_string();
+        let e = enviar_a_canal(&state, "42", "hola", Some(&addr))
+            .await
+            .unwrap_err();
+        assert!(e.contains("le falta un permiso"), "{e}");
     }
 }
