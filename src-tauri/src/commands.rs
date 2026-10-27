@@ -1,8 +1,5 @@
 use chrono::Utc;
-use std::process::Stdio;
-use tauri::{AppHandle, Manager, State};
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
+use tauri::{AppHandle, State};
 
 use crate::crypto;
 use crate::db::{self, BotConfig as DbBotConfig, CliAgentConfig, VigilanceConfig};
@@ -17,111 +14,44 @@ fn require_active_guild(state: &AppState) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn start_bot(app: AppHandle, state: State<'_, AppState>) -> Result<BotStatus, String> {
-    let active_bot = state
-        .get_active_bot()
-        .ok_or("No hay bot activo configurado")?;
+pub async fn start_bot(state: State<'_, AppState>) -> Result<BotStatus, String> {
+    conectar_bot(&state, None).await
+}
+
+/// Descifra el token del bot activo, lo valida con `GET /users/@me` y deja
+/// `bot_status` como conectado con el nombre oficial. Sin procesos externos.
+async fn conectar_bot(state: &AppState, base_url: Option<&str>) -> Result<BotStatus, String> {
+    let active_bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
 
     let token = crypto::decrypt(&active_bot.token_ciphertext)
         .map_err(|e| format!("Error descifrando token: {}", e))?;
 
-    let guild_id = require_active_guild(&state)?;
-
-    let status_guard = state.bot_status.lock().unwrap();
-    if status_guard.running {
-        return Ok(status_guard.clone());
-    }
-    drop(status_guard);
-
-    let mut process_guard = state.bot_process.lock().unwrap();
-    if process_guard.is_some() {
-        return Err("El bot ya está ejecutándose".to_string());
-    }
-
-    {
-        let mut status = state.bot_status.lock().unwrap();
-        status.running = true;
-        status.last_error = None;
-    }
-
-    let npx_cmd = if cfg!(target_os = "windows") {
-        "npx.cmd"
-    } else {
-        "npx"
-    };
-
-    let mut child = Command::new(npx_cmd)
-        .args(["-y", "@pasympa/discord-mcp"])
-        .env("DISCORD_TOKEN", &token)
-        .env("DISCORD_ALLOWED_GUILDS", &guild_id)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| {
-            let mut status = state.bot_status.lock().unwrap();
+    let resultado = crate::discord::fetch_current_user(&token, base_url).await;
+    let mut status = state.bot_status.lock().unwrap();
+    match resultado {
+        Ok(user) => {
+            status.running = true;
+            status.connected = true;
+            status.bot_name = Some(user.name);
+            status.last_error = None;
+            Ok(status.clone())
+        }
+        Err(e) => {
             status.running = false;
-            status.last_error = Some(format!("Error al iniciar: {}", e));
-            "Error al iniciar proceso".to_string()
-        })?;
-
-    let stdout = child.stdout.take().unwrap();
-    let stderr = child.stderr.take().unwrap();
-    let app_handle = app.clone();
-
-    tokio::spawn(async move {
-        let mut reader = BufReader::new(stdout).lines();
-        while let Ok(Some(line)) = reader.next_line().await {
-            if line.contains("READY") || line.contains("connected") {
-                let state_ref = app_handle.state::<AppState>();
-                let mut s = state_ref.bot_status.lock().unwrap();
-                s.connected = true;
-                s.guild_id = Some(guild_id.clone());
-            }
-            println!("[BOT STDOUT] {}", line);
+            status.connected = false;
+            status.bot_name = None;
+            status.last_error = Some(e.clone());
+            Err(e)
         }
-    });
-
-    let app_handle2 = app.clone();
-    tokio::spawn(async move {
-        let mut reader = BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = reader.next_line().await {
-            if line.contains("Error") || line.contains("error") || line.contains("invalid token") {
-                let state_ref = app_handle2.state::<AppState>();
-                let mut s = state_ref.bot_status.lock().unwrap();
-                s.last_error = Some(line.clone());
-                s.connected = false;
-            }
-            eprintln!("[BOT STDERR] {}", line);
-        }
-    });
-
-    *process_guard = Some(child);
-
-    let app_handle3 = app.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-        let state_ref = app_handle3.state::<AppState>();
-        let mut s = state_ref.bot_status.lock().unwrap();
-        s.running = true;
-    });
-
-    Ok(state.bot_status.lock().unwrap().clone())
+    }
 }
 
 #[tauri::command]
 pub async fn stop_bot(state: State<'_, AppState>) -> Result<BotStatus, String> {
-    let child = {
-        let mut process_guard = state.bot_process.lock().unwrap();
-        process_guard.take()
-    };
-
-    if let Some(mut child) = child {
-        child.kill().await.map_err(|e| e.to_string())?;
-    }
-
     let mut status = state.bot_status.lock().unwrap();
     status.running = false;
     status.connected = false;
+    status.bot_name = None;
 
     Ok(status.clone())
 }
@@ -740,5 +670,83 @@ mod tests {
 
         assert_eq!(err, "Token inválido");
         assert!(db::list_bots(&pool).await.unwrap().is_empty());
+    }
+
+    fn estado_con_bot_activo(token: &str) -> AppState {
+        let state = AppState::new();
+        let now = Utc::now().to_rfc3339();
+        let bot = BotConfig {
+            id: "123456789".to_string(),
+            name: "nombre-viejo".to_string(),
+            token_ciphertext: crypto::encrypt(token).unwrap(),
+            avatar: None,
+            allowed_guilds: Vec::new(),
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        {
+            let mut config = state.config.lock().unwrap();
+            config.bots.push(bot);
+        }
+        state.set_active_bot("123456789");
+        state
+    }
+
+    #[tokio::test]
+    async fn start_bot_sin_bot_activo_falla() {
+        let state = AppState::new();
+        let err = conectar_bot(&state, None).await.expect_err("debe fallar");
+        assert_eq!(err, "No hay bot seleccionado");
+    }
+
+    #[tokio::test]
+    async fn start_bot_valida_token_y_queda_conectado() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/users/@me"))
+            .and(header("authorization", "Bot token-valido"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "123456789",
+                "username": "bot-oficial",
+                "discriminator": "0",
+                "avatar": null,
+                "bot": true,
+                "mfa_enabled": false
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let state = estado_con_bot_activo("token-valido");
+        let addr = server.address().to_string();
+        let status = conectar_bot(&state, Some(&addr)).await.expect("conexión");
+
+        assert!(status.running && status.connected);
+        assert_eq!(status.bot_name.as_deref(), Some("bot-oficial"));
+        assert!(state.bot_status.lock().unwrap().connected);
+    }
+
+    #[tokio::test]
+    async fn start_bot_con_token_rechazado_no_conecta() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/users/@me"))
+            .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+                "message": "401: Unauthorized",
+                "code": 0
+            })))
+            .mount(&server)
+            .await;
+
+        let state = estado_con_bot_activo("token-malo");
+        let addr = server.address().to_string();
+        let err = conectar_bot(&state, Some(&addr))
+            .await
+            .expect_err("debe fallar");
+
+        assert_eq!(err, "Token inválido");
+        let status = state.bot_status.lock().unwrap();
+        assert!(!status.connected && !status.running);
+        assert_eq!(status.last_error.as_deref(), Some("Token inválido"));
     }
 }

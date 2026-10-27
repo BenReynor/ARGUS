@@ -214,6 +214,7 @@ impl Default for Config {
 pub struct BotStatus {
     pub running: bool,
     pub connected: bool,
+    pub bot_name: Option<String>,
     pub guild_name: Option<String>,
     pub guild_id: Option<String>,
     pub member_count: Option<u32>,
@@ -226,6 +227,7 @@ impl Default for BotStatus {
         Self {
             running: false,
             connected: false,
+            bot_name: None,
             guild_name: None,
             guild_id: None,
             member_count: None,
@@ -319,7 +321,6 @@ pub enum BotCoreEvent {
 pub struct AppState {
     pub config: Arc<Mutex<Config>>,
     pub bot_status: Arc<Mutex<BotStatus>>,
-    pub bot_process: Arc<Mutex<Option<tokio::process::Child>>>,
     pub server_maps: Arc<Mutex<HashMap<String, ServerMap>>>,
     pub bot_core_tx: Arc<Mutex<Option<broadcast::Sender<BotCoreEvent>>>>,
 }
@@ -330,7 +331,6 @@ impl AppState {
         Self {
             config: Arc::new(Mutex::new(Config::default())),
             bot_status: Arc::new(Mutex::new(BotStatus::default())),
-            bot_process: Arc::new(Mutex::new(None)),
             server_maps: Arc::new(Mutex::new(HashMap::new())),
             bot_core_tx: Arc::new(Mutex::new(Some(tx))),
         }

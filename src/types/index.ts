@@ -93,6 +93,7 @@ export interface UiSettings {
 export interface BotStatus {
   running: boolean;
   connected: boolean;
+  bot_name: string | null;
   guild_name: string | null;
   guild_id: string | null;
   member_count: number | null;

@@ -125,6 +125,7 @@ export const useStore = create<AppState>()(
       botStatus: {
         running: false,
         connected: false,
+        bot_name: null,
         guild_name: null,
         guild_id: null,
         member_count: null,
