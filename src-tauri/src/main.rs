@@ -65,6 +65,7 @@ pub fn run() {
             save_config,
             get_server_map,
             refresh_server_map,
+            resync_map,
             get_active_guild,
             set_active_guild,
             get_config_full,

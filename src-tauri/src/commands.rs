@@ -1,5 +1,5 @@
 use chrono::Utc;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::crypto;
 use crate::db::{self, BotConfig as DbBotConfig, CliAgentConfig, VigilanceConfig};
@@ -20,36 +20,52 @@ pub async fn start_bot(app: AppHandle, state: State<'_, AppState>) -> Result<Bot
     Ok(status)
 }
 
-/// Sincroniza el servidor activo en segundo plano (si hay uno elegido): carga
-/// el mapa por REST, lo guarda en `server_maps` y emite `sync-progress`.
+/// Sincroniza el servidor activo en segundo plano (si hay uno elegido).
 fn lanzar_sincronizacion(app: AppHandle, state: &AppState) {
-    let Some(guild_id) = state.get_active_guild() else {
-        return;
-    };
-    let Some(bot) = state.get_active_bot() else {
+    let (Some(guild_id), Some(bot)) = (state.get_active_guild(), state.get_active_bot()) else {
         return;
     };
     let maps = state.server_maps.clone();
     tauri::async_runtime::spawn(async move {
-        let token = match crypto::decrypt(&bot.token_ciphertext) {
-            Ok(t) => t,
-            Err(e) => {
-                tracing::error!("Error descifrando token: {e}");
-                return;
-            }
-        };
-        let emisor = app.clone();
-        let resultado = crate::sync::sincronizar_servidor(&token, None, &guild_id, |p| {
-            crate::sync::emitir_progreso(&emisor, &p)
-        })
-        .await;
-        match resultado {
-            Ok(mapa) => {
-                maps.lock().unwrap().insert(guild_id, mapa);
-            }
-            Err(e) => tracing::error!("Falló la sincronización del servidor: {e}"),
+        if let Err(e) = sincronizar_y_guardar(&app, &maps, &bot, &guild_id).await {
+            tracing::error!("Falló la sincronización del servidor: {e}");
         }
     });
+}
+
+/// Repite la sincronización completa: carga el mapa por REST, lo guarda en
+/// `server_maps`, emite `sync-progress` y al terminar `map-updated`.
+async fn sincronizar_y_guardar(
+    app: &AppHandle,
+    maps: &std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, ServerMap>>>,
+    bot: &DbBotConfig,
+    guild_id: &str,
+) -> Result<ServerMap, String> {
+    let token = crypto::decrypt(&bot.token_ciphertext)
+        .map_err(|e| format!("Error descifrando el token: {e}"))?;
+    let mapa = crate::sync::sincronizar_servidor(&token, None, guild_id, |p| {
+        crate::sync::emitir_progreso(app, &p)
+    })
+    .await?;
+    maps.lock()
+        .unwrap()
+        .insert(guild_id.to_string(), mapa.clone());
+    if let Err(e) = app.emit(crate::gateway::EVENTO_MAPA, ()) {
+        tracing::warn!("No se pudo emitir map-updated: {e}");
+    }
+    Ok(mapa)
+}
+
+/// Botón «Resincronizar mapa»: repite la sincronización completa del servidor
+/// activo y devuelve el mapa nuevo.
+#[tauri::command]
+pub async fn resync_map(app: AppHandle, state: State<'_, AppState>) -> Result<ServerMap, String> {
+    let guild_id = require_active_guild(&state)?;
+    let bot = state
+        .get_active_bot()
+        .ok_or_else(|| "No hay un bot activo. Elige uno en Configuración.".to_string())?;
+    let maps = state.server_maps.clone();
+    sincronizar_y_guardar(&app, &maps, &bot, &guild_id).await
 }
 
 /// Descifra el token del bot activo, lo valida con `GET /users/@me` y deja

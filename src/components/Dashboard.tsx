@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useServerMap, useBotStatus, useAddLog, useShowNotification, useSetActiveTab, useConfig, useActiveGuildId, useGuildPanel, PERMISOS_REQUERIDOS } from '../store/useStore';
-import { startBot, stopBot } from '../api/tauri';
-import { Users, Hash, Shield, Activity, Zap, Circle, Server } from 'lucide-react';
+import { startBot, stopBot, resyncMap, onSyncProgress } from '../api/tauri';
+import type { SyncProgress } from '../api/tauri';
+import { Users, Hash, Shield, Activity, Zap, Circle, Server, RefreshCw } from 'lucide-react';
 
 interface StatItem {
   label: string;
@@ -37,6 +38,30 @@ export const Dashboard: React.FC = () => {
     { label: 'Ver miembros', desc: 'Gestionar miembros del servidor', action: () => setActiveTab('members') },
     { label: 'Ver logs', desc: 'Abrir terminal de logs', action: () => setActiveTab('logs') },
   ];
+
+  const [resyncing, setResyncing] = useState(false);
+  const [progress, setProgress] = useState<SyncProgress | null>(null);
+
+  useEffect(() => {
+    const desuscribir = onSyncProgress(setProgress);
+    return () => {
+      desuscribir.then((fn) => fn()).catch(() => {});
+    };
+  }, []);
+
+  const handleResync = async () => {
+    setResyncing(true);
+    setProgress(null);
+    try {
+      await resyncMap();
+      addLog('[SYSTEM] Mapa resincronizado');
+      showNotification('Mapa resincronizado', 'success');
+    } catch (e) {
+      showNotification('Error al resincronizar: ' + String(e), 'error');
+    } finally {
+      setResyncing(false);
+    }
+  };
 
   const handleBotToggle = async () => {
     try {
@@ -141,6 +166,17 @@ export const Dashboard: React.FC = () => {
       <section className="dashboard-section">
         <h2>ACCIONES RÁPIDAS</h2>
         <div className="actions-grid">
+          <button className="action-card" onClick={handleResync} disabled={resyncing || !activeGuildId}>
+            <div className="action-icon"><RefreshCw size={20} /></div>
+            <div className="action-info">
+              <span className="action-label">{resyncing ? 'Resincronizando...' : 'Resincronizar mapa'}</span>
+              <span className="action-desc">
+                {resyncing && progress
+                  ? `Paso ${progress.step}/${progress.total}: ${progress.message}`
+                  : 'Repite la sincronización completa del servidor'}
+              </span>
+            </div>
+          </button>
           {quickActions.map((action, i) => (
             <button key={i} className="action-card" onClick={action.action}>
               <div className="action-icon"><Activity size={20} /></div>

@@ -47,6 +47,7 @@ export const botAvatarUrl = (bot: BotConfig) =>
 // Server map
 export const getServerMap = () => invoke<ServerMap | null>('get_server_map');
 export const refreshServerMap = () => invoke<ServerMap>('refresh_server_map');
+export const resyncMap = () => invoke<ServerMap>('resync_map');
 
 // Event listeners
 export const onBotStatusChange = (callback: (status: BotStatus) => void) => 
