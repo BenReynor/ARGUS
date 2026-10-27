@@ -10,23 +10,22 @@ roles, logs. No es un selfbot (viola ToS) — se maneja el bot propio vía MCP y
 - Servidor Discord: "ISD Internal Security Department | Site-14", guild `1541513296375717921`
 
 ## Info sensible (NO subir a git — `info/` está en .gitignore)
-- `info/CONTRASENAS.txt` — token del bot, clave pública, contraseña sudo
+- `info/CONTRASENAS.txt` — credenciales privadas: los agentes NO deben leer `info/`
 - `info/Bot.txt` — credenciales del bot
 - `info/ISD_SERVER_MAP.txt` — mapa completo del servidor (canales, roles, miembros, IDs)
 - `info/discord_oauth_url.txt` — URL de invitación del bot
 - El token también está en `~/.bashrc` como `DISCORD_TOKEN`
 
 ## Entorno (IMPORTANTE)
-- Rust/cargo 1.99: **siempre** `source /home/benjametalsp/.cargo/env` en shells no interactivas
+- Rust/cargo 1.99: `cargo` ya está en el PATH. Ejecútalo tal cual (sin `source`, `export PATH` ni rutas absolutas) y desde la raíz con `--manifest-path src-tauri/Cargo.toml`
 - Node 22.23.3 (nvm)
 - Dependencias GTK ya instaladas (libgtk-3-dev, libwebkit2gtk-4.1-dev, etc.)
-- `sudo` pide contraseña (está en `info/CONTRASENAS.txt`)
+- Los agentes no usan `sudo`
 - `cargo build` se ejecuta desde `src-tauri/` (no desde la raíz)
 - MCP de Discord disponible en OpenCode: servidor `discord` (@pasympa/discord-mcp)
 
 ## Comandos
 ```bash
-source ~/.cargo/env
 npm run tauri dev      # desarrollo (o ./launch-dev.sh)
 npm run tauri build    # producción → src-tauri/target/release/argus
 npm run build          # solo frontend (tsc && vite build)

@@ -22,7 +22,7 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
   Prevención: toma el lock dentro de un bloque `{ ... }` o clona los datos antes del `.await`; usa el alias `DynError` de state.rs.
   Prueba: `cargo check` sin errores.
 
-## 2026-10-26 23:37 — Tarea bloqueada: Cargar la configuración guardada al arrancar
-- Síntoma: El agente no cumplió el criterio tras 2 intentos.
-- Causa: gate_fail en la iteración 2: [GATE] ✗ [rust] cargo check falló src/main.rs:98:21: error[E0433]: cannot find module or crate `log` in this scope: use of unresolved module or unlinked crate `log` error: could not compile `argus` (bin "argus") due to 1 previous error; 20 warnings emitted [GATE] ✗ [rust] cargo test falló error: could not compile `argus` (bin "argus" test) due to 1 previous error; 20 warnings emitted error[E0433]: cannot find module or crate `log` in this scope 98 |                     log::error!("No se pudo cargar la configuración guardada: {e}"); warning: unused import: `Error as AeadError` 3 |     Aes256Gcm, Error as AeadError, Nonce, For more information about this error, try `rustc --explain E0433`. [GATE] ✗ build Rust falló (cargo build) 613 | pub async fn export_all_data(state: State<'_, AppState>) -> Result<Vec<u8>, String> { |                              ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` warning: unused variable: `state` --> src/commands.rs:619:26 | 619 | pub async fn import_data(state: State<'_, AppState>, _data: Vec<u8>) -> Result<String, String> { |                          ^^^^^ help: if this is intentional, prefix it with an underscore: `_sta
-- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+- Síntoma: "cannot find module or crate `log`" al registrar un error.
+  Causa: `log` no está en Cargo.toml; el proyecto usa `tracing`.
+  Prevención: usa `tracing::error!` / `tracing::info!`; no añadas dependencias sin que la tarea lo pida.
+  Prueba: `cargo check --manifest-path src-tauri/Cargo.toml`.
