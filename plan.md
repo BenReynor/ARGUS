@@ -84,7 +84,7 @@ Que las vistas muestren el servidor real y las acciones funcionen. Cada tarea co
   criterio: `send_message` usa `POST /channels/{id}/messages`; `send_dm` abre el DM (`POST /users/@me/channels`) y envía; validan longitud (≤ 2000) antes de llamar; tests con el Discord falso
 - [x] Gestionar roles de un miembro
   criterio: `add_role` / `remove_role` usan `PUT`/`DELETE /guilds/{id}/members/{user_id}/roles/{role_id}`; MembersView usa el servidor activo (no un ID fijo); tests con el Discord falso
-- [ ] Silenciar (timeout) a un miembro
+- [x] Silenciar (timeout) a un miembro
   criterio: `timeout_member` usa `PATCH /guilds/{id}/members/{user_id}` con `communication_disabled_until` (máx. 28 días; 0 minutos quita el timeout); test con el Discord falso
 
 Verificación manual en tu servidor de pruebas:
