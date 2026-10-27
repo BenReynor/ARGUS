@@ -10,6 +10,7 @@ use tauri_plugin_log::{Target, TargetKind};
 mod commands;
 mod crypto;
 mod db;
+mod discord;
 mod state;
 
 use commands::*;
