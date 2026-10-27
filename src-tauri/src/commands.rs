@@ -163,8 +163,28 @@ pub async fn list_members(
     state: State<'_, AppState>,
     guild_id: String,
 ) -> Result<Vec<Member>, String> {
-    let map = state.get_map(&guild_id).ok_or("Mapa no disponible")?;
-    Ok(map.members)
+    leer_miembros(&state, &guild_id, None).await
+}
+
+/// `GET /guilds/{id}/members` paginado, convertido a `Member`.
+async fn leer_miembros(
+    state: &AppState,
+    guild_id: &str,
+    base_url: Option<&str>,
+) -> Result<Vec<Member>, String> {
+    let token = token_del_bot_activo(state)?;
+    crate::discord::fetch_guild_members(&token, base_url, guild_id).await
+}
+
+/// `GET /guilds/{id}/members/{user_id}` convertido a `Member`.
+async fn leer_miembro(
+    state: &AppState,
+    guild_id: &str,
+    user_id: &str,
+    base_url: Option<&str>,
+) -> Result<Member, String> {
+    let token = token_del_bot_activo(state)?;
+    crate::discord::fetch_guild_member(&token, base_url, guild_id, user_id).await
 }
 
 // Roles
@@ -197,19 +217,10 @@ pub async fn send_dm(
 #[tauri::command]
 pub async fn get_member_info(
     state: State<'_, AppState>,
-    _guild_id: String,
+    guild_id: String,
     user_id: String,
 ) -> Result<Member, String> {
-    Ok(Member {
-        user_id,
-        username: "Usuario".to_string(),
-        nickname: None,
-        roles: vec![],
-        bot: false,
-        joined_at: None,
-        avatar: None,
-        flags: None,
-    })
+    leer_miembro(&state, &guild_id, &user_id, None).await
 }
 
 #[tauri::command]
@@ -1097,6 +1108,73 @@ mod tests {
         assert_eq!(roles[1].permissions, "8");
         assert_eq!(roles[1].permissions_bitfield.as_deref(), Some("8"));
         assert!(roles[1].hoist && roles[1].mentionable);
+    }
+
+    fn miembro_json(id: u64, nick: Option<&str>) -> serde_json::Value {
+        serde_json::json!({
+            "user": {"id": id.to_string(), "username": format!("u{id}"),
+                     "discriminator": "0", "avatar": null},
+            "nick": nick,
+            "roles": ["600"],
+            "joined_at": "2024-01-02T03:04:05.000000+00:00",
+            "deaf": false, "mute": false, "flags": 0
+        })
+    }
+
+    #[tokio::test]
+    async fn lee_miembros_paginando_dos_paginas_del_discord_falso() {
+        use wiremock::matchers::{query_param, query_param_is_missing};
+        let server = MockServer::start().await;
+        let pagina1: Vec<_> = (1..=1000).map(|i| miembro_json(i, None)).collect();
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555/members"))
+            .and(header("authorization", "Bot token-mi"))
+            .and(query_param("limit", "1000"))
+            .and(query_param_is_missing("after"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(pagina1))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555/members"))
+            .and(query_param("limit", "1000"))
+            .and(query_param("after", "1000"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(vec![
+                miembro_json(1001, Some("apodo")),
+                miembro_json(1002, None),
+            ]))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555/members/1001"))
+            .and(header("authorization", "Bot token-mi"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(miembro_json(1001, Some("apodo"))),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let state = estado_con_bot_activo("token-mi");
+        let addr = server.address().to_string();
+
+        let miembros = leer_miembros(&state, "555", Some(&addr))
+            .await
+            .expect("miembros");
+        assert_eq!(miembros.len(), 1002);
+        assert_eq!(miembros[0].user_id, "1");
+        assert_eq!(miembros[1001].user_id, "1002");
+        assert_eq!(miembros[1000].nickname.as_deref(), Some("apodo"));
+        assert_eq!(miembros[0].roles, vec!["600".to_string()]);
+
+        let uno = leer_miembro(&state, "555", "1001", Some(&addr))
+            .await
+            .expect("miembro");
+        assert_eq!(uno.username, "u1001");
+        assert_eq!(uno.nickname.as_deref(), Some("apodo"));
+        assert!(!uno.bot);
+        assert!(uno.joined_at.is_some());
     }
 
     #[tokio::test]

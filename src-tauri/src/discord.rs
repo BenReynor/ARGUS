@@ -209,6 +209,82 @@ pub async fn fetch_guild_roles(
     Ok(roles.into_iter().map(convertir_rol).collect())
 }
 
+/// Convierte un miembro de Discord al tipo `Member` de ARGUS.
+pub fn convertir_miembro(m: twilight_model::guild::Member) -> crate::state::Member {
+    crate::state::Member {
+        user_id: m.user.id.to_string(),
+        username: m.user.name,
+        nickname: m.nick,
+        roles: m.roles.iter().map(|r| r.to_string()).collect(),
+        bot: m.user.bot,
+        joined_at: Some(m.joined_at.iso_8601().to_string()),
+        avatar: m.avatar.or(m.user.avatar).map(|a| a.to_string()),
+        flags: Some(m.flags.bits()),
+    }
+}
+
+/// Tamaño de página al listar miembros (máximo que admite Discord).
+const PAGINA_MIEMBROS: u16 = 1000;
+
+/// Lee todos los miembros de un servidor paginando
+/// `GET /guilds/{id}/members?limit=1000&after=<último id>` hasta agotar.
+pub async fn fetch_guild_members(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+) -> Result<Vec<crate::state::Member>, String> {
+    let gid = parse_guild_id(guild_id)?;
+    let client = build_client(token, base_url);
+    let mut todos = Vec::new();
+    let mut despues: Option<twilight_model::id::Id<twilight_model::id::marker::UserMarker>> = None;
+    loop {
+        let mut peticion = client
+            .guild_members(gid)
+            .limit(PAGINA_MIEMBROS)
+            .map_err(|e| format!("Petición inválida: {e}"))?;
+        if let Some(id) = despues {
+            peticion = peticion.after(id);
+        }
+        let pagina = peticion
+            .await
+            .map_err(traducir_error)?
+            .models()
+            .await
+            .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        let completa = pagina.len() >= PAGINA_MIEMBROS as usize;
+        despues = pagina.last().map(|m| m.user.id);
+        todos.extend(pagina.into_iter().map(convertir_miembro));
+        if !completa || despues.is_none() {
+            break;
+        }
+    }
+    Ok(todos)
+}
+
+/// Lee un miembro (`GET /guilds/{id}/members/{user_id}`).
+pub async fn fetch_guild_member(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+    user_id: &str,
+) -> Result<crate::state::Member, String> {
+    let gid = parse_guild_id(guild_id)?;
+    let uid = user_id
+        .parse::<u64>()
+        .ok()
+        .and_then(twilight_model::id::Id::new_checked)
+        .ok_or_else(|| "ID de usuario inválido".to_string())?;
+    let client = build_client(token, base_url);
+    let miembro = client
+        .guild_member(gid, uid)
+        .await
+        .map_err(traducir_error)?
+        .model()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    Ok(convertir_miembro(miembro))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
