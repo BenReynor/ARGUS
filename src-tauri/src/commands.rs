@@ -36,6 +36,14 @@ async fn conectar_bot(state: &AppState, base_url: Option<&str>) -> Result<BotSta
             .and_then(|a| crate::discord::aviso_intent_miembros(&a)),
         Err(_) => None,
     };
+    // Los tests pasan una URL base falsa: sin red real no hay Gateway.
+    if resultado.is_ok() && base_url.is_none() {
+        let tarea = crate::gateway::lanzar(token, state.server_maps.clone());
+        let anterior = state.gateway_task.lock().unwrap().replace(tarea);
+        if let Some(anterior) = anterior {
+            anterior.abort();
+        }
+    }
     let mut status = state.bot_status.lock().unwrap();
     match resultado {
         Ok(user) => {
@@ -59,6 +67,10 @@ async fn conectar_bot(state: &AppState, base_url: Option<&str>) -> Result<BotSta
 
 #[tauri::command]
 pub async fn stop_bot(state: State<'_, AppState>) -> Result<BotStatus, String> {
+    let tarea = state.gateway_task.lock().unwrap().take();
+    if let Some(tarea) = tarea {
+        tarea.abort();
+    }
     let mut status = state.bot_status.lock().unwrap();
     status.running = false;
     status.connected = false;

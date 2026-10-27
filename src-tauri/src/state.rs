@@ -326,6 +326,8 @@ pub struct AppState {
     pub bot_status: Arc<Mutex<BotStatus>>,
     pub server_maps: Arc<Mutex<HashMap<String, ServerMap>>>,
     pub bot_core_tx: Arc<Mutex<Option<broadcast::Sender<BotCoreEvent>>>>,
+    /// Tarea tokio del Gateway mientras el bot está activo.
+    pub gateway_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl AppState {
@@ -336,6 +338,7 @@ impl AppState {
             bot_status: Arc::new(Mutex::new(BotStatus::default())),
             server_maps: Arc::new(Mutex::new(HashMap::new())),
             bot_core_tx: Arc::new(Mutex::new(Some(tx))),
+            gateway_task: Arc::new(Mutex::new(None)),
         }
     }
 
