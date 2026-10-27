@@ -90,8 +90,11 @@ pub fn run() {
             rt.block_on(sqlx::migrate!("./migrations").run(&pool))
                 .unwrap();
 
-            // Note: Config loading is now done lazily when needed
-            let _app_state = app.state::<AppState>();
+            // Load the saved config; a failure is logged but must not abort startup
+            let app_state = app.state::<AppState>();
+            if let Err(e) = tauri::async_runtime::block_on(app_state.load_config_from_db(&handle)) {
+                tracing::error!("no se pudo cargar la configuración guardada: {e}");
+            }
 
             let show_item =
                 MenuItem::with_id(&handle, "show", "Mostrar ARGUS", true, None::<&str>)?;
