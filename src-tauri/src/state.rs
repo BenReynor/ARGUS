@@ -374,21 +374,16 @@ impl AppState {
         self.server_maps.lock().unwrap().insert(guild_id, map);
     }
 
-    pub fn cleanup_user_context(
+    pub async fn cleanup_user_context(
         &self,
         app: &AppHandle,
         guild_id: &str,
         user_id: &str,
     ) -> Result<(), DynError> {
-        let config = self.config.lock().unwrap();
-        let limit = config.context_limit_per_user as i64;
-        drop(config);
+        let limit = { self.config.lock().unwrap().context_limit_per_user as i64 };
 
-        let rt = tokio::runtime::Handle::current();
-        rt.block_on(async {
-            let pool = crate::db::get_pool(app).await?;
-            crate::db::cleanup_user_context(&pool, guild_id, user_id, limit).await?;
-            Ok::<(), DynError>(())
-        })
+        let pool = crate::db::get_pool(app).await?;
+        crate::db::cleanup_user_context(&pool, guild_id, user_id, limit).await?;
+        Ok(())
     }
 }

@@ -604,6 +604,7 @@ pub async fn cleanup_context(
 ) -> Result<String, String> {
     state
         .cleanup_user_context(&app, &guild_id, &user_id)
+        .await
         .map_err(|e| e.to_string())?;
     Ok("Contexto limpiado".to_string())
 }
