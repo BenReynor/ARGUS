@@ -175,7 +175,7 @@ impl Default for Config {
         Self {
             bots: vec![],
             active_bot_id: None,
-            active_guild_id: Some("1541513296375717921".to_string()),
+            active_guild_id: None,
             guilds_cache: vec![],
             multi_guild_mode: false,
 
@@ -415,6 +415,11 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_config_has_no_active_guild() {
+        assert!(Config::default().active_guild_id.is_none());
+    }
 
     #[test]
     fn old_config_without_sync_fields_gets_defaults() {

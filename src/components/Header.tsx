@@ -65,7 +65,7 @@ export const Header: React.FC = () => {
           </div>
           <div className="status-item">
             <Server size={12} />
-            <span>{botStatus.guild_name ? 'ISD' : '--'}</span>
+            <span>{botStatus.guild_name ?? '--'}</span>
             <label>SERVER</label>
           </div>
         </div>

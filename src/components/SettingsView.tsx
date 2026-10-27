@@ -145,7 +145,7 @@ export const SettingsView: React.FC = () => {
                 type="text"
                 value={formData.server_id}
                 onChange={(e) => handleChange('server_id', e.target.value)}
-                placeholder="1541513296375717921"
+                placeholder="ID del servidor"
               />
               <button className="icon-btn" onClick={() => { navigator.clipboard.writeText(formData.server_id); showNotification('Server ID copiado', 'info'); }}>
                 <Copy size={16} />

@@ -53,7 +53,7 @@ interface AppState {
 const defaultConfig = (): Config => ({
   bots: [],
   active_bot_id: null,
-  active_guild_id: '1541513296375717921',
+  active_guild_id: null,
   guilds_cache: [],
   multi_guild_mode: false,
 

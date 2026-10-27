@@ -10,6 +10,12 @@ use crate::state::{
     AppState, BotConfig, BotStatus, Channel, Config, Guild, Member, Role, ServerMap,
 };
 
+fn require_active_guild(state: &AppState) -> Result<String, String> {
+    state
+        .get_active_guild()
+        .ok_or_else(|| "No hay servidor seleccionado".to_string())
+}
+
 #[tauri::command]
 pub async fn start_bot(app: AppHandle, state: State<'_, AppState>) -> Result<BotStatus, String> {
     let active_bot = state
@@ -19,9 +25,7 @@ pub async fn start_bot(app: AppHandle, state: State<'_, AppState>) -> Result<Bot
     let token = crypto::decrypt(&active_bot.token_ciphertext)
         .map_err(|e| format!("Error descifrando token: {}", e))?;
 
-    let guild_id = state
-        .get_active_guild()
-        .unwrap_or_else(|| "1541513296375717921".to_string());
+    let guild_id = require_active_guild(&state)?;
 
     let status_guard = state.bot_status.lock().unwrap();
     if status_guard.running {
@@ -71,7 +75,6 @@ pub async fn start_bot(app: AppHandle, state: State<'_, AppState>) -> Result<Bot
                 let state_ref = app_handle.state::<AppState>();
                 let mut s = state_ref.bot_status.lock().unwrap();
                 s.connected = true;
-                s.guild_name = Some("ISD Internal Security Department".to_string());
                 s.guild_id = Some(guild_id.clone());
             }
             println!("[BOT STDOUT] {}", line);
@@ -304,20 +307,16 @@ pub async fn set_active_guild_cmd(
 // Server map
 #[tauri::command]
 pub async fn get_server_map(state: State<'_, AppState>) -> Result<Option<ServerMap>, String> {
-    let guild_id = state
-        .get_active_guild()
-        .unwrap_or_else(|| "1541513296375717921".to_string());
+    let guild_id = require_active_guild(&state)?;
     Ok(state.get_map(&guild_id))
 }
 
 #[tauri::command]
 pub async fn refresh_server_map(state: State<'_, AppState>) -> Result<ServerMap, String> {
-    let guild_id = state
-        .get_active_guild()
-        .unwrap_or_else(|| "1541513296375717921".to_string());
+    let guild_id = require_active_guild(&state)?;
     let guild = Guild {
         id: guild_id.clone(),
-        name: "ISD Internal Security Department | Site-14".to_string(),
+        name: format!("Servidor {}", guild_id),
         member_count: 20,
         icon: None,
         joined_at: Some(chrono::Utc::now().to_rfc3339()),

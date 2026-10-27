@@ -22,13 +22,6 @@ export const ChannelsView: React.FC = () => {
 
   const categories = serverMap?.categories || {};
   const categoryNames: Record<string, string> = {
-    '1541531966053159034': '📁 VERIFICACIÓN OFF ROL',
-    '1555424136254201888': '📁 CANALES ONROL',
-    '1555423953185677372': '📁 OPERACIONES ISD ONROL',
-    '1541513297529147466': '📁 ZONA SOCIAL OFF ROL',
-    '1541532787377438815': '🔊 DIRECTORIO ISD',
-    '1542373594225446993': '📁 OPERACIONES ISD OFF ROL',
-    '1542360558089543782': '📁 ZONA DE INTERROGATORIOS ONROL',
     'none': '📁 SIN CATEGORÍA',
   };
 

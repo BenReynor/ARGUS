@@ -67,7 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
         <div className="bot-control">
           <div className="bot-info">
             <Bot size={16} />
-            <span>Agente Albert</span>
+            <span>{config.bots.find(b => b.id === config.active_bot_id)?.name ?? 'Sin bot activo'}</span>
           </div>
           <button
             className={`btn-bot-toggle ${botStatus.running ? 'running' : ''}`}

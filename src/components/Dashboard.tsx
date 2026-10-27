@@ -32,22 +32,9 @@ export const Dashboard: React.FC = () => {
   ];
 
   const quickActions: ActionItem[] = [
-    { label: 'Enviar anuncio', desc: 'Canal #avisos-ISD', action: () => sendToChannel('1542372186239664170', '📢 **ANUNCIO OFICIAL**\n\n') },
-    { label: 'Mensaje general', desc: 'Canal #general off-rol', action: () => sendToChannel('1541513297529147465', '💬 ') },
-    { label: 'DM a Staff', desc: 'Directores y supervisores', action: () => alert('Selecciona miembros en la pestaña Miembros') },
+    { label: 'Ver miembros', desc: 'Gestionar miembros del servidor', action: () => setActiveTab('members') },
     { label: 'Ver logs', desc: 'Abrir terminal de logs', action: () => setActiveTab('logs') },
   ];
-
-  const sendToChannel = async (channelId: string, prefix: string) => {
-    const content = prompt(`Mensaje para canal (${channelId}):`, prefix);
-    if (content) {
-      try {
-        showNotification('Mensaje enviado', 'success');
-      } catch {
-        showNotification('Error al enviar', 'error');
-      }
-    }
-  };
 
   const handleBotToggle = async () => {
     try {
@@ -177,7 +164,7 @@ export const Dashboard: React.FC = () => {
           <div className="log-entry">
             <span className="log-time">[CONFIG]</span>
             <span className="log-source">CONFIG</span>
-            <span className="log-message">Server ID: 1541513296375717921 (ISD)</span>
+            <span className="log-message">Server ID: {config.active_guild_id ?? '--'}</span>
           </div>
           {botStatus.running && (
             <div className="log-entry">

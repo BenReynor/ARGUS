@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useServerMap, useSetSelectedMember, useSelectedMember, useAddLog, useShowNotification } from '../store/useStore';
+import { useServerMap, useSetSelectedMember, useSelectedMember, useAddLog, useShowNotification, useConfig } from '../store/useStore';
 import { listMembers, sendDM, addRole, removeRole, timeoutMember, getMemberInfo } from '../api/tauri';
 import { Users, User, Bot, Mail, Shield, Ban, MoreVertical, Copy, Search, ChevronRight, X } from 'lucide-react';
 import type { Member, Role } from '../types';
@@ -9,6 +9,7 @@ export const MembersView: React.FC = () => {
   const setSelectedMember = useSetSelectedMember();
   const selectedMember = useSelectedMember();
   const addLog = useAddLog();
+  const guildId = useConfig().active_guild_id;
   const showNotification = useShowNotification();
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'roles' | 'status'>('name');
@@ -38,8 +39,9 @@ export const MembersView: React.FC = () => {
 
   const handleRole = async (userId: string, roleId: string, add: boolean) => {
     try {
-      if (add) await addRole('1541513296375717921', userId, roleId);
-      else await removeRole('1541513296375717921', userId, roleId);
+      if (!guildId) throw new Error('No hay servidor seleccionado');
+      if (add) await addRole(guildId, userId, roleId);
+      else await removeRole(guildId, userId, roleId);
       showNotification(add ? 'Rol añadido' : 'Rol quitado', 'success');
     } catch { showNotification('Error', 'error'); }
   };
@@ -48,7 +50,8 @@ export const MembersView: React.FC = () => {
     const mins = prompt(`Minutos de timeout para ${username}:`, '10');
     if (mins) {
       try {
-        await timeoutMember('1541513296375717921', userId, parseInt(mins));
+        if (!guildId) { showNotification('No hay servidor seleccionado', 'error'); return; }
+        await timeoutMember(guildId, userId, parseInt(mins));
         showNotification(`Timeout ${mins} min`, 'success');
       } catch { showNotification('Error', 'error'); }
     }
