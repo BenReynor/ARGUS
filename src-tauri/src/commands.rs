@@ -322,14 +322,28 @@ async fn cambiar_rol(
 #[tauri::command]
 pub async fn timeout_member(
     state: State<'_, AppState>,
-    _guild_id: String,
+    guild_id: String,
     user_id: String,
     duration_minutes: u32,
 ) -> Result<String, String> {
-    Ok(format!(
-        "Usuario {} muteado por {} minutos",
-        user_id, duration_minutes
-    ))
+    silenciar_miembro(&state, &guild_id, &user_id, duration_minutes, None).await
+}
+
+/// `PATCH /guilds/{id}/members/{user_id}`; 0 minutos quita el timeout.
+async fn silenciar_miembro(
+    state: &AppState,
+    guild_id: &str,
+    user_id: &str,
+    minutos: u32,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    let token = token_del_bot_activo(state)?;
+    crate::discord::set_member_timeout(&token, base_url, guild_id, user_id, minutos).await?;
+    Ok(if minutos == 0 {
+        format!("Silencio quitado a usuario {user_id}")
+    } else {
+        format!("Usuario {user_id} silenciado por {minutos} minutos")
+    })
 }
 
 // Config
@@ -1505,6 +1519,49 @@ mod tests {
             .await
             .unwrap_err();
         assert!(e.contains("inválido"), "{e}");
+    }
+
+    #[tokio::test]
+    async fn silencia_y_quita_timeout_con_el_discord_falso() {
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path("/api/v10/guilds/555/members/1001"))
+            .and(header("authorization", "Bot token-to"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(miembro_json(1001, None)))
+            .expect(2)
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-to");
+        let addr = server.address().to_string();
+        let r = silenciar_miembro(&state, "555", "1001", 10, Some(&addr))
+            .await
+            .expect("silenciar");
+        assert!(r.contains("silenciado"), "{r}");
+        let r = silenciar_miembro(&state, "555", "1001", 0, Some(&addr))
+            .await
+            .expect("quitar");
+        assert!(r.contains("quitado"), "{r}");
+        let reqs = server.received_requests().await.unwrap();
+        let b1: serde_json::Value = serde_json::from_slice(&reqs[0].body).unwrap();
+        assert!(b1["communication_disabled_until"].is_string(), "{b1}");
+        let b2: serde_json::Value = serde_json::from_slice(&reqs[1].body).unwrap();
+        assert!(b2["communication_disabled_until"].is_null(), "{b2}");
+    }
+
+    #[tokio::test]
+    async fn timeout_mayor_de_28_dias_no_llama_a_discord() {
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-to2");
+        let addr = server.address().to_string();
+        let e = silenciar_miembro(&state, "555", "1001", 28 * 24 * 60 + 1, Some(&addr))
+            .await
+            .unwrap_err();
+        assert!(e.contains("28 días"), "{e}");
     }
 
     #[tokio::test]
