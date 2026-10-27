@@ -31,6 +31,12 @@ export const saveConfig = (config: Config) => invoke<string>('save_config', { co
 // Bots: el backend cifra el token (AES-GCM); viaja una sola vez y no se guarda en la UI
 export const addBot = (token: string) => invoke<BotConfig>('add_bot', { token });
 export const updateBot = (bot: BotConfig) => invoke<string>('update_bot', { bot });
+export const setActiveBot = (botId: string) => invoke<string>('set_active_bot', { botId });
+export const deleteBot = (botId: string) => invoke<string>('delete_bot', { botId });
+
+// Avatar oficial del bot en el CDN de Discord (el hash lo guarda el backend)
+export const botAvatarUrl = (bot: BotConfig) =>
+  bot.avatar ? `https://cdn.discordapp.com/avatars/${bot.id}/${bot.avatar}.png?size=64` : null;
 
 // Server map
 export const getServerMap = () => invoke<ServerMap | null>('get_server_map');

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore, useConfig, useUiSettings, useSetActiveTab, useShowNotification } from '../store/useStore';
-import { getConfig, saveConfig, addBot, startBot, getBotStatus } from '../api/tauri';
-import { Save, Key, Server, ToggleLeft, ToggleRight, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Copy } from 'lucide-react';
+import { getConfig, saveConfig, addBot, deleteBot, startBot, getBotStatus } from '../api/tauri';
+import { Save, Key, Trash2, Plus, Server, ToggleLeft, ToggleRight, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Copy } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
   const config = useConfig();
@@ -20,6 +20,8 @@ export const SettingsView: React.FC = () => {
   // El backend lo cifra (AES-GCM) al recibirlo vía add_bot/update_bot.
   const [token, setToken] = useState('');
   const hasSavedBot = config.bots.length > 0;
+  const [adding, setAdding] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     server_id: config.active_guild_id ?? '',
@@ -93,6 +95,37 @@ export const SettingsView: React.FC = () => {
     }
   };
 
+  const handleAddBot = async () => {
+    if (!token.trim()) {
+      showNotification('Ingresa un token primero', 'warning');
+      return;
+    }
+    setAdding(true);
+    try {
+      // El backend valida el token con Discord y guarda nombre y avatar oficiales.
+      const bot = await addBot(token);
+      setToken('');
+      setConfig(await getConfig());
+      showNotification(`Bot añadido: ${bot.name}`, 'success');
+    } catch (e) {
+      showNotification(typeof e === 'string' ? e : 'No se pudo añadir el bot', 'error');
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleRemoveBot = async (id: string) => {
+    try {
+      await deleteBot(id);
+      setConfig(await getConfig());
+      showNotification('Bot quitado', 'success');
+    } catch (e) {
+      showNotification(typeof e === 'string' ? e : 'No se pudo quitar el bot', 'error');
+    } finally {
+      setConfirmRemove(null);
+    }
+  };
+
   const copyToken = () => {
     navigator.clipboard.writeText(token);
     showNotification('Token copiado', 'info');
@@ -114,7 +147,7 @@ export const SettingsView: React.FC = () => {
                 type={showToken ? 'text' : 'password'}
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
-                placeholder={hasSavedBot ? '•••••• token guardado (cifrado). Escribe uno nuevo para reemplazarlo' : 'MTU2MDE0MTU0NDE4MTMzNDEzOA.GJ58RC...'}
+                placeholder="Token del bot a añadir"
               />
               <button className="icon-btn" onClick={() => setShowToken(!showToken)}>
                 {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -123,8 +156,29 @@ export const SettingsView: React.FC = () => {
                 <Copy size={16} />
               </button>
             </div>
-            <p className="help-text">Token del bot desde Discord Developer Portal → Bot → Reset Token</p>
+            <p className="help-text">Token del bot desde Discord Developer Portal → Bot → Reset Token. El nombre y el avatar se leen de Discord.</p>
+            <button className="btn-secondary" onClick={handleAddBot} disabled={adding || !token.trim()}>
+              {adding ? <Loader2 size={14} className="spin" /> : <Plus size={14} />}
+              AÑADIR BOT
+            </button>
           </div>
+
+          {config.bots.map((b) => (
+            <div key={b.id} className="form-group">
+              <label>{b.name}{b.id === config.active_bot_id ? ' (activo)' : ''}</label>
+              {confirmRemove === b.id ? (
+                <div className="input-with-actions">
+                  <span>¿Quitar el bot «{b.name}»? Se borrará su token guardado.</span>
+                  <button className="btn-secondary" onClick={() => handleRemoveBot(b.id)}>CONFIRMAR</button>
+                  <button className="btn-secondary" onClick={() => setConfirmRemove(null)}>CANCELAR</button>
+                </div>
+              ) : (
+                <button className="btn-secondary" onClick={() => setConfirmRemove(b.id)}>
+                  <Trash2 size={14} /> QUITAR BOT
+                </button>
+              )}
+            </div>
+          ))}
 
           <div className="form-group">
             <label>Server ID (Guild ID)</label>

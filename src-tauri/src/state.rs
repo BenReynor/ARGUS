@@ -350,7 +350,12 @@ impl AppState {
         if let Some(parsed) = stored.and_then(|json| serde_json::from_str(&json).ok()) {
             *config = parsed;
         }
-        config.active_bot_id = bots.first().map(|b| b.id.clone());
+        // Conserva el bot activo guardado si sigue registrado; si no, el primero.
+        let guardado = config
+            .active_bot_id
+            .clone()
+            .filter(|id| bots.iter().any(|b| b.id == *id));
+        config.active_bot_id = guardado.or_else(|| bots.first().map(|b| b.id.clone()));
         config.bots = bots;
         config.guilds_cache = guilds;
         config.vigilance = vigilance;

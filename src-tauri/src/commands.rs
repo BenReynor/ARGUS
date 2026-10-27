@@ -463,13 +463,35 @@ pub async fn delete_bot(
     db::delete_bot(&pool, &bot_id)
         .await
         .map_err(|e| e.to_string())?;
+    state
+        .save_config_to_db(&app)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok("Bot eliminado".to_string())
 }
 
 #[tauri::command]
-pub async fn set_active_bot(state: State<'_, AppState>, bot_id: String) -> Result<String, String> {
+pub async fn set_active_bot(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    bot_id: String,
+) -> Result<String, String> {
+    let existe = state
+        .config
+        .lock()
+        .unwrap()
+        .bots
+        .iter()
+        .any(|b| b.id == bot_id);
+    if !existe {
+        return Err("El bot no está registrado".to_string());
+    }
     state.set_active_bot(&bot_id);
+    state
+        .save_config_to_db(&app)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok("Bot activo cambiado".to_string())
 }
 
