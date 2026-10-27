@@ -38,6 +38,28 @@ pub async fn fetch_current_user(
         .map_err(|e| format!("Respuesta de Discord inválida: {e}"))
 }
 
+/// Lista los servidores donde está el bot (`GET /users/@me/guilds`).
+pub async fn fetch_current_user_guilds(
+    token: &str,
+    base_url: Option<&str>,
+) -> Result<Vec<twilight_model::user::CurrentUserGuild>, String> {
+    let client = build_client(token, base_url);
+    let response = client
+        .current_user_guilds()
+        .await
+        .map_err(|e| match e.kind() {
+            ErrorType::Response { status, .. } if status.get() == 401 => {
+                "Token inválido".to_string()
+            }
+            ErrorType::Unauthorized => "Token inválido".to_string(),
+            _ => format!("No se pudo contactar con Discord: {e}"),
+        })?;
+    response
+        .models()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

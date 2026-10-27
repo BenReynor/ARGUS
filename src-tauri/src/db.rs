@@ -149,6 +149,15 @@ pub async fn upsert_guild(pool: &SqlitePool, guild: &GuildCache) -> Result<()> {
     Ok(())
 }
 
+/// Deja la tabla `guilds` con exactamente los servidores dados.
+pub async fn replace_guilds(pool: &SqlitePool, guilds: &[GuildCache]) -> Result<()> {
+    sqlx::query("DELETE FROM guilds").execute(pool).await?;
+    for g in guilds {
+        upsert_guild(pool, g).await?;
+    }
+    Ok(())
+}
+
 pub async fn list_guilds_cached(pool: &SqlitePool) -> Result<Vec<GuildCache>> {
     let rows = sqlx::query("SELECT id, name, icon, member_count, joined_at FROM guilds")
         .fetch_all(pool)

@@ -15,7 +15,7 @@ export const Header: React.FC = () => {
     listGuilds()
       .then(setGuilds)
       .catch(() => setGuilds([]));
-  }, []);
+  }, [config.active_bot_id]);
 
   const handleGuildChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;

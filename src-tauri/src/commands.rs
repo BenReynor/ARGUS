@@ -63,9 +63,38 @@ pub async fn get_bot_status(state: State<'_, AppState>) -> Result<BotStatus, Str
 
 // Guild management
 #[tauri::command]
-pub async fn list_guilds(state: State<'_, AppState>) -> Result<Vec<Guild>, String> {
-    let config = state.config.lock().unwrap();
-    Ok(config.guilds_cache.clone())
+pub async fn list_guilds(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Guild>, String> {
+    let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
+    let guilds = sincronizar_guilds(&pool, &state, None).await?;
+    state.config.lock().unwrap().guilds_cache = guilds.clone();
+    Ok(guilds)
+}
+
+/// Pide los servidores del bot activo (`GET /users/@me/guilds`), actualiza la
+/// tabla `guilds` y devuelve id, nombre e icono.
+async fn sincronizar_guilds(
+    pool: &sqlx::SqlitePool,
+    state: &AppState,
+    base_url: Option<&str>,
+) -> Result<Vec<Guild>, String> {
+    let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
+    let token = crypto::decrypt(&bot.token_ciphertext)
+        .map_err(|e| format!("Error descifrando token: {}", e))?;
+    let remotos = crate::discord::fetch_current_user_guilds(&token, base_url).await?;
+    let guilds: Vec<Guild> = remotos
+        .into_iter()
+        .map(|g| Guild {
+            id: g.id.to_string(),
+            name: g.name,
+            icon: g.icon.map(|i| i.to_string()),
+            member_count: 0,
+            joined_at: None,
+        })
+        .collect();
+    db::replace_guilds(pool, &guilds)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(guilds)
 }
 
 #[tauri::command]
@@ -606,6 +635,70 @@ mod tests {
             .expect("BD en memoria");
         db::run_migrations(&pool).await.expect("migraciones");
         pool
+    }
+
+    #[tokio::test]
+    async fn lista_guilds_del_bot_activo_y_actualiza_la_tabla() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/users/@me/guilds"))
+            .and(header("authorization", "Bot token-guilds"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": "111", "name": "Uno", "icon": "abcdef0123456789abcdef0123456789",
+                 "owner": false, "permissions": "0", "features": []},
+                {"id": "222", "name": "Dos", "icon": null,
+                 "owner": true, "permissions": "8", "features": []}
+            ])))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let pool = pool_en_memoria().await;
+        // Un servidor viejo en caché debe desaparecer tras sincronizar.
+        db::upsert_guild(
+            &pool,
+            &db::GuildCache {
+                id: "999".into(),
+                name: "Viejo".into(),
+                icon: None,
+                member_count: 0,
+                joined_at: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let state = AppState::new();
+        let bot = BotConfig {
+            id: "1".into(),
+            name: "bot".into(),
+            token_ciphertext: crypto::encrypt("token-guilds").unwrap(),
+            avatar: None,
+            allowed_guilds: vec![],
+            created_at: String::new(),
+            updated_at: String::new(),
+        };
+        {
+            let mut c = state.config.lock().unwrap();
+            c.bots.push(bot);
+            c.active_bot_id = Some("1".into());
+        }
+
+        let addr = server.address().to_string();
+        let guilds = sincronizar_guilds(&pool, &state, Some(&addr))
+            .await
+            .expect("sincronizar");
+
+        assert_eq!(guilds.len(), 2);
+        assert_eq!(guilds[0].id, "111");
+        assert_eq!(guilds[0].name, "Uno");
+        assert!(guilds[0].icon.is_some());
+        assert_eq!(guilds[1].name, "Dos");
+        assert!(guilds[1].icon.is_none());
+
+        let en_bd = db::list_guilds_cached(&pool).await.unwrap();
+        assert_eq!(en_bd.len(), 2);
+        assert!(en_bd.iter().all(|g| g.id != "999"));
     }
 
     #[tokio::test]
