@@ -26,3 +26,8 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
   Causa: `log` no está en Cargo.toml; el proyecto usa `tracing`.
   Prevención: usa `tracing::error!` / `tracing::info!`; no añadas dependencias sin que la tarea lo pida.
   Prueba: `cargo check --manifest-path src-tauri/Cargo.toml`.
+
+## 2026-10-26 23:57 — Tarea bloqueada: Sincronizar los tipos TS de `src/types` con los tipos Rust
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: revisor_fail en la iteración 5: El tipo de `Config` coincide con las structs de `state.rs` y `db.rs`, y los valores por defecto del store igualan a los de Rust. Sin embargo, `SettingsView.tsx:38` llama a `saveConfig(formData)` con un objeto de 4 campos y `saveConfig` exige `Config` completo (`src/api/tauri.ts:83`), así que `tsc` (y con él `npm run build`) fallaría. No pude ejecutar `tsc` porque Bash está deshabilitado en esta sesión; la conclusión viene de leer el código. Además, en runtime `save_config` recibiría un JSON incompleto para la struct Rust `Config`, que no tiene `serde(default)` en la mayoría de campos.
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
