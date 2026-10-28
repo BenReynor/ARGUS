@@ -18,6 +18,7 @@ export const GuildRail: React.FC = () => {
   const loadGuildSettings = useStore((s) => s.loadGuildSettings);
   const showNotification = useShowNotification();
   const [guilds, setGuilds] = useState<Guild[]>([]);
+  const [tip, setTip] = useState<{ texto: string; top: number; left: number } | null>(null);
 
   useEffect(() => {
     listGuilds()
@@ -49,25 +50,52 @@ export const GuildRail: React.FC = () => {
     }
   };
 
+  // El riel hace scroll y recortaría un tooltip absoluto: se posiciona fixed junto al elemento.
+  const mostrar = (e: React.SyntheticEvent<HTMLElement>, texto: string) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setTip({ texto, top: r.top + r.height / 2, left: r.right });
+  };
+  const ocultar = () => setTip(null);
+  const evTip = (texto: string) => ({
+    onMouseEnter: (e: React.MouseEvent<HTMLElement>) => mostrar(e, texto),
+    onFocus: (e: React.FocusEvent<HTMLElement>) => mostrar(e, texto),
+    onMouseLeave: ocultar,
+    onBlur: ocultar,
+  });
+
   return (
     <nav className="guild-rail" aria-label="Servidores">
       {guilds.map((g) => (
         <button
           key={g.id}
           className={`rail-item ${g.id === activeGuildId ? 'active' : ''}`}
-          title={g.name}
           aria-label={g.name}
           aria-pressed={g.id === activeGuildId}
           onClick={() => elegir(g.id)}
+          {...evTip(g.name)}
         >
           <span className="rail-pill" />
           <Avatar src={guildIconUrl(g)} nombre={g.name} tamano={48} />
         </button>
       ))}
       <span className="rail-sep" />
-      <button className="rail-item rail-add" title="Añadir el bot a un servidor" aria-label="Añadir el bot a un servidor" onClick={invitar}>
+      <button
+        className="rail-item rail-add"
+        aria-label="Añadir el bot a un servidor"
+        onClick={invitar}
+        {...evTip('Añadir el bot a un servidor')}
+      >
         <span className="rail-add-icon"><Plus size={22} /></span>
       </button>
+      {tip && (
+        <span
+          role="tooltip"
+          className="rail-tooltip"
+          style={{ top: tip.top, left: tip.left } as React.CSSProperties}
+        >
+          {tip.texto}
+        </span>
+      )}
     </nav>
   );
 };

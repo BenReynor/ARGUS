@@ -33,14 +33,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <Avatar src={botActivo ? botAvatarUrl(botActivo) : null} nombre={botActivo?.name ?? 'ARGUS'} tamano={32} />
+        <span className="avatar-estado">
+          <Avatar src={botActivo ? botAvatarUrl(botActivo) : null} nombre={botActivo?.name ?? 'ARGUS'} tamano={32} />
+          <span
+            className={`punto-estado ${botStatus.connected ? 'status-online' : botStatus.running ? 'status-connecting' : 'status-offline'}`}
+            role="img"
+            aria-label={botStatus.connected ? 'Gateway en línea' : botStatus.running ? 'Gateway conectando' : 'Gateway desconectado'}
+          />
+        </span>
         <div className="bot-activo">
           <span className="bot-activo-nombre">{botActivo?.name ?? 'Sin bot activo'}</span>
           <span className="bot-status-mini">
-            <Circle
-              className={botStatus.connected ? 'status-online' : botStatus.running ? 'status-connecting' : 'status-offline'}
-              size={8}
-            />
             <span className="status-text">
               {botStatus.connected ? 'En línea' : botStatus.running ? 'Conectando...' : 'Desconectado'}
             </span>
@@ -48,7 +51,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
         </div>
       </div>
 
-      <nav className="sidebar-nav">
+      <nav className="sidebar-nav" aria-label="Secciones">
+        <span className="nav-categoria">Secciones</span>
         {tabs.map((tab) => {
           const Icon = iconMap[tab.icon];
           const isActive = activeTab === tab.id;
@@ -67,6 +71,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
 
       <div className="sidebar-footer">
         <div className="bot-control">
+          <span className="nav-categoria">Bots</span>
           <div className="bot-list">
             {config.bots.length === 0 && (
               <div className="bot-info"><Bot size={16} /><span>Sin bot activo</span></div>
@@ -88,7 +93,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
                   }}
                 >
                   {url ? (
-                    <img src={url} alt="" width={18} height={18} style={{ borderRadius: '50%' }} />
+                    <img src={url} alt="" width={18} height={18} className="nav-avatar" />
                   ) : (
                     <Bot size={18} />
                   )}
@@ -105,7 +110,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
                   await stopBot();
                 } else {
                   if (!hasToken) {
-                    alert('Configura el token en Ajustes');
+                    showNotification('Añade un bot en Config para encenderlo', 'warning');
                     return;
                   }
                   await startBot();

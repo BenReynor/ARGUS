@@ -70,6 +70,32 @@
 .rail-item:hover .rail-pill { transform: translateY(-50%) scaleY(1); }
 .rail-item.active .rail-pill { height: 40px; transform: translateY(-50%) scaleY(1); }
 
+/* Tooltip con el nombre completo del servidor */
+.rail-tooltip {
+  position: fixed;
+  margin-left: var(--sp-3);
+  z-index: 20;
+  max-width: 240px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  line-height: 1.3;
+  white-space: normal;
+  text-align: left;
+  pointer-events: none;
+  transform: translateY(-50%);
+  animation: rail-tip var(--dur) var(--ease);
+}
+
+@keyframes rail-tip {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .rail-sep {
   width: 32px;
   height: 2px;
@@ -107,10 +133,44 @@
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  min-height: 52px;
-  padding: var(--sp-3);
+  min-height: var(--header-h, 48px);
+  padding: 0 var(--sp-3);
   border-bottom: var(--border-w) solid var(--border);
   box-shadow: var(--shadow-1);
+}
+
+/* Avatar con punto de estado del Gateway (10px, borde del color de fondo) */
+.avatar-estado {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.punto-estado {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 10px;
+  height: 10px;
+  box-sizing: content-box;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Categorías: mayúsculas, pequeñas y apagadas */
+.nav-categoria {
+  padding: var(--sp-2) var(--sp-3) var(--sp-1);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.nav-avatar {
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 .bot-activo {
@@ -153,7 +213,10 @@
   align-items: center;
   gap: var(--sp-3);
   width: 100%;
-  padding: var(--sp-2) var(--sp-3);
+  min-height: 32px;
+  padding: var(--sp-1) var(--sp-3);
+  font-weight: var(--fw-medium);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -199,7 +262,8 @@
   align-items: center;
   justify-content: center;
   gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
+  height: var(--control-h);
+  padding: 0 var(--sp-3);
   border: 0;
   border-radius: var(--radius-sm);
   background: var(--accent);
@@ -231,7 +295,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-4);
-  min-height: 52px;
+  min-height: var(--header-h, 48px);
   padding: 0 var(--sp-4);
   border-bottom: var(--border-w) solid var(--border);
   box-shadow: var(--shadow-1);
@@ -269,7 +333,24 @@
   font-size: var(--fs-xs);
 }
 
-.status-item label { color: var(--text-3); }
+.header-left,
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.header-right { gap: var(--sp-4); }
+.header-icono { flex-shrink: 0; color: var(--text-3); }
+.status-item .num { font-variant-numeric: tabular-nums; }
+
+.status-guild {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .main-content {
   flex: 1;

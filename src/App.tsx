@@ -10,6 +10,7 @@ import { RolesView } from './components/RolesView';
 import { SettingsView } from './components/SettingsView';
 import { LogsView } from './components/LogsView';
 import { Notification } from './components/Notification';
+import { LayoutDashboard, Hash, Users, Shield, Terminal, Settings } from 'lucide-react';
 import { aplicarTema } from './temas';
 import { useBotStatus, useShowNotification } from './store/useStore';
 import { getConfig, getBotStatus, refreshServerMap, getServerMap, onMapUpdated, onSyncProgress, onBotStatusChange } from './api/tauri';
@@ -76,7 +77,10 @@ function App() {
   ];
 
   const activeTab = useStore((s) => s.activeTab);
-  const tituloSeccion = tabs.find((t) => t.id === activeTab)?.label ?? 'Panel';
+  const seccion = tabs.find((t) => t.id === activeTab) ?? tabs[0];
+  const iconosSeccion: Record<string, any> = {
+    'layout-dashboard': LayoutDashboard, hash: Hash, users: Users, shield: Shield, terminal: Terminal, settings: Settings,
+  };
 
   const renderView = () => {
     switch (activeTab) {
@@ -95,7 +99,7 @@ function App() {
       <GuildRail />
       <Sidebar tabs={tabs} />
       <div className="main-layout">
-        <Header titulo={tituloSeccion} />
+        <Header titulo={seccion.label} icono={iconosSeccion[seccion.icon]} />
         <main className="main-content">
           {renderView()}
         </main>
