@@ -231,3 +231,222 @@
 [data-tema="datos"] * {
   transition-timing-function: linear;
 }
+
+/* ───────── anime: tinta, cel-shading, sombras planas que se hunden ───────── */
+[data-tema="anime"] .ui-card,
+[data-tema="anime"] .ui-btn,
+[data-tema="anime"] .ui-control,
+[data-tema="anime"] .ui-badge {
+  border: var(--border-w) solid var(--text);
+}
+[data-tema="anime"] .ui-card {
+  box-shadow: var(--shadow-2);
+}
+[data-tema="anime"] .ui-btn {
+  border-radius: 999px;
+  box-shadow: var(--shadow-1);
+  font-weight: var(--fw-bold);
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+[data-tema="anime"] .ui-btn:hover {
+  transform: translateY(-2px);
+}
+[data-tema="anime"] .ui-btn:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--text);
+}
+[data-tema="anime"] .ui-badge {
+  border-radius: 999px;
+  font-weight: var(--fw-bold);
+}
+[data-tema="anime"] .page-title::after,
+[data-tema="anime"] .ui-card__titulo::after {
+  content: " ✦";
+  color: var(--accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-tema="anime"] .ui-btn { transition: none; }
+  [data-tema="anime"] .ui-btn:hover { transform: none; }
+}
+
+/* ───────── manga: viñetas, tramas de puntos, bocadillos ───────── */
+[data-tema="manga"] .ui-card,
+[data-tema="manga"] .ui-btn,
+[data-tema="manga"] .ui-control,
+[data-tema="manga"] table td,
+[data-tema="manga"] table th {
+  border: var(--border-w) solid var(--text);
+  border-radius: 0;
+}
+[data-tema="manga"] .ui-card {
+  box-shadow: var(--shadow-1);
+}
+[data-tema="manga"] .page-title,
+[data-tema="manga"] .ui-card__titulo {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+}
+[data-tema="manga"] .header,
+[data-tema="manga"] .ui-card__titulo {
+  position: relative;
+  isolation: isolate;
+}
+[data-tema="manga"] .header::before,
+[data-tema="manga"] .ui-card__titulo::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(var(--text) 1px, transparent 1.2px);
+  background-size: 6px 6px;
+  opacity: 0.12;
+}
+[data-tema="manga"] .ui-btn--primario {
+  background: var(--text);
+  color: var(--surface);
+}
+[data-tema="manga"] .ui-btn--primario:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+[data-tema="manga"] .ui-btn:active {
+  transform: translate(2px, 2px);
+}
+[data-tema="manga"] [role="tooltip"],
+[data-tema="manga"] .ui-tooltip {
+  position: absolute;
+  background: var(--surface);
+  color: var(--text);
+  border: var(--border-w) solid var(--text);
+  border-radius: 18px;
+}
+[data-tema="manga"] [role="tooltip"]::after,
+[data-tema="manga"] .ui-tooltip::after {
+  content: "";
+  position: absolute;
+  bottom: -9px;
+  left: 18px;
+  width: 14px;
+  height: 14px;
+  background: var(--surface);
+  border-right: var(--border-w) solid var(--text);
+  border-bottom: var(--border-w) solid var(--text);
+  transform: rotate(45deg);
+}
+
+/* ───────── glass: fondo de luz y paneles de vidrio con respaldo sólido ───────── */
+[data-tema="glass"] body,
+[data-tema="glass"] .app {
+  background: var(--fondo-app);
+}
+[data-tema="glass"] .ui-card,
+[data-tema="glass"] .sidebar,
+[data-tema="glass"] .header {
+  background: var(--surface);
+  border: 1px solid var(--glass-borde);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+}
+@supports (backdrop-filter: blur(1px)) {
+  [data-tema="glass"] .ui-card,
+  [data-tema="glass"] .sidebar,
+  [data-tema="glass"] .header {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  }
+}
+[data-tema="glass"] table {
+  background: var(--surface);
+}
+[data-tema="glass"] .ui-btn--secundario {
+  background: var(--surface);
+  border: 1px solid var(--glass-borde);
+}
+
+/* ───────── retro: bloques, píxeles, pasos ───────── */
+[data-tema="retro"] * {
+  border-radius: 0;
+}
+[data-tema="retro"] img,
+[data-tema="retro"] svg,
+[data-tema="retro"] .ui-avatar {
+  image-rendering: pixelated;
+}
+[data-tema="retro"] .ui-card,
+[data-tema="retro"] .ui-btn,
+[data-tema="retro"] .ui-control,
+[data-tema="retro"] .sidebar {
+  border: var(--border-w) solid var(--border-strong);
+  box-shadow: var(--shadow-1);
+}
+[data-tema="retro"] .ui-btn {
+  font-family: var(--font-display);
+  font-size: 12px;
+  box-shadow: var(--shadow-1), inset 2px 2px 0 var(--surface-hover), inset -2px -2px 0 var(--bg);
+}
+[data-tema="retro"] .ui-btn:active {
+  box-shadow: inset 2px 2px 0 var(--bg), inset -2px -2px 0 var(--surface-hover);
+  transform: translate(2px, 2px);
+}
+[data-tema="retro"] .page-title,
+[data-tema="retro"] .ui-card__titulo {
+  font-family: var(--font-display);
+  font-size: 14px;
+}
+[data-tema="retro"] .nav-item.active::before {
+  content: "▶ ";
+  animation: rasgo-cursor 1s steps(2, end) infinite;
+}
+[data-tema="retro"] .ui-spinner {
+  animation-timing-function: steps(8);
+}
+@keyframes rasgo-cursor {
+  50% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-tema="retro"] .nav-item.active::before,
+  [data-tema="retro"] .ui-spinner { animation: none; }
+}
+
+/* ───────── brutalista: bordes negros, sombras duras que se desplazan ───────── */
+[data-tema="brutalista"] .ui-card,
+[data-tema="brutalista"] .ui-btn,
+[data-tema="brutalista"] .ui-control,
+[data-tema="brutalista"] .ui-badge {
+  border: var(--border-w) solid var(--text);
+  border-radius: 0;
+}
+[data-tema="brutalista"] .ui-card {
+  box-shadow: var(--shadow-1);
+}
+[data-tema="brutalista"] .ui-btn {
+  box-shadow: var(--shadow-1);
+  transition: transform var(--dur) linear, box-shadow var(--dur) linear;
+}
+[data-tema="brutalista"] .ui-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-2);
+}
+[data-tema="brutalista"] .ui-btn:active {
+  transform: translate(4px, 4px);
+  box-shadow: 0 0 0 var(--text);
+}
+[data-tema="brutalista"] .page-title {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+[data-tema="brutalista"] table th {
+  background: var(--text);
+  color: var(--surface);
+  text-transform: uppercase;
+}
+[data-tema="brutalista"] table td,
+[data-tema="brutalista"] table th {
+  border: var(--border-w) solid var(--text);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-tema="brutalista"] .ui-btn { transition: none; }
+  [data-tema="brutalista"] .ui-btn:hover { transform: none; }
+}
