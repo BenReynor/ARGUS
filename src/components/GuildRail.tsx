@@ -4,7 +4,7 @@ import { useStore, useConfig, useActiveGuildId, useSetActiveGuildId, useLoadGuil
 import { listGuilds, setActiveGuild, inviteUrl } from '../api/tauri';
 import type { Guild } from '../api/tauri';
 import { Avatar } from './ui';
-import { Plus } from 'lucide-react';
+import { Plus, RefreshCw, AlertTriangle } from 'lucide-react';
 
 const guildIconUrl = (g: Guild) =>
   g.icon ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64` : null;
@@ -20,11 +20,44 @@ export const GuildRail: React.FC = () => {
   const [guilds, setGuilds] = useState<Guild[]>([]);
   const [tip, setTip] = useState<{ texto: string; top: number; left: number } | null>(null);
 
-  useEffect(() => {
+  const [error, setError] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(false);
+
+  // Discord limita GET /users/@me/guilds a 1 por segundo: nunca dos a la vez y,
+  // al volver a la ventana, como mucho una cada 10 s (el botón no espera).
+  const enCurso = React.useRef(false);
+  const ultima = React.useRef(0);
+  const cargar = React.useCallback((forzar: boolean = true) => {
+    if (!config.active_bot_id) {
+      setGuilds([]);
+      setError(null);
+      return;
+    }
+    if (enCurso.current || (!forzar && Date.now() - ultima.current < 10_000)) return;
+    enCurso.current = true;
+    ultima.current = Date.now();
+    setCargando(true);
     listGuilds()
-      .then(setGuilds)
-      .catch(() => setGuilds([]));
+      .then((lista) => {
+        setGuilds(lista);
+        setError(null);
+      })
+      .catch((e) => setError(typeof e === 'string' ? e : 'No se pudieron leer los servidores del bot'))
+      .finally(() => {
+        enCurso.current = false;
+        setCargando(false);
+      });
   }, [config.active_bot_id]);
+
+  // Al arrancar, al cambiar de bot y al volver a la ventana (p. ej. después de
+  // invitar el bot desde el navegador): antes solo se pedía una vez y un
+  // servidor nuevo no aparecía hasta reiniciar la app.
+  useEffect(() => {
+    cargar();
+    const alVolver = () => cargar(false);
+    window.addEventListener('focus', alVolver);
+    return () => window.removeEventListener('focus', alVolver);
+  }, [cargar]);
 
   // El panel y los ajustes del servidor se recargan al cambiar de servidor o de bot.
   useEffect(() => {
@@ -78,7 +111,26 @@ export const GuildRail: React.FC = () => {
           <Avatar src={guildIconUrl(g)} nombre={g.name} tamano={48} />
         </button>
       ))}
+      {error && (
+        <button
+          className="rail-item rail-error"
+          aria-label={`Error al leer los servidores: ${error}. Pulsa para reintentar.`}
+          onClick={() => cargar()}
+          {...evTip(`${error} — pulsa para reintentar`)}
+        >
+          <span className="rail-add-icon"><AlertTriangle size={22} /></span>
+        </button>
+      )}
       <span className="rail-sep" />
+      <button
+        className="rail-item rail-add"
+        aria-label="Actualizar la lista de servidores"
+        onClick={() => cargar()}
+        disabled={cargando || !config.active_bot_id}
+        {...evTip(cargando ? 'Actualizando servidores…' : 'Actualizar la lista de servidores')}
+      >
+        <span className="rail-add-icon"><RefreshCw size={20} className={cargando ? 'rail-girando' : undefined} /></span>
+      </button>
       <button
         className="rail-item rail-add"
         aria-label="Añadir el bot a un servidor"

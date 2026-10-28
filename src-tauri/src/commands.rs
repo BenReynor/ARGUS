@@ -491,17 +491,36 @@ pub async fn get_server_map(state: State<'_, AppState>) -> Result<Option<ServerM
 #[tauri::command]
 pub async fn refresh_server_map(state: State<'_, AppState>) -> Result<ServerMap, String> {
     let guild_id = require_active_guild(&state)?;
+    let channels = list_channels(state.clone(), guild_id.clone()).await?;
+    let roles = list_roles(state.clone(), guild_id.clone()).await?;
+    // Sin el intent de miembros Discord rechaza la lista: el resto del mapa
+    // sigue siendo útil, así que no se aborta (el aviso del intent ya lo explica).
+    let members = match list_members(state.clone(), guild_id.clone()).await {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::warn!("No se pudieron leer los miembros: {e}");
+            Vec::new()
+        }
+    };
+    // Nombre e icono reales (de la lista de servidores del bot), no inventados.
+    let conocido = state
+        .config
+        .lock()
+        .unwrap()
+        .guilds_cache
+        .iter()
+        .find(|g| g.id == guild_id)
+        .cloned();
     let guild = Guild {
         id: guild_id.clone(),
-        name: format!("Servidor {}", guild_id),
-        member_count: 20,
-        icon: None,
-        joined_at: Some(chrono::Utc::now().to_rfc3339()),
+        name: conocido
+            .as_ref()
+            .map(|g| g.name.clone())
+            .unwrap_or_else(|| "Servidor".to_string()),
+        member_count: members.len() as i64,
+        icon: conocido.and_then(|g| g.icon),
+        joined_at: None,
     };
-
-    let channels = list_channels(state.clone(), guild_id.clone()).await?;
-    let members = list_members(state.clone(), guild_id.clone()).await?;
-    let roles = list_roles(state.clone(), guild_id.clone()).await?;
 
     let mut categories = std::collections::HashMap::new();
     for channel in &channels {

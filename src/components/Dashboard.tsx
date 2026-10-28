@@ -50,7 +50,8 @@ export const Dashboard: React.FC = () => {
     };
   }, []);
 
-  const canales = serverMap?.channels.length ?? 0;
+  // Sin categorías (tipo 4), igual que la vista Canales.
+  const canales = serverMap?.channels.filter((c) => c.channel_type !== 4).length ?? 0;
   const roles = serverMap?.roles.length ?? 0;
   const miembros = serverMap?.members.filter((m) => !m.bot).length ?? 0;
 

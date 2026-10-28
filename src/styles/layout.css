@@ -68,6 +68,10 @@
 }
 
 .rail-item:hover .rail-pill { transform: translateY(-50%) scaleY(1); }
+.rail-error .rail-add-icon { color: var(--danger); }
+.rail-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.rail-girando { animation: rail-girar 0.9s linear infinite; }
+@keyframes rail-girar { to { transform: rotate(360deg); } }
 .rail-item.active .rail-pill { height: 40px; transform: translateY(-50%) scaleY(1); }
 
 /* Tooltip con el nombre completo del servidor */

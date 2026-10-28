@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { useActiveGuildId, useGuildPanel, useLoadGuildPanel, useServerMap } from '../store/useStore';
-import { Cargando, EstadoVacio, ErrorPanel } from './ui';
+import { useStore, useActiveGuildId, useGuildPanel, useLoadGuildPanel, useServerMap } from '../store/useStore';
+import { Button, Cargando, EstadoVacio, ErrorPanel } from './ui';
 import './Vistas.css';
 
 /** Muestra el estado cargando/error/vacío común de Canales, Roles y Miembros; si hay datos, pinta los hijos. */
@@ -9,6 +9,7 @@ export const EstadoVista: React.FC<{ children: React.ReactNode }> = ({ children 
   const guildPanel = useGuildPanel();
   const loadGuildPanel = useLoadGuildPanel();
   const serverMap = useServerMap();
+  const refreshServerMap = useStore((s) => s.refreshServerMap);
 
   if (!activeGuildId) {
     return <EstadoVacio titulo="Ningún servidor seleccionado" descripcion="Elige un servidor en la columna de la izquierda para ver sus datos." />;
@@ -18,7 +19,11 @@ export const EstadoVista: React.FC<{ children: React.ReactNode }> = ({ children 
   }
   if (guildPanel.loading) return <Cargando lineas={5} />;
   if (!serverMap) {
-    return <EstadoVacio titulo="Sin datos del servidor" descripcion="El mapa del servidor aún no se ha sincronizado. Espera unos segundos o vuelve a abrir el servidor." />;
+    return (
+      <EstadoVacio titulo="Cargando los datos del servidor" descripcion="Se leen de Discord al elegir el servidor. Si no aparecen, pulsa Cargar de nuevo (el motivo queda en Logs).">
+        <Button variante="secundario" onClick={() => { void refreshServerMap(); }}>Cargar de nuevo</Button>
+      </EstadoVacio>
+    );
   }
   return <>{children}</>;
 };

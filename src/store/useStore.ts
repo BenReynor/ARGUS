@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { guildInfo, botPermissions, getGuildSettings } from '../api/tauri';
+import { guildInfo, botPermissions, getGuildSettings, refreshServerMap as cargarMapaRest, setActiveGuild as fijarGuildBackend } from '../api/tauri';
 import type { GuildSettings, Config, UiSettings, BotStatus, ServerMap, Channel, Member, Role, Guild } from '../types';
 
 /** Datos del servidor activo y permisos del bot en él. */
@@ -189,7 +189,20 @@ export const useStore = create<AppState>()(
           set({ guildPanel: { loading: false, guild: null, permissions: null, error: null } });
           return;
         }
-        set({ guildPanel: { loading: true, guild: null, permissions: null, error: null } });
+        // El mapa de otro servidor no debe verse mientras carga el nuevo.
+        set({ guildPanel: { loading: true, guild: null, permissions: null, error: null }, serverMap: null });
+        // La UI recuerda el servidor entre sesiones pero el backend arranca sin
+        // ninguno: se le informa siempre (idempotente) antes de pedir datos, o
+        // todo fallaba con «No hay servidor seleccionado».
+        try {
+          await fijarGuildBackend(guildId);
+        } catch (e) {
+          set({ guildPanel: { loading: false, guild: null, permissions: null, error: String(e) } });
+          return;
+        }
+        // Canales, roles y miembros por REST al elegir el servidor: antes solo
+        // llegaban con el Gateway encendido y las vistas quedaban vacías.
+        void get().refreshServerMap();
         try {
           const [guild, permissions] = await Promise.all([guildInfo(guildId), botPermissions(guildId)]);
           if (get().activeGuildId !== guildId) return; // el usuario cambió de servidor
@@ -223,7 +236,14 @@ export const useStore = create<AppState>()(
       serverMap: null,
       setServerMap: (map) => set({ serverMap: map }),
       refreshServerMap: async () => {
-        // Invocar comando tauri
+        const guildId = get().activeGuildId;
+        if (!guildId) return;
+        try {
+          const map = await cargarMapaRest();
+          if (get().activeGuildId === guildId) set({ serverMap: map });
+        } catch (e) {
+          get().addLog(`[WARN] No se pudieron leer los datos del servidor: ${String(e)}`);
+        }
       },
 
       // UI state
