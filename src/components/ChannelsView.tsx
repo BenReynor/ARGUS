@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useServerMap, useSetSelectedChannel, useSelectedChannel, useAddLog, useShowNotification, useGuildPanel, motivoPermisoAusente } from '../store/useStore';
 import { sendMessage } from '../api/tauri';
 import { Button, Badge, EstadoVacio } from './ui';
-import { EstadoVista, BuscadorVista } from './EstadoVista';
+import { EstadoVista, BuscadorVista, CabeceraVista } from './EstadoVista';
 import { Hash, Volume2, Folder, Megaphone, Radio, MessagesSquare, Send, Copy, Search, ChevronRight } from 'lucide-react';
 import { CHANNEL_TYPE_LABELS } from '../types';
 import type { Channel } from '../types';
@@ -69,18 +69,17 @@ export const ChannelsView: React.FC = () => {
 
   return (
     <div className="vista channels-view">
-      <div className="vista__cabecera">
-        <h2>Canales del servidor <span className="vista__cuenta">{total}</span></h2>
+      <CabeceraVista titulo="Canales" cuenta={total}>
         <BuscadorVista valor={search} onCambio={setSearch} placeholder="Buscar canales…" icono={<Search size={16} />} />
-      </div>
+      </CabeceraVista>
 
       <EstadoVista>
         {total === 0 ? (
-          <EstadoVacio titulo="Este servidor no tiene canales" descripcion="Cuando se creen canales aparecerán aquí." />
+          <EstadoVacio titulo="Este servidor no tiene canales" descripcion="Crea un canal en Discord y pulsa Resincronizar en el Panel para verlo aquí." />
         ) : grupos.length === 0 ? (
           <EstadoVacio titulo="Sin resultados" descripcion={`Ningún canal coincide con «${search}».`} />
         ) : (
-          <div className="vista__lista" role="tree" aria-label="Canales por categoría">
+          <div className="vista__lista vista__tarjeta" role="tree" aria-label="Canales por categoría">
             {grupos.map((g) => {
               const abierta = !!search || !cerradas[g.id];
               return (
@@ -91,7 +90,7 @@ export const ChannelsView: React.FC = () => {
                   >
                     <ChevronRight size={14} />
                     <span>{g.nombre}</span>
-                    <span className="vista__cuenta">{g.canales.length}</span>
+                    <span className="vista__cuenta num">{g.canales.length}</span>
                   </button>
                   {abierta && (
                     <div className="arbol__canales" role="group">
@@ -117,9 +116,9 @@ export const ChannelsView: React.FC = () => {
         )}
 
         {selectedChannel && (
-          <div className="vista__panel channel-detail-panel">
+          <div className="vista__panel vista__tarjeta channel-detail-panel">
             <div className="vista__cabecera">
-              <h3>#{selectedChannel.name}</h3>
+              <h3 className="vista__titulo-panel">#{selectedChannel.name}</h3>
               <Button variante="ghost" tamano="sm" onClick={() => setSelectedChannel(null)}>Cerrar</Button>
             </div>
             {selectedChannel.channel_type === 0 || selectedChannel.channel_type === 5 ? (

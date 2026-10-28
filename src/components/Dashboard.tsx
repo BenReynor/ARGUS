@@ -3,6 +3,7 @@ import { useServerMap, useBotStatus, useAddLog, useShowNotification, useSetActiv
 import { resyncMap, onSyncProgress } from '../api/tauri';
 import type { SyncProgress } from '../api/tauri';
 import { Avatar, Badge, Button, Card, Cargando, EstadoVacio, ErrorPanel } from './ui';
+import { CabeceraVista } from './EstadoVista';
 import './Dashboard.css';
 
 interface Actividad {
@@ -90,7 +91,7 @@ export const Dashboard: React.FC = () => {
   // Estados sin contenido: sin bot, sin servidor, cargando, error.
   if (!config.active_bot_id) {
     return (
-      <div className="dash">
+      <div className="vista dash">
         <EstadoVacio titulo="No hay ningún bot activo" descripcion="Registra un bot con su token y elígelo como activo para ver sus servidores.">
           <Button onClick={() => setActiveTab('settings')}>Ir a Ajustes</Button>
         </EstadoVacio>
@@ -99,7 +100,7 @@ export const Dashboard: React.FC = () => {
   }
   if (!activeGuildId) {
     return (
-      <div className="dash">
+      <div className="vista dash">
         <EstadoVacio titulo="Ningún servidor seleccionado" descripcion="Elige un servidor en la columna de la izquierda. Si no aparece ninguno, invita al bot desde Ajustes.">
           <Button variante="secundario" onClick={() => setActiveTab('settings')}>Invitar al bot</Button>
         </EstadoVacio>
@@ -108,14 +109,14 @@ export const Dashboard: React.FC = () => {
   }
   if (guildPanel.loading && !guildPanel.guild) {
     return (
-      <div className="dash">
+      <div className="vista dash">
         <Card><Cargando lineas={4} /></Card>
       </div>
     );
   }
   if (guildPanel.error) {
     return (
-      <div className="dash">
+      <div className="vista dash">
         <ErrorPanel mensaje={guildPanel.error} onReintentar={() => { void loadGuildPanel(activeGuildId); }} />
       </div>
     );
@@ -127,17 +128,23 @@ export const Dashboard: React.FC = () => {
   const enVivo = botStatus.connected;
 
   return (
-    <div className="dash">
+    <div className="vista dash">
+      <CabeceraVista titulo="Panel del servidor">
+        <Badge tono={enVivo ? 'exito' : 'peligro'}>{enVivo ? '● Gateway en vivo' : '○ Gateway desconectado'}</Badge>
+        <Button variante="secundario" cargando={resyncing} onClick={handleResync}>
+          {resyncing ? 'Resincronizando…' : 'Resincronizar'}
+        </Button>
+      </CabeceraVista>
+
       <Card>
         <div className="dash__cabecera">
           <Avatar src={icono} nombre={guild?.name ?? 'Servidor'} tamano={56} />
           <div className="dash__nombre">
-            <h2>{guild?.name ?? 'Servidor'}</h2>
+            <h3>{guild?.name ?? 'Servidor'}</h3>
             {guild?.member_count != null && (
               <span className="dash__kpi-etiqueta">~{guild.member_count.toLocaleString()} miembros (aproximado)</span>
             )}
           </div>
-          <Badge tono={enVivo ? 'exito' : 'peligro'}>{enVivo ? '● Gateway en vivo' : '○ Gateway desconectado'}</Badge>
         </div>
       </Card>
 
@@ -179,27 +186,22 @@ export const Dashboard: React.FC = () => {
       </Card>
 
       <Card titulo="Sincronización">
-        <div className="dash__sync">
-          <Button variante="secundario" cargando={resyncing} onClick={handleResync}>
-            {resyncing ? 'Resincronizando…' : 'Resincronizar'}
-          </Button>
-          <div className="dash__progreso" aria-live="polite">
-            {resyncing && progress ? (
-              <>
-                <progress max={progress.total} value={progress.step} />
-                <span>Paso {progress.step}/{progress.total}: {progress.message}</span>
-              </>
-            ) : (
-              <span className="dash__kpi-etiqueta">Repite la sincronización completa del servidor.</span>
-            )}
-          </div>
+        <div className="dash__progreso" aria-live="polite">
+          {resyncing && progress ? (
+            <>
+              <progress max={progress.total} value={progress.step} />
+              <span className="num">Paso {progress.step}/{progress.total}: {progress.message}</span>
+            </>
+          ) : (
+            <span className="dash__kpi-etiqueta">Pulsa «Resincronizar» (arriba a la derecha) para repetir la sincronización completa del servidor.</span>
+          )}
         </div>
       </Card>
 
       <Card titulo="Actividad reciente">
         {botStatus.last_error && <Badge tono="peligro">{botStatus.last_error}</Badge>}
         {actividad.length === 0 ? (
-          <span className="dash__kpi-etiqueta">Aún no hay cambios en el mapa.</span>
+          <span className="dash__kpi-etiqueta">Aún no hay cambios en el mapa. Pulsa «Resincronizar» para comprobar si el servidor ha cambiado.</span>
         ) : (
           <ul className="dash__actividad">
             {actividad.map((a, i) => (

@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useServerMap, useAddLog, useShowNotification, useConfig, useGuildPanel, motivoPermisoAusente } from '../store/useStore';
 import { sendDM, addRole, removeRole, timeoutMember } from '../api/tauri';
 import { Avatar, Badge, Button, EstadoVacio } from './ui';
-import { EstadoVista, BuscadorVista } from './EstadoVista';
+import { EstadoVista, BuscadorVista, CabeceraVista } from './EstadoVista';
 import { MoreVertical, Search } from 'lucide-react';
 import type { Member, Role } from '../types';
 
@@ -112,26 +112,25 @@ export const MembersView: React.FC = () => {
 
   return (
     <div className="vista members-view">
-      <div className="vista__cabecera">
-        <h2>Miembros <span className="vista__cuenta">{total}</span></h2>
+      <CabeceraVista titulo="Miembros" cuenta={total}>
         <BuscadorVista valor={search} onCambio={setSearch} placeholder="Buscar miembros…" icono={<Search size={16} />} />
-      </div>
+      </CabeceraVista>
 
       <EstadoVista>
         {total === 0 ? (
-          <EstadoVacio titulo="No hay miembros cargados" descripcion="El bot necesita el permiso de ver miembros para listarlos. Prueba a sincronizar de nuevo." />
+          <EstadoVacio titulo="No hay miembros cargados" descripcion="Activa el intent de miembros del bot en el portal de desarrolladores de Discord y pulsa Resincronizar en el Panel." />
         ) : miembros.length === 0 ? (
-          <EstadoVacio titulo="Sin resultados" descripcion={`Ningún miembro coincide con «${search}».`} />
+          <EstadoVacio titulo="Sin resultados" descripcion={`Ningún miembro coincide con «${search}». Prueba con otro nombre o borra la búsqueda.`} />
         ) : (
-          <ul className="vista__lista" aria-label="Miembros">
+          <ul className="vista__lista vista__tarjeta" aria-label="Miembros">
             {miembros.map((m) => {
               const nombre = m.nickname || m.username;
               return (
                 <li key={m.user_id} className="vista__fila">
                   <Avatar src={m.avatar} nombre={nombre} tamano={32} />
                   <div className="vista__fila-cuerpo">
-                    <span className="vista__fila-nombre">{nombre}</span>
-                    {m.nickname && <span className="vista__fila-sub">@{m.username}</span>}
+                    <span className="vista__fila-nombre vista__recorte">{nombre}</span>
+                    {m.nickname && <span className="vista__fila-sub vista__recorte">@{m.username}</span>}
                   </div>
                   <div className="vista__etiquetas">
                     {m.bot && <Badge tono="acento">BOT</Badge>}

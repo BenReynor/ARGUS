@@ -1,9 +1,28 @@
 /* Canales, Roles y Miembros. Solo variables del contrato ui-tokens. */
 .vista { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-4); }
 .vista__cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
-.vista__cabecera h2 { font-family: var(--font-display); font-size: var(--fs-lg); font-weight: var(--fw-bold); }
-.vista__buscar { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-3); }
-.vista__buscar .ui-control { min-width: 220px; }
+.vista { min-width: 0; max-width: 100%; }
+.vista__cabecera h2 { margin: 0; font-family: var(--font-display); font-size: var(--fs-lg); font-weight: var(--fw-bold); }
+.vista__acciones { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-left: auto; }
+.vista__buscar { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-3); max-width: 100%; }
+.vista__buscar .ui-control { min-width: 0; width: 240px; max-width: 100%; }
+.vista__cuenta, .num { font-variant-numeric: tabular-nums; }
+.num { text-align: right; }
+.vista__titulo-panel { margin: 0; font-size: var(--fs-md); }
+.vista__recorte { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vista__solo-lector { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.vista__tarjeta { background: var(--surface); border: var(--border-w) solid var(--border); border-radius: var(--radius); padding: var(--sp-3); min-width: 0; }
+.vista__tarjeta .vista__fila { background: transparent; border-color: transparent; }
+.vista__tarjeta .vista__fila:hover { background: var(--surface-hover); }
+.vista__tabla-caja { padding: 0; overflow-x: auto; }
+.vista__tabla { width: 100%; border-collapse: collapse; }
+.vista__tabla th { text-align: left; color: var(--text-3); font-size: var(--fs-sm); font-weight: var(--fw-bold); padding: var(--sp-2) var(--sp-3); border-bottom: var(--border-w) solid var(--border); }
+.vista__tabla th.num { text-align: right; }
+.vista__tabla td { padding: var(--sp-2) var(--sp-3); border-bottom: var(--border-w) solid var(--border); vertical-align: middle; }
+.vista__tabla tbody tr:last-child td { border-bottom: 0; }
+.vista__tabla tbody tr:hover { background: var(--surface-hover); }
+.vista__tabla td:first-child { max-width: 0; width: 100%; }
+.vista__celda-rol { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
 .vista__cuenta { color: var(--text-3); font-size: var(--fs-sm); }
 .vista__nota { color: var(--text-2); font-size: var(--fs-sm); }
 
@@ -16,7 +35,7 @@
 .vista__fila-nombre { font-weight: var(--fw-bold); color: var(--text); }
 .vista__fila-sub { color: var(--text-3); font-size: var(--fs-sm); }
 .vista__fila-cuerpo { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-.vista__etiquetas { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.vista__etiquetas { display: flex; flex-wrap: wrap; gap: var(--sp-1); min-width: 0; }
 .vista__mono { font-family: var(--font-mono); font-size: var(--fs-sm); }
 
 /* Árbol de canales */
@@ -34,7 +53,7 @@
 .arbol__canal { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1) var(--sp-2); border-radius: var(--radius-sm); color: var(--text-2); cursor: pointer; background: transparent; border: 0; text-align: left; width: 100%; }
 .arbol__canal:hover { background: var(--surface-hover); color: var(--text); }
 .arbol__canal--activo { background: var(--accent-soft); color: var(--text); }
-.arbol__canal-nombre { flex: 1; }
+.arbol__canal-nombre { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vista__panel { display: flex; flex-direction: column; gap: var(--sp-2); }
 .vista__panel textarea { resize: vertical; }
 
