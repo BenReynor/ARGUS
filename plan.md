@@ -181,21 +181,21 @@ Si el bot tiene Administrador (o el permiso concreto), ARGUS puede gestionar tod
   criterio: comandos `set_channel_permission` (rol o miembro, bits permitidos y denegados) y `delete_channel_permission` con twilight; exigen «Gestionar roles» (o Administrador) y respetan la jerarquía para overwrites de rol; el mapa del canal refleja los overwrites nuevos; tests con el Discord falso
 - [x] Backend: moderación de miembros
   criterio: comandos `kick_member` (motivo), `ban_member` (motivo y días de mensajes a borrar 0–7), `unban_member`, `list_bans` y `set_nickname`; rechazan al dueño del servidor y a miembros cuyo rol más alto es igual o superior al del bot con un mensaje claro; el motivo va en el registro de auditoría (cabecera `X-Audit-Log-Reason` de twilight); tests con el Discord falso, incluidos dueño y jerarquía
-- [B] Backend: ajustes del servidor y registro de auditoría
+- [ ] Backend: ajustes del servidor y registro de auditoría
   criterio: comandos `get_guild_settings_discord` y `update_guild_discord` (nombre, descripción, nivel de verificación, filtro de contenido, notificaciones por defecto, canal del sistema, canal y tiempo AFK) que exigen «Gestionar servidor»; `audit_log` devuelve las últimas 50 entradas con acción, autor, objetivo, motivo y fecha legibles en español; tests con el Discord falso
-- [B] Backend: mensajes, invitaciones y webhooks
+- [ ] Backend: mensajes, invitaciones y webhooks
   criterio: comandos `channel_messages` (últimos 50, con autor y fecha), `delete_message`, `bulk_delete_messages` (2–100 y solo de menos de 14 días; los más antiguos se rechazan con explicación), `pin_message` / `unpin_message`, `create_invite` (caducidad y usos máximos) / `list_invites` / `delete_invite` y `list_webhooks` / `create_webhook` / `delete_webhook`, cada uno exigiendo su permiso; tests con el Discord falso
-- [B] Interfaz: diálogo de confirmación y gestión de canales
+- [ ] Interfaz: diálogo de confirmación y gestión de canales
   criterio: siguiendo las skills ui-tokens, estilo-discord y diseno-interfaces, existe un componente Dialogo reutilizable en src/components/ui (foco atrapado, Escape cierra, devuelve el foco) y una variante de confirmación peligrosa que pide escribir el nombre del elemento para borrarlo; ChannelsView permite crear (botón en la cabecera y en cada categoría), editar (nombre, tema, categoría, slowmode) y borrar canales y categorías; cada botón se desactiva con la explicación si falta el permiso; tras la acción la lista se actualiza y sale un toast; tsc y npm run build pasan
-- [B] Interfaz: gestión de roles
+- [ ] Interfaz: gestión de roles
   criterio: siguiendo las skills ui-tokens, estilo-discord y diseno-interfaces, RolesView permite crear y editar roles en un diálogo con nombre, selector de color, «mostrar por separado», «mencionable» y permisos agrupados (General, Miembros, Texto, Voz, Avanzado) con interruptores y un atajo «Administrador»; borrar con confirmación por nombre; subir/bajar posición; los roles iguales o superiores al del bot se ven bloqueados con la explicación de la jerarquía; tsc y npm run build pasan
-- [B] Interfaz: permisos de canal
+- [ ] Interfaz: permisos de canal
   criterio: siguiendo las skills ui-tokens y diseno-interfaces, al abrir un canal se ve su panel de permisos: lista de overwrites (roles y miembros) y, para cada uno, los permisos en tres estados (permitir / heredar / denegar); se pueden añadir roles o miembros y quitar overwrites; los cambios se guardan con un botón y se descartan con otro; tsc y npm run build pasan
-- [B] Interfaz: moderación de miembros
+- [ ] Interfaz: moderación de miembros
   criterio: siguiendo las skills ui-tokens y diseno-interfaces, el menú de cada miembro en MembersView añade cambiar apodo, expulsar y banear (diálogo con motivo y días de mensajes a borrar, confirmación); el dueño y los miembros por encima del bot muestran esas acciones desactivadas con la explicación; una pestaña «Baneados» lista los baneos con motivo y permite desbanear; tsc y npm run build pasan
-- [B] Interfaz: ajustes del servidor y auditoría
+- [ ] Interfaz: ajustes del servidor y auditoría
   criterio: siguiendo las skills ui-tokens, estilo-discord y diseno-interfaces, una nueva sección «Servidor» en la navegación permite editar nombre, descripción, nivel de verificación, filtro de contenido, notificaciones y canales del sistema/AFK (desplegables con los canales reales), con Guardar/Descartar; debajo, el registro de auditoría con filtro por tipo de acción; tsc y npm run build pasan
-- [B] Interfaz: mensajes, invitaciones y webhooks
+- [ ] Interfaz: mensajes, invitaciones y webhooks
   criterio: siguiendo las skills ui-tokens, estilo-discord y diseno-interfaces, al abrir un canal de texto se ven sus últimos mensajes (autor, fecha, contenido, adjuntos como enlace) con acciones borrar, fijar/desfijar y selección múltiple para borrado en bloque (avisando del límite de 14 días); el canal tiene además pestañas «Invitaciones» (crear con caducidad y usos, copiar enlace, borrar) y «Webhooks» (crear, copiar URL, borrar); tsc y npm run build pasan
 
 Verificación manual en tu servidor de pruebas (con el bot como Administrador):
