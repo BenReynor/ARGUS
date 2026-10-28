@@ -37,6 +37,18 @@ export const createChannel = (guildId: string, datos: DatosCanal) => invoke<Chan
 export const updateChannel = (guildId: string, channelId: string, datos: DatosCanal) =>
   invoke<Channel>('update_channel', { guildId, channelId, datos });
 export const deleteChannel = (guildId: string, channelId: string) => invoke<string>('delete_channel', { guildId, channelId });
+/** Campos editables de un rol; `permissions` es el campo de bits como texto. */
+export interface DatosRol {
+  name?: string | null;
+  color?: number | null;
+  hoist?: boolean | null;
+  mentionable?: boolean | null;
+  permissions?: string | null;
+}
+export const createRole = (guildId: string, datos: DatosRol) => invoke<Role>('create_role', { guildId, datos });
+export const updateRole = (guildId: string, roleId: string, datos: DatosRol) => invoke<Role>('update_role', { guildId, roleId, datos });
+export const deleteRole = (guildId: string, roleId: string) => invoke<string>('delete_role', { guildId, roleId });
+export const reorderRoles = (guildId: string, positions: [string, number][]) => invoke<string>('reorder_roles', { guildId, positions });
 export const sendDM = (userId: string, content: string) => invoke<string>('send_dm', { user_id: userId, content });
 export const getMemberInfo = (guildId: string, userId: string) => invoke<Member>('get_member_info', { guild_id: guildId, user_id: userId });
 export const addRole = (guildId: string, userId: string, roleId: string) => invoke<string>('add_role', { guild_id: guildId, user_id: userId, role_id: roleId });

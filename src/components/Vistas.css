@@ -131,3 +131,27 @@
 .logs__fila { display: flex; align-items: baseline; gap: var(--sp-2); padding: var(--sp-1) var(--sp-3); border-bottom: var(--border-w) solid var(--border); }
 .logs__hora { color: var(--text-3); flex: none; }
 .logs__texto { color: var(--text); overflow-wrap: anywhere; }
+
+/* Gestión de roles */
+.rol-aviso { display: flex; gap: var(--sp-2); align-items: flex-start; margin: 0; padding: var(--sp-3); background: var(--surface-2); border: var(--border-w) solid var(--border); border-radius: var(--radius); color: var(--text-2); font-size: var(--fs-sm); }
+.rol-aviso svg { flex: none; margin-top: 2px; }
+.rol-acciones { white-space: nowrap; text-align: right; }
+.rol-form { display: flex; flex-direction: column; gap: var(--sp-3); }
+.rol-form__fila { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.rol-form__color { display: flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-sm); color: var(--text-2); }
+.rol-form__color input { width: 48px; height: var(--control-h); padding: 0; background: var(--surface); border: var(--border-w) solid var(--border-strong); border-radius: var(--radius); cursor: pointer; }
+.rol-form__color input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.rol-form__admin { padding: var(--sp-2) var(--sp-3); border: var(--border-w) solid var(--danger); border-radius: var(--radius); }
+.rol-form__permisos { display: flex; flex-direction: column; gap: var(--sp-3); max-height: 40vh; overflow-y: auto; padding-right: var(--sp-2); }
+.rol-form__grupo { margin: 0; padding: var(--sp-2) var(--sp-3); border: var(--border-w) solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; gap: var(--sp-1); }
+.rol-form__grupo legend { padding: 0 var(--sp-2); font-weight: var(--fw-bold); color: var(--text-2); font-size: var(--fs-sm); }
+.interruptor { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-1) 0; cursor: pointer; }
+.interruptor__texto { display: flex; flex-direction: column; }
+.interruptor__ayuda { font-size: var(--fs-sm); color: var(--text-3); }
+.interruptor input[role='switch'] { appearance: none; flex: none; position: relative; width: 40px; height: 22px; margin: 0; border-radius: 11px; background: var(--border-strong); cursor: pointer; transition: background var(--dur) var(--ease); }
+.interruptor input[role='switch']::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface); transition: transform var(--dur) var(--ease); }
+.interruptor input[role='switch']:checked { background: var(--accent); }
+.interruptor input[role='switch']:checked::after { transform: translateX(18px); }
+.interruptor input[role='switch']:disabled { opacity: 0.5; cursor: not-allowed; }
+.interruptor input[role='switch']:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .interruptor input[role='switch'], .interruptor input[role='switch']::after { transition: none; } }
