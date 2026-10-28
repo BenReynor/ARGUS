@@ -1,6 +1,6 @@
 /* tema.css — estilo-anime (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
 
-:root[data-tema="anime"] {
+[data-tema="anime"] {
   --bg: #fff7fb;
   --surface: #ffffff;
   --surface-2: #ffeef7;
@@ -52,7 +52,7 @@
   --header-h: 60px;
 }
 
-:root[data-tema="anime"][data-modo="noche"] {
+[data-tema="anime"][data-modo="noche"] {
   --bg: #170f24;
   --surface: #21152f;
   --surface-2: #2a1b3d;

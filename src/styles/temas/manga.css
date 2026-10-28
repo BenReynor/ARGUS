@@ -1,6 +1,6 @@
 /* tema.css — estilo-manga (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
 
-:root[data-tema="manga"] {
+[data-tema="manga"] {
   --bg: #fbfaf7;
   --surface: #ffffff;
   --surface-2: #f1efe9;
@@ -52,7 +52,7 @@
   --header-h: 56px;
 }
 
-:root[data-tema="manga"][data-modo="noir"] {
+[data-tema="manga"][data-modo="noir"] {
   --bg: #0c0c0c;
   --surface: #141414;
   --surface-2: #1d1d1d;

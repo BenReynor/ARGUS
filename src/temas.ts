@@ -6,7 +6,6 @@ export interface TemaInfo {
   modoNombre?: string;
 }
 
-/** Los colores de muestra de cada tema viven en styles/temas/muestras.css (data-muestra). */
 export const TEMAS: TemaInfo[] = [
   { id: 'minimal', nombre: 'Minimal', modo: 'claro', modoNombre: 'Claro' },
   { id: 'discord', nombre: 'Discord' },

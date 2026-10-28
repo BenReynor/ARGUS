@@ -1,6 +1,6 @@
 /* tema.css — estilo-cyberpunk (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
 
-:root[data-tema="cyberpunk"] {
+[data-tema="cyberpunk"] {
   --bg: #05070d;
   --surface: #0b1020;
   --surface-2: #0f1629;

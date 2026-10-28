@@ -1,6 +1,6 @@
 /* tema.css — estilo-retro (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
 
-:root[data-tema="retro"] {
+[data-tema="retro"] {
   --bg: #1a1c2c;
   --surface: #333c57;
   --surface-2: #29366f;

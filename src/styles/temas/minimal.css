@@ -1,6 +1,6 @@
 /* tema.css — estilo-minimal (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
 
-:root[data-tema="minimal"] {
+[data-tema="minimal"] {
   --bg: #0b0b0c;
   --surface: #131316;
   --surface-2: #18181b;
@@ -52,7 +52,7 @@
   --header-h: 52px;
 }
 
-:root[data-tema="minimal"][data-modo="claro"] {
+[data-tema="minimal"][data-modo="claro"] {
   --bg: #fafafa;
   --surface: #ffffff;
   --surface-2: #f4f4f5;

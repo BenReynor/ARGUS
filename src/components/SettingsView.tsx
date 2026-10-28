@@ -325,32 +325,42 @@ export const SettingsView: React.FC = () => {
       </Seccion>
 
       <Seccion titulo="Apariencia" descripcion="Elige el tema y el modo de la interfaz. Se aplica al instante y se guarda.">
-        {TEMAS.map((t) => {
-          const activo = (config.ui_theme || 'discord') === t.id;
-          const variantes = [{ modo: '', nombre: 'Base', muestra: t.id }];
-          if (t.modo) variantes.push({ modo: t.modo, nombre: t.modoNombre ?? t.modo, muestra: `${t.id}-${t.modo}` });
-          return (
-            <div key={t.id} className="ajustes__fila">
-              <strong style={{ minWidth: 100 }}>{t.nombre}{activo ? ' (activo)' : ''}</strong>
-              {variantes.map((v) => {
-                const seleccionado = activo && (config.ui_mode || '') === v.modo;
-                return (
-                  <button
-                    key={v.modo || 'base'}
-                    className="btn-secondary muestra-tema"
-                    data-muestra={v.muestra}
-                    aria-pressed={seleccionado}
-                    title={`${t.nombre} · ${v.nombre}`}
-                    onClick={() => handleTheme(t.id, v.modo)}
-                  >
-                    <span className="muestra-punto" />
-                    {v.nombre}
-                  </button>
-                );
-              })}
-            </div>
-          );
-        })}
+        <div className="temas-rejilla" role="radiogroup" aria-label="Tema de la interfaz">
+          {TEMAS.flatMap((t) => {
+            const variantes = [{ modo: '', nombre: t.nombre }];
+            if (t.modo) variantes.push({ modo: t.modo, nombre: `${t.nombre} · ${t.modoNombre ?? t.modo}` });
+            return variantes.map((v) => {
+              const seleccionado = (config.ui_theme || 'discord') === t.id && (config.ui_mode || '') === v.modo;
+              return (
+                <button
+                  key={`${t.id}-${v.modo}`}
+                  type="button"
+                  role="radio"
+                  aria-checked={seleccionado}
+                  className="tema-opcion"
+                  onClick={() => handleTheme(t.id, v.modo)}
+                >
+                  <span className="tema-miniatura" data-tema={t.id} data-modo={v.modo || undefined} aria-hidden="true">
+                    <span className="sidebar tema-miniatura__lateral">
+                      <span className="nav-item active">Inicio</span>
+                      <span className="nav-item">Canales</span>
+                    </span>
+                    <span className="tema-miniatura__cuerpo">
+                      <span className="ui-card tema-miniatura__tarjeta">
+                        <span className="tema-miniatura__titulo">Servidor</span>
+                        <span className="ui-badge">En línea</span>
+                      </span>
+                      <span className="ui-btn ui-btn--primario ui-btn--sm">Acción</span>
+                    </span>
+                  </span>
+                  <span className="tema-opcion__nombre">
+                    {seleccionado && <CheckCircle size={14} aria-hidden="true" />} {v.nombre}{seleccionado ? ' (activo)' : ''}
+                  </span>
+                </button>
+              );
+            });
+          })}
+        </div>
       </Seccion>
 
       <Seccion titulo="General" descripcion="Comportamiento de la aplicación y servidor con el que arranca.">

@@ -101,24 +101,94 @@ button:disabled {
   border: 0;
 }
 
-/* Muestra de un tema: toma los colores de --m-* definidos en temas/muestras.css. */
-.muestra-tema {
-  background: var(--m-bg);
-  color: var(--m-text);
-  border: 2px solid transparent;
+/* Miniaturas de tema: UI real envuelta en data-tema, con sus propios tokens. */
+.temas-rejilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--sp-4);
 }
 
-.muestra-tema[aria-pressed='true'] {
-  border-color: var(--m-accent);
+.tema-opcion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  background: transparent;
+  color: var(--text);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-lg);
+  text-align: left;
+  cursor: pointer;
 }
 
-.muestra-punto {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--m-accent);
-  margin-right: var(--sp-2);
+.tema-opcion:hover { background: var(--surface-hover); }
+
+.tema-opcion[aria-checked='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.tema-opcion__nombre {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-weight: var(--fw-medium);
+}
+
+.tema-miniatura {
+  display: flex;
+  height: 120px;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  line-height: var(--lh);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius);
+  pointer-events: none;
+}
+
+.tema-miniatura__lateral {
+  width: 34%;
+  padding: var(--sp-1);
+  gap: var(--sp-1);
+  background: var(--surface-2);
+}
+
+.tema-miniatura .nav-item {
+  min-height: 0;
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-xs);
+}
+
+.tema-miniatura__cuerpo {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+}
+
+.tema-miniatura__tarjeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  padding: var(--sp-2);
+  align-self: stretch;
+}
+
+.tema-miniatura__titulo {
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+}
+
+.tema-miniatura .ui-btn {
+  min-height: 0;
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-xs);
 }
 
 @media (prefers-reduced-motion: reduce) {

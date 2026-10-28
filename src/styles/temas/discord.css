@@ -1,6 +1,6 @@
 /* tema.css — estilo-discord (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
 
-:root[data-tema="discord"] {
+[data-tema="discord"] {
   --bg: #313338;
   --surface: #2b2d31;
   --surface-2: #1e1f22;

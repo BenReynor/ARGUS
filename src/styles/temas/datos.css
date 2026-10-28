@@ -1,6 +1,6 @@
 /* tema.css — estilo-datos (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
 
-:root[data-tema="datos"] {
+[data-tema="datos"] {
   --bg: #0d1117;
   --surface: #11161d;
   --surface-2: #161b22;
@@ -52,7 +52,7 @@
   --header-h: 40px;
 }
 
-:root[data-tema="datos"][data-modo="claro"] {
+[data-tema="datos"][data-modo="claro"] {
   --bg: #f6f8fa;
   --surface: #ffffff;
   --surface-2: #f0f3f6;
