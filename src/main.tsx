@@ -40,6 +40,7 @@ import './styles/temas/manga.css';
 import './styles/temas/glass.css';
 import './styles/temas/retro.css';
 import './styles/temas/brutalista.css';
+import './styles/temas/rasgos.css';
 import './styles/temas/muestras.css';
 import App from './App';
 import './styles.css';

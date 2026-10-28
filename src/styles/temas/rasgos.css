@@ -1,0 +1,233 @@
+/* rasgos.css — rasgos característicos de cada estilo, acotados a [data-tema].
+   Solo usa variables del contrato ui-tokens; no cambia la API de los componentes. */
+
+/* ───────── minimal: jerarquía por peso, bordes en vez de sombras ───────── */
+[data-tema="minimal"] .ui-card,
+[data-tema="minimal"] .sidebar,
+[data-tema="minimal"] .header {
+  box-shadow: none;
+  border: 1px solid var(--border);
+}
+[data-tema="minimal"] .page-title {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-bold);
+}
+[data-tema="minimal"] .nav-item {
+  min-height: 32px;
+}
+[data-tema="minimal"] .nav-item.active {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+[data-tema="minimal"] table th {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+  font-weight: var(--fw-medium, 500);
+}
+[data-tema="minimal"] table td,
+[data-tema="minimal"] table th {
+  height: 40px;
+  border-left: 0;
+  border-right: 0;
+}
+[data-tema="minimal"] kbd {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--sp-1);
+}
+[data-tema="minimal"] .ui-btn--secundario {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+}
+
+/* ───────── discord: squircle, píldora del riel, tarjetas suaves ───────── */
+[data-tema="discord"] .rail-item {
+  border-radius: 50%;
+}
+[data-tema="discord"] .rail-item:hover,
+[data-tema="discord"] .rail-item.active,
+[data-tema="discord"] .rail-item:hover .ui-avatar,
+[data-tema="discord"] .rail-item.active .ui-avatar {
+  border-radius: 16px;
+}
+[data-tema="discord"] .rail-pill {
+  background: #fff;
+  width: 4px;
+}
+[data-tema="discord"] .rail-item:hover .rail-pill {
+  height: 20px;
+}
+[data-tema="discord"] .rail-item.active .rail-pill {
+  height: 40px;
+}
+[data-tema="discord"] .header {
+  min-height: 48px;
+  box-shadow: var(--shadow-1);
+}
+[data-tema="discord"] .ui-card {
+  border: 0;
+  background: var(--surface);
+}
+[data-tema="discord"] .ui-control {
+  background: var(--surface-2);
+  border-color: transparent;
+}
+[data-tema="discord"] .ui-badge--peligro {
+  background: var(--danger);
+  color: #fff;
+  border-radius: 999px;
+  font-weight: var(--fw-bold);
+}
+[data-tema="discord"] .nav-item {
+  min-height: 32px;
+}
+
+/* ───────── cyberpunk: HUD, mayúsculas, esquinas cortadas ───────── */
+[data-tema="cyberpunk"] .page-title,
+[data-tema="cyberpunk"] .ui-card__titulo,
+[data-tema="cyberpunk"] h1,
+[data-tema="cyberpunk"] h2,
+[data-tema="cyberpunk"] h3 {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+[data-tema="cyberpunk"] .page-title::before,
+[data-tema="cyberpunk"] .ui-card__titulo::before {
+  content: "// ";
+  color: var(--accent);
+}
+[data-tema="cyberpunk"] .ui-card,
+[data-tema="cyberpunk"] .ui-estado {
+  border-radius: 0;
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+}
+[data-tema="cyberpunk"] .ui-btn {
+  border-radius: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+[data-tema="cyberpunk"] .ui-btn--primario:hover {
+  box-shadow: 0 0 16px var(--accent-soft);
+}
+[data-tema="cyberpunk"] .ui-btn--secundario {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--accent);
+}
+[data-tema="cyberpunk"] table td {
+  font-family: var(--font-mono);
+  border-bottom: 1px solid var(--border);
+}
+[data-tema="cyberpunk"] table tr:hover td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+[data-tema="cyberpunk"] .ui-control {
+  background: var(--bg);
+  border-color: var(--border-strong);
+  border-radius: 0;
+}
+[data-tema="cyberpunk"] .status-online {
+  animation: rasgo-pulso 1.6s infinite;
+}
+@keyframes rasgo-pulso {
+  50% { opacity: 0.45; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-tema="cyberpunk"] .status-online { animation: none; }
+}
+
+/* ───────── calido: grande, amable, táctil ───────── */
+[data-tema="calido"] .ui-btn,
+[data-tema="calido"] .ui-control,
+[data-tema="calido"] .nav-item {
+  min-height: 44px;
+  font-size: 16px;
+}
+[data-tema="calido"] .ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding-inline: var(--sp-5);
+}
+[data-tema="calido"] .ui-btn svg,
+[data-tema="calido"] .nav-item svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+[data-tema="calido"] .ui-card {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  padding: var(--sp-5);
+}
+[data-tema="calido"] .main-content {
+  gap: var(--sp-5);
+}
+[data-tema="calido"] .ui-btn--peligro {
+  order: 1;
+}
+
+/* ───────── datos: denso, tabular ───────── */
+[data-tema="datos"] body,
+[data-tema="datos"] .app {
+  font-size: 13px;
+}
+[data-tema="datos"] .ui-btn,
+[data-tema="datos"] .ui-control {
+  min-height: 28px;
+  font-size: 13px;
+}
+[data-tema="datos"] .nav-item {
+  min-height: 28px;
+}
+[data-tema="datos"] .ui-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  padding: var(--sp-3);
+}
+[data-tema="datos"] .ui-card__titulo {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+[data-tema="datos"] table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+[data-tema="datos"] table th,
+[data-tema="datos"] table td {
+  height: 30px;
+  padding: 0 var(--sp-2);
+  border-bottom: 1px solid var(--border);
+}
+[data-tema="datos"] table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  text-transform: uppercase;
+}
+[data-tema="datos"] table tbody tr:nth-child(even) {
+  background: var(--surface-2);
+}
+[data-tema="datos"] td[data-num],
+[data-tema="datos"] .ui-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+[data-tema="datos"] code,
+[data-tema="datos"] .ui-mono {
+  font-family: var(--font-mono);
+}
+[data-tema="datos"] * {
+  transition-timing-function: linear;
+}
