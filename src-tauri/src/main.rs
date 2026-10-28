@@ -16,6 +16,8 @@ mod mapa;
 mod persistencia;
 mod state;
 mod sync;
+#[cfg(test)]
+mod tests_canales;
 
 use commands::*;
 use state::AppState;
@@ -54,6 +56,10 @@ pub fn run() {
             list_members,
             list_roles,
             bot_permissions,
+            create_channel,
+            update_channel,
+            delete_channel,
+            reorder_channels,
             guild_info,
             send_message,
             send_dm,

@@ -466,6 +466,194 @@ pub async fn set_member_timeout(
     Ok(())
 }
 
+/// Tipos de canal que ARGUS sabe crear: texto, voz, categoría, anuncios y foro.
+pub const TIPOS_DE_CANAL: [u8; 5] = [0, 2, 4, 5, 15];
+const MAX_SLOWMODE_SEGUNDOS: u16 = 21600;
+
+/// Campos editables de un canal. En `update_channel` solo se envían los `Some`.
+/// `parent_id` vacío (`""`) saca el canal de su categoría.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct DatosCanal {
+    pub name: Option<String>,
+    pub channel_type: Option<u8>,
+    pub parent_id: Option<String>,
+    pub topic: Option<String>,
+    pub nsfw: Option<bool>,
+    pub rate_limit_per_user: Option<u16>,
+}
+
+fn validar_datos_canal(datos: &DatosCanal) -> Result<(), String> {
+    if let Some(nombre) = &datos.name {
+        let largo = nombre.trim().chars().count();
+        if largo == 0 || largo > 100 {
+            return Err("El nombre del canal debe tener entre 1 y 100 caracteres".to_string());
+        }
+    }
+    if let Some(tipo) = datos.channel_type {
+        if !TIPOS_DE_CANAL.contains(&tipo) {
+            return Err("Tipo de canal no admitido".to_string());
+        }
+    }
+    if datos
+        .rate_limit_per_user
+        .is_some_and(|s| s > MAX_SLOWMODE_SEGUNDOS)
+    {
+        return Err("El modo lento no puede superar las 6 horas (21600 s)".to_string());
+    }
+    if datos
+        .topic
+        .as_ref()
+        .is_some_and(|t| t.chars().count() > 1024)
+    {
+        return Err("El tema del canal no puede superar los 1024 caracteres".to_string());
+    }
+    Ok(())
+}
+
+/// Crea un canal o categoría (`POST /guilds/{id}/channels`).
+pub async fn create_guild_channel(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+    datos: &DatosCanal,
+) -> Result<crate::state::Channel, String> {
+    use twilight_model::channel::ChannelType;
+    validar_datos_canal(datos)?;
+    let nombre = datos
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .ok_or("El canal necesita un nombre")?;
+    let gid = parse_guild_id(guild_id)?;
+    let client = build_client(token, base_url);
+    let mut peticion = client
+        .create_guild_channel(gid, nombre)
+        .map_err(|_| "Nombre de canal inválido".to_string())?;
+    let tipo = datos.channel_type.unwrap_or(0);
+    peticion = peticion.kind(ChannelType::from(tipo));
+    if let Some(padre) = datos.parent_id.as_deref().filter(|p| !p.is_empty()) {
+        if tipo == 4 {
+            return Err("Una categoría no puede estar dentro de otra categoría".to_string());
+        }
+        peticion = peticion.parent_id(parse_id(padre, "categoría")?);
+    }
+    if let Some(tema) = datos.topic.as_deref() {
+        peticion = peticion
+            .topic(tema)
+            .map_err(|_| "Tema de canal inválido".to_string())?;
+    }
+    if let Some(nsfw) = datos.nsfw {
+        peticion = peticion.nsfw(nsfw);
+    }
+    if let Some(segundos) = datos.rate_limit_per_user {
+        peticion = peticion
+            .rate_limit_per_user(segundos)
+            .map_err(|_| "Modo lento inválido".to_string())?;
+    }
+    let canal = peticion
+        .await
+        .map_err(traducir_error)?
+        .model()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    Ok(convertir_canal(canal))
+}
+
+/// Edita un canal (`PATCH /channels/{id}`), incluido moverlo de categoría.
+pub async fn update_channel(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+    datos: &DatosCanal,
+) -> Result<crate::state::Channel, String> {
+    use twilight_model::channel::ChannelType;
+    validar_datos_canal(datos)?;
+    let cid = parse_id(channel_id, "canal")?;
+    let client = build_client(token, base_url);
+    let mut peticion = client.update_channel(cid);
+    if let Some(nombre) = datos.name.as_deref() {
+        peticion = peticion
+            .name(nombre.trim())
+            .map_err(|_| "Nombre de canal inválido".to_string())?;
+    }
+    if let Some(tipo) = datos.channel_type {
+        peticion = peticion.kind(ChannelType::from(tipo));
+    }
+    if let Some(padre) = datos.parent_id.as_deref() {
+        let padre = if padre.is_empty() {
+            None
+        } else {
+            Some(parse_id(padre, "categoría")?)
+        };
+        peticion = peticion.parent_id(padre);
+    }
+    if let Some(tema) = datos.topic.as_deref() {
+        peticion = peticion
+            .topic(tema)
+            .map_err(|_| "Tema de canal inválido".to_string())?;
+    }
+    if let Some(nsfw) = datos.nsfw {
+        peticion = peticion.nsfw(nsfw);
+    }
+    if let Some(segundos) = datos.rate_limit_per_user {
+        peticion = peticion
+            .rate_limit_per_user(segundos)
+            .map_err(|_| "Modo lento inválido".to_string())?;
+    }
+    let canal = peticion
+        .await
+        .map_err(traducir_error)?
+        .model()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    Ok(convertir_canal(canal))
+}
+
+/// Borra un canal o categoría (`DELETE /channels/{id}`).
+pub async fn delete_channel(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+) -> Result<(), String> {
+    let cid = parse_id(channel_id, "canal")?;
+    build_client(token, base_url)
+        .delete_channel(cid)
+        .await
+        .map_err(traducir_error)?;
+    Ok(())
+}
+
+/// Cambia las posiciones de varios canales
+/// (`PATCH /guilds/{id}/channels`). Cada par es (id del canal, posición).
+pub async fn reorder_guild_channels(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+    posiciones: &[(String, u64)],
+) -> Result<(), String> {
+    if posiciones.is_empty() {
+        return Err("No hay posiciones que cambiar".to_string());
+    }
+    let gid = parse_guild_id(guild_id)?;
+    let pares = posiciones
+        .iter()
+        .map(|(id, pos)| {
+            Ok(
+                twilight_http::request::guild::update_guild_channel_positions::Position::from((
+                    parse_id(id, "canal")?,
+                    *pos,
+                )),
+            )
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    build_client(token, base_url)
+        .update_guild_channel_positions(gid, &pares)
+        .await
+        .map_err(traducir_error)?;
+    Ok(())
+}
+
 /// Permisos de Discord: (posición del bit, nombre en español).
 const PERMISOS_DISCORD: &[(u32, &str)] = &[
     (0, "Crear invitaciones"),

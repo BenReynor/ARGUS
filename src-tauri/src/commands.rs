@@ -3,6 +3,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::crypto;
 use crate::db::{self, BotConfig as DbBotConfig, CliAgentConfig, VigilanceConfig};
+use crate::discord::DatosCanal;
 use crate::state::{
     AppState, BotConfig, BotStatus, Channel, Config, Guild, Member, Role, ServerMap,
 };
@@ -211,6 +212,154 @@ pub async fn list_channels(
     guild_id: String,
 ) -> Result<Vec<Channel>, String> {
     leer_canales(&state, &guild_id, None).await
+}
+
+const PERMISO_GESTIONAR_CANALES: &str = "Gestionar canales";
+
+/// Comprueba (sin tocar nada) que el bot activo tiene `permiso` en el servidor;
+/// si no, devuelve el error en español sin haber llamado a la acción.
+async fn exigir_permiso(
+    state: &AppState,
+    guild_id: &str,
+    permiso: &str,
+    base_url: Option<&str>,
+) -> Result<(), String> {
+    let permisos = permisos_del_bot(state, guild_id, base_url).await?;
+    if permisos.iter().any(|p| p == permiso) {
+        Ok(())
+    } else {
+        Err(format!("Al bot le falta el permiso «{permiso}»"))
+    }
+}
+
+/// Tras cambiar canales, vuelve a leerlos y actualiza el mapa guardado (si hay
+/// uno) para que la UI lo vea sin esperar al Gateway. Devuelve `true` si cambió.
+async fn refrescar_canales_del_mapa(
+    state: &AppState,
+    guild_id: &str,
+    base_url: Option<&str>,
+) -> Result<bool, String> {
+    if state.get_map(guild_id).is_none() {
+        return Ok(false);
+    }
+    let canales = leer_canales(state, guild_id, base_url).await?;
+    let mut maps = state.server_maps.lock().unwrap();
+    let Some(mapa) = maps.get_mut(guild_id) else {
+        return Ok(false);
+    };
+    mapa.channels = canales;
+    crate::mapa::reconstruir_categorias(mapa);
+    mapa.last_updated = Utc::now().to_rfc3339();
+    Ok(true)
+}
+
+fn avisar_mapa_actualizado(app: &AppHandle) {
+    if let Err(e) = app.emit(crate::gateway::EVENTO_MAPA, ()) {
+        tracing::warn!("No se pudo emitir map-updated: {e}");
+    }
+}
+
+#[tauri::command]
+pub async fn create_channel(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    datos: DatosCanal,
+) -> Result<Channel, String> {
+    let canal = crear_canal(&state, &guild_id, &datos, None).await?;
+    avisar_mapa_actualizado(&app);
+    Ok(canal)
+}
+
+pub(crate) async fn crear_canal(
+    state: &AppState,
+    guild_id: &str,
+    datos: &DatosCanal,
+    base_url: Option<&str>,
+) -> Result<Channel, String> {
+    exigir_permiso(state, guild_id, PERMISO_GESTIONAR_CANALES, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    let canal = crate::discord::create_guild_channel(&token, base_url, guild_id, datos).await?;
+    refrescar_canales_del_mapa(state, guild_id, base_url).await?;
+    Ok(canal)
+}
+
+#[tauri::command]
+pub async fn update_channel(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    datos: DatosCanal,
+) -> Result<Channel, String> {
+    let canal = editar_canal(&state, &guild_id, &channel_id, &datos, None).await?;
+    avisar_mapa_actualizado(&app);
+    Ok(canal)
+}
+
+pub(crate) async fn editar_canal(
+    state: &AppState,
+    guild_id: &str,
+    channel_id: &str,
+    datos: &DatosCanal,
+    base_url: Option<&str>,
+) -> Result<Channel, String> {
+    exigir_permiso(state, guild_id, PERMISO_GESTIONAR_CANALES, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    let canal = crate::discord::update_channel(&token, base_url, channel_id, datos).await?;
+    refrescar_canales_del_mapa(state, guild_id, base_url).await?;
+    Ok(canal)
+}
+
+#[tauri::command]
+pub async fn delete_channel(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+) -> Result<String, String> {
+    let mensaje = borrar_canal(&state, &guild_id, &channel_id, None).await?;
+    avisar_mapa_actualizado(&app);
+    Ok(mensaje)
+}
+
+pub(crate) async fn borrar_canal(
+    state: &AppState,
+    guild_id: &str,
+    channel_id: &str,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso(state, guild_id, PERMISO_GESTIONAR_CANALES, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::discord::delete_channel(&token, base_url, channel_id).await?;
+    refrescar_canales_del_mapa(state, guild_id, base_url).await?;
+    Ok(format!("Canal {channel_id} borrado"))
+}
+
+/// Cada par es (id del canal, nueva posición).
+#[tauri::command]
+pub async fn reorder_channels(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    positions: Vec<(String, u64)>,
+) -> Result<String, String> {
+    let mensaje = reordenar_canales(&state, &guild_id, &positions, None).await?;
+    avisar_mapa_actualizado(&app);
+    Ok(mensaje)
+}
+
+pub(crate) async fn reordenar_canales(
+    state: &AppState,
+    guild_id: &str,
+    posiciones: &[(String, u64)],
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso(state, guild_id, PERMISO_GESTIONAR_CANALES, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::discord::reorder_guild_channels(&token, base_url, guild_id, posiciones).await?;
+    refrescar_canales_del_mapa(state, guild_id, base_url).await?;
+    Ok(format!("{} canales reordenados", posiciones.len()))
 }
 
 /// Descifra el token del bot activo.
