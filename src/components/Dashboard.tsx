@@ -1,22 +1,30 @@
-import React, { useEffect, useState } from 'react';
-import { useServerMap, useBotStatus, useAddLog, useShowNotification, useSetActiveTab, useConfig, useActiveGuildId, useGuildPanel, PERMISOS_REQUERIDOS } from '../store/useStore';
-import { startBot, stopBot, resyncMap, onSyncProgress } from '../api/tauri';
+import React, { useEffect, useRef, useState } from 'react';
+import { useServerMap, useBotStatus, useAddLog, useShowNotification, useSetActiveTab, useConfig, useActiveGuildId, useGuildPanel, useLoadGuildPanel, PERMISOS_REQUERIDOS } from '../store/useStore';
+import { resyncMap, onSyncProgress } from '../api/tauri';
 import type { SyncProgress } from '../api/tauri';
-import { Button } from './ui';
-import { Users, Hash, Shield, Activity, Zap, Circle, Server, RefreshCw } from 'lucide-react';
+import { Avatar, Badge, Button, Card, Cargando, EstadoVacio, ErrorPanel } from './ui';
+import './Dashboard.css';
 
-interface StatItem {
-  label: string;
-  value: number;
-  icon: any;
-  color: string;
+interface Actividad {
+  hora: string;
+  texto: string;
 }
 
-interface ActionItem {
-  label: string;
-  desc: string;
-  action: () => void;
-}
+const MAX_ACTIVIDAD = 8;
+
+/** Por qué importa cada permiso del bot; se muestra solo cuando falta. */
+const EXPLICACION_PERMISO: Record<string, string> = {
+  'Ver canales': 'Sin él el bot no ve los canales ni puede sincronizar el mapa.',
+  'Enviar mensajes': 'No podrá enviar mensajes ni respuestas.',
+  'Leer el historial de mensajes': 'No podrá leer mensajes anteriores de los canales.',
+  'Gestionar canales': 'No podrá crear, editar ni borrar canales.',
+  'Gestionar roles': 'No podrá crear, editar ni asignar roles.',
+  'Moderar miembros': 'No podrá aplicar timeouts a miembros.',
+  'Expulsar miembros': 'No podrá expulsar miembros.',
+  'Banear miembros': 'No podrá banear miembros.',
+};
+
+const ahora = () => new Date().toLocaleTimeString();
 
 export const Dashboard: React.FC = () => {
   const serverMap = useServerMap();
@@ -27,21 +35,12 @@ export const Dashboard: React.FC = () => {
   const config = useConfig();
   const activeGuildId = useActiveGuildId();
   const guildPanel = useGuildPanel();
-
-  const stats: StatItem[] = [
-    { label: 'CANALES', value: serverMap?.channels.length || 0, icon: Hash, color: 'var(--accent)' },
-    { label: 'MIEMBROS', value: serverMap?.members.filter(m => !m.bot).length || 0, icon: Users, color: 'var(--success)' },
-    { label: 'ROLES', value: serverMap?.roles.length || 0, icon: Shield, color: 'var(--info)' },
-    { label: 'BOTS', value: serverMap?.members.filter(m => m.bot).length || 0, icon: Activity, color: 'var(--warning)' },
-  ];
-
-  const quickActions: ActionItem[] = [
-    { label: 'Ver miembros', desc: 'Gestionar miembros del servidor', action: () => setActiveTab('members') },
-    { label: 'Ver logs', desc: 'Abrir terminal de logs', action: () => setActiveTab('logs') },
-  ];
+  const loadGuildPanel = useLoadGuildPanel();
 
   const [resyncing, setResyncing] = useState(false);
   const [progress, setProgress] = useState<SyncProgress | null>(null);
+  const [actividad, setActividad] = useState<Actividad[]>([]);
+  const anterior = useRef<{ canales: number; roles: number; miembros: number } | null>(null);
 
   useEffect(() => {
     const desuscribir = onSyncProgress(setProgress);
@@ -49,6 +48,30 @@ export const Dashboard: React.FC = () => {
       desuscribir.then((fn) => fn()).catch(() => {});
     };
   }, []);
+
+  const canales = serverMap?.channels.length ?? 0;
+  const roles = serverMap?.roles.length ?? 0;
+  const miembros = serverMap?.members.filter((m) => !m.bot).length ?? 0;
+
+  // Actividad reciente: diferencias entre dos versiones consecutivas del mapa.
+  useEffect(() => {
+    if (!serverMap) {
+      anterior.current = null;
+      return;
+    }
+    const previo = anterior.current;
+    anterior.current = { canales, roles, miembros };
+    if (!previo) return;
+    const cambios: Actividad[] = [];
+    const registra = (nombre: string, antes: number, despues: number) => {
+      if (antes !== despues) cambios.push({ hora: ahora(), texto: `${nombre}: ${antes} → ${despues}` });
+    };
+    registra('Canales', previo.canales, canales);
+    registra('Roles', previo.roles, roles);
+    registra('Miembros', previo.miembros, miembros);
+    if (cambios.length === 0) cambios.push({ hora: ahora(), texto: 'Mapa actualizado sin cambios de estructura' });
+    setActividad((a) => [...cambios, ...a].slice(0, MAX_ACTIVIDAD));
+  }, [serverMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleResync = async () => {
     setResyncing(true);
@@ -64,204 +87,130 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const handleBotToggle = async () => {
-    try {
-      if (botStatus.running) {
-        await stopBot();
-        addLog('[SYSTEM] Bot detenido manualmente');
-        showNotification('Bot detenido', 'info');
-      } else {
-        if (config.bots.length === 0) {
-          showNotification('Configura el token primero', 'warning');
-          return;
-        }
-        await startBot();
-        addLog('[SYSTEM] Bot iniciado manualmente');
-        showNotification('Bot iniciando...', 'info');
-      }
-    } catch (e) {
-      showNotification('Error: ' + (e as Error).message, 'error');
-    }
-  };
+  // Estados sin contenido: sin bot, sin servidor, cargando, error.
+  if (!config.active_bot_id) {
+    return (
+      <div className="dash">
+        <EstadoVacio titulo="No hay ningún bot activo" descripcion="Registra un bot con su token y elígelo como activo para ver sus servidores.">
+          <Button onClick={() => setActiveTab('settings')}>Ir a Ajustes</Button>
+        </EstadoVacio>
+      </div>
+    );
+  }
+  if (!activeGuildId) {
+    return (
+      <div className="dash">
+        <EstadoVacio titulo="Ningún servidor seleccionado" descripcion="Elige un servidor en la columna de la izquierda. Si no aparece ninguno, invita al bot desde Ajustes.">
+          <Button variante="secundario" onClick={() => setActiveTab('settings')}>Invitar al bot</Button>
+        </EstadoVacio>
+      </div>
+    );
+  }
+  if (guildPanel.loading && !guildPanel.guild) {
+    return (
+      <div className="dash">
+        <Card><Cargando lineas={4} /></Card>
+      </div>
+    );
+  }
+  if (guildPanel.error) {
+    return (
+      <div className="dash">
+        <ErrorPanel mensaje={guildPanel.error} onReintentar={() => { void loadGuildPanel(activeGuildId); }} />
+      </div>
+    );
+  }
+
+  const guild = guildPanel.guild;
+  const faltan = guildPanel.permissions ? PERMISOS_REQUERIDOS.filter((p) => !guildPanel.permissions!.includes(p)) : [];
+  const icono = guild?.icon ? `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=64` : null;
+  const enVivo = botStatus.connected;
 
   return (
-    <div className="dashboard">
-      <section className="dashboard-section">
-        <h2>SERVIDOR ACTIVO</h2>
-        {!activeGuildId && <p>Ningún servidor seleccionado. Elige uno en la cabecera.</p>}
-        {activeGuildId && guildPanel.loading && <p>Cargando datos del servidor...</p>}
-        {activeGuildId && guildPanel.error && <p className="error">{guildPanel.error}</p>}
-        {guildPanel.guild && (
-          <>
-            <div className="member-cell">
-              {guildPanel.guild.icon ? (
-                <img
-                  src={`https://cdn.discordapp.com/icons/${guildPanel.guild.id}/${guildPanel.guild.icon}.png?size=64`}
-                  alt=""
-                  width={48}
-                  height={48}
-                  style={{ borderRadius: '50%' }}
-                />
-              ) : (
-                <Server size={48} />
-              )}
-              <div>
-                <span className="member-name">{guildPanel.guild.name}</span>
-                <span className="member-username">
-                  ~{guildPanel.guild.member_count} miembros (aproximado)
-                </span>
-              </div>
+    <div className="dash">
+      <Card>
+        <div className="dash__cabecera">
+          <Avatar src={icono} nombre={guild?.name ?? 'Servidor'} tamano={56} />
+          <div className="dash__nombre">
+            <h2>{guild?.name ?? 'Servidor'}</h2>
+            {guild?.member_count != null && (
+              <span className="dash__kpi-etiqueta">~{guild.member_count.toLocaleString()} miembros (aproximado)</span>
+            )}
+          </div>
+          <Badge tono={enVivo ? 'exito' : 'peligro'}>{enVivo ? '● Gateway en vivo' : '○ Gateway desconectado'}</Badge>
+        </div>
+      </Card>
+
+      <div className="dash__kpis">
+        {[
+          { etiqueta: 'Miembros', valor: miembros },
+          { etiqueta: 'Canales', valor: canales },
+          { etiqueta: 'Roles', valor: roles },
+        ].map((k) => (
+          <Card key={k.etiqueta}>
+            <div className="dash__kpi">
+              <span className="dash__kpi-valor">{serverMap ? k.valor.toLocaleString() : '—'}</span>
+              <span className="dash__kpi-etiqueta">{k.etiqueta}</span>
             </div>
-            <h3>PERMISOS DEL BOT</h3>
-            <ul>
-              {PERMISOS_REQUERIDOS.map((permiso) => {
-                const tiene = guildPanel.permissions?.includes(permiso) ?? false;
-                return (
-                  <li key={permiso} style={{ color: tiene ? 'var(--success)' : 'var(--warning)' }}>
-                    {tiene ? '✓' : '✗ Falta:'} {permiso}
-                  </li>
-                );
-              })}
-            </ul>
-          </>
+          </Card>
+        ))}
+      </div>
+
+      <Card titulo="Permisos del bot">
+        {guildPanel.permissions === null ? (
+          <Cargando lineas={3} />
+        ) : (
+          <ul className="dash__permisos">
+            {PERMISOS_REQUERIDOS.map((permiso) => {
+              const tiene = guildPanel.permissions!.includes(permiso);
+              return (
+                <li key={permiso} className="dash__permiso">
+                  <Badge tono={tiene ? 'exito' : 'aviso'}>{tiene ? '✓' : '✗'}</Badge>
+                  <span>{permiso}</span>
+                  {!tiene && <span className="dash__permiso-nota">{EXPLICACION_PERMISO[permiso] ?? 'Algunas acciones estarán desactivadas.'}</span>}
+                </li>
+              );
+            })}
+          </ul>
         )}
-      </section>
+        {faltan.length > 0 && (
+          <p className="dash__permiso-nota">Faltan {faltan.length} permisos: concédelos al rol del bot en Discord para activar esas acciones.</p>
+        )}
+      </Card>
 
-      <section className="dashboard-section">
-        <div className="section-header">
-          <h2>ESTADO DEL SISTEMA</h2>
-          <div className={`system-status ${botStatus.connected ? 'online' : botStatus.running ? 'connecting' : 'offline'}`}>
-            <Circle className={`status-dot ${botStatus.connected ? 'online' : botStatus.running ? 'connecting' : 'offline'}`} size={10} />
-            <span>{botStatus.connected ? 'SISTEMA OPERATIVO' : botStatus.running ? 'INICIALIZANDO...' : 'SISTEMA APAGADO'}</span>
-            <Button onClick={handleBotToggle}>
-              {botStatus.running ? (
-                <>
-                  <Circle className="status-online" size={12} />
-                  APAGAR BOT
-                </>
-              ) : (
-                <>
-                  <Zap size={14} />
-                  ENCENDER BOT
-                </>
-              )}
-            </Button>
+      <Card titulo="Sincronización">
+        <div className="dash__sync">
+          <Button variante="secundario" cargando={resyncing} onClick={handleResync}>
+            {resyncing ? 'Resincronizando…' : 'Resincronizar'}
+          </Button>
+          <div className="dash__progreso" aria-live="polite">
+            {resyncing && progress ? (
+              <>
+                <progress max={progress.total} value={progress.step} />
+                <span>Paso {progress.step}/{progress.total}: {progress.message}</span>
+              </>
+            ) : (
+              <span className="dash__kpi-etiqueta">Repite la sincronización completa del servidor.</span>
+            )}
           </div>
         </div>
+      </Card>
 
-        <div className="stats-grid">
-          {stats.map((stat, i) => (
-            <div key={i} className="stat-card" style={{ '--stat-color': stat.color } as React.CSSProperties}>
-              <div className="stat-icon" style={{ background: stat.color }}>
-                <stat.icon size={24} />
-              </div>
-              <div className="stat-info">
-                <span className="stat-value">{stat.value}</span>
-                <span className="stat-label">{stat.label}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="dashboard-section">
-        <h2>ACCIONES RÁPIDAS</h2>
-        <div className="actions-grid">
-          <button className="action-card" onClick={handleResync} disabled={resyncing || !activeGuildId}>
-            <div className="action-icon"><RefreshCw size={20} /></div>
-            <div className="action-info">
-              <span className="action-label">{resyncing ? 'Resincronizando...' : 'Resincronizar mapa'}</span>
-              <span className="action-desc">
-                {resyncing && progress
-                  ? `Paso ${progress.step}/${progress.total}: ${progress.message}`
-                  : 'Repite la sincronización completa del servidor'}
-              </span>
-            </div>
-          </button>
-          {quickActions.map((action, i) => (
-            <button key={i} className="action-card" onClick={action.action}>
-              <div className="action-icon"><Activity size={20} /></div>
-              <div className="action-info">
-                <span className="action-label">{action.label}</span>
-                <span className="action-desc">{action.desc}</span>
-              </div>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {serverMap && (
-        <section className="dashboard-section">
-          <h2>MAPA DEL SERVIDOR - RESUMEN</h2>
-          <div className="server-summary">
-            <div className="summary-card">
-              <h3>📁 CATEGORÍAS</h3>
-              <ul>
-                {Object.keys(serverMap.categories).map((cat, i) => (
-                  <li key={i}>
-                    <span className="cat-name">{cat}</span>
-                    <span className="cat-count">{serverMap.categories[cat].length} canales</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="summary-card">
-              <h3>👥 ROLES PRINCIPALES</h3>
-              <ul>
-                {serverMap.roles.slice(0, 6).map((role) => (
-                  <li key={role.id}>
-                    <span className="role-name" style={{ color: `#${role.color.toString(16).padStart(6, '0')}` }}>
-                      {role.name}
-                    </span>
-                    <span className="role-count">{role.member_count}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="summary-card">
-              <h3>🤖 BOTS ACTIVOS</h3>
-              <ul>
-                {serverMap.members.filter(m => m.bot).map((bot) => (
-                  <li key={bot.user_id}>
-                    <span className="bot-name">{bot.username}</span>
-                    <span className="bot-id">{bot.user_id.slice(-6)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </section>
-      )}
-
-      <section className="dashboard-section">
-        <h2>ACTIVIDAD RECIENTE</h2>
-        <div className="activity-log">
-          <div className="log-entry">
-            <span className="log-time">[INIT]</span>
-            <span className="log-source">SYSTEM</span>
-            <span className="log-message">ARGUS v1.0.0 inicializado</span>
-          </div>
-          <div className="log-entry">
-            <span className="log-time">[CONFIG]</span>
-            <span className="log-source">CONFIG</span>
-            <span className="log-message">Server ID: {config.active_guild_id ?? '--'}</span>
-          </div>
-          {botStatus.running && (
-            <div className="log-entry">
-              <span className="log-time">[BOT]</span>
-              <span className="log-source">DISCORD</span>
-              <span className="log-message">Conexión a gateway establecida</span>
-            </div>
-          )}
-          {botStatus.last_error && (
-            <div className="log-entry error">
-              <span className="log-time">[ERROR]</span>
-              <span className="log-source">DISCORD</span>
-              <span className="log-message">{botStatus.last_error}</span>
-            </div>
-          )}
-        </div>
-      </section>
+      <Card titulo="Actividad reciente">
+        {botStatus.last_error && <Badge tono="peligro">{botStatus.last_error}</Badge>}
+        {actividad.length === 0 ? (
+          <span className="dash__kpi-etiqueta">Aún no hay cambios en el mapa.</span>
+        ) : (
+          <ul className="dash__actividad">
+            {actividad.map((a, i) => (
+              <li key={i}>
+                <span className="dash__hora">{a.hora}</span>
+                <span>{a.texto}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
     </div>
   );
 };

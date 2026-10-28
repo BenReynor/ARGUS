@@ -1,0 +1,17 @@
+.dash { display: flex; flex-direction: column; gap: var(--sp-4); }
+.dash__cabecera { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; }
+.dash__nombre { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.dash__nombre h2 { margin: 0; font-size: var(--fs-xl); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash__kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--sp-3); }
+.dash__kpi { display: flex; flex-direction: column; gap: var(--sp-1); }
+.dash__kpi-valor { font-size: var(--fs-xl); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+.dash__kpi-etiqueta { color: var(--text-muted); font-size: var(--fs-sm); }
+.dash__permisos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.dash__permiso { display: flex; align-items: baseline; gap: var(--sp-2); }
+.dash__permiso-nota { color: var(--text-muted); font-size: var(--fs-sm); }
+.dash__sync { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+.dash__progreso { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-sm); }
+.dash__progreso progress { width: 100%; }
+.dash__actividad { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.dash__actividad li { display: flex; gap: var(--sp-3); }
+.dash__hora { color: var(--text-muted); font-variant-numeric: tabular-nums; }
