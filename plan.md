@@ -175,7 +175,7 @@ Si el bot tiene Administrador (o el permiso concreto), ARGUS puede gestionar tod
 
 - [x] Backend: canales y categorías
   criterio: comandos `create_channel` (nombre, tipo texto/voz/categoría/anuncios/foro, categoría padre, tema, NSFW, slowmode), `update_channel` (mismos campos y mover de categoría), `delete_channel` y `reorder_channels` (posiciones) con twilight; sin «Gestionar canales» devuelven «Al bot le falta el permiso «Gestionar canales»» sin llamar a Discord; tras cada cambio el mapa del servidor se actualiza; tests con el Discord falso de cada comando y del caso sin permiso
-- [ ] Backend: roles y jerarquía
+- [x] Backend: roles y jerarquía
   criterio: comandos `create_role` (nombre, color, separado, mencionable, permisos como texto de bits), `update_role`, `delete_role` y `reorder_roles`; una función compartida comprueba la jerarquía: tocar un rol con posición igual o mayor que el rol más alto del bot devuelve «Ese rol está por encima del rol del bot: súbelo en Ajustes del servidor → Roles» (el dueño del servidor no aplica: es el bot quien actúa); tests con el Discord falso, incluidos jerarquía y falta de permiso
 - [ ] Backend: permisos de canal
   criterio: comandos `set_channel_permission` (rol o miembro, bits permitidos y denegados) y `delete_channel_permission` con twilight; exigen «Gestionar roles» (o Administrador) y respetan la jerarquía para overwrites de rol; el mapa del canal refleja los overwrites nuevos; tests con el Discord falso
