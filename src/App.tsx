@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useStore } from './store/useStore';
 import { Sidebar } from './components/Sidebar';
+import { GuildRail } from './components/GuildRail';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
 import { ChannelsView } from './components/ChannelsView';
@@ -74,8 +75,11 @@ function App() {
     { id: 'settings', label: 'Config', icon: 'settings' },
   ];
 
+  const activeTab = useStore((s) => s.activeTab);
+  const tituloSeccion = tabs.find((t) => t.id === activeTab)?.label ?? 'Panel';
+
   const renderView = () => {
-    switch (useStore.getState().activeTab) {
+    switch (activeTab) {
       case 'dashboard': return <Dashboard />;
       case 'channels': return <ChannelsView />;
       case 'members': return <MembersView />;
@@ -88,9 +92,10 @@ function App() {
 
   return (
     <div className="app scanlines">
-      <Header />
+      <GuildRail />
+      <Sidebar tabs={tabs} />
       <div className="main-layout">
-        <Sidebar tabs={tabs} />
+        <Header titulo={tituloSeccion} />
         <main className="main-content">
           {renderView()}
         </main>

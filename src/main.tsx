@@ -43,6 +43,7 @@ import './styles/temas/brutalista.css';
 import './styles/temas/muestras.css';
 import App from './App';
 import './styles.css';
+import './styles/layout.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

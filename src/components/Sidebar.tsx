@@ -3,8 +3,9 @@ import { useStore, useConfig, useBotStatus, useActiveTab, useSetActiveTab, useSh
 import { startBot, stopBot, setActiveBot, botAvatarUrl } from '../api/tauri';
 import {
   LayoutDashboard, Hash, Users, Shield, Terminal, Settings,
-  Power, Circle, Bot, Server
+  Power, Circle, Bot
 } from 'lucide-react';
+import { Avatar } from './ui';
 
 interface SidebarProps {
   tabs: { id: string; label: string; icon: string }[];
@@ -16,6 +17,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
   const showNotification = useShowNotification();
   const hasToken = config.bots.length > 0;
   const botStatus = useBotStatus();
+  const botActivo = config.bots.find((b) => b.id === config.active_bot_id) ?? null;
   const activeTab = useActiveTab();
   const setActiveTab = useSetActiveTab();
 
@@ -31,19 +33,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <div className="logo">
-          <div className="logo-icon">
-            <Server className="h-6 w-6" />
-          </div>
-          <span className="logo-text">ARGUS</span>
-        </div>
-        <div className="bot-status-mini">
-          <Circle 
-            className={botStatus.connected ? 'status-online' : botStatus.running ? 'status-connecting' : 'status-offline'} 
-            size={8} 
-          />
-          <span className="status-text">
-            {botStatus.connected ? 'ONLINE' : botStatus.running ? 'CONECTANDO...' : 'OFFLINE'}
+        <Avatar src={botActivo ? botAvatarUrl(botActivo) : null} nombre={botActivo?.name ?? 'ARGUS'} tamano={32} />
+        <div className="bot-activo">
+          <span className="bot-activo-nombre">{botActivo?.name ?? 'Sin bot activo'}</span>
+          <span className="bot-status-mini">
+            <Circle
+              className={botStatus.connected ? 'status-online' : botStatus.running ? 'status-connecting' : 'status-offline'}
+              size={8}
+            />
+            <span className="status-text">
+              {botStatus.connected ? 'En línea' : botStatus.running ? 'Conectando...' : 'Desconectado'}
+            </span>
           </span>
         </div>
       </div>

@@ -1,57 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import { useStore, useConfig, useBotStatus, useActiveGuildId, useSetActiveGuildId, useLoadGuildPanel } from '../store/useStore';
-import { listGuilds, setActiveGuild } from '../api/tauri';
-import type { Guild } from '../api/tauri';
-import { Select } from './ui';
-import { Server, Cpu, MemoryStick, Wifi, WifiOff, Zap } from 'lucide-react';
+import React from 'react';
+import { useBotStatus } from '../store/useStore';
+import { Server, Cpu, Wifi, WifiOff, Zap } from 'lucide-react';
 
-export const Header: React.FC = () => {
-  const config = useConfig();
+/** Cabecera de la sección activa, con el estado de conexión del bot. */
+export const Header: React.FC<{ titulo: string }> = ({ titulo }) => {
   const botStatus = useBotStatus();
-  const activeGuildId = useActiveGuildId();
-  const setActiveGuildId = useSetActiveGuildId();
-  const [guilds, setGuilds] = useState<Guild[]>([]);
-
-  useEffect(() => {
-    listGuilds()
-      .then(setGuilds)
-      .catch(() => setGuilds([]));
-  }, [config.active_bot_id]);
-
-  const loadGuildPanel = useLoadGuildPanel();
-  const loadGuildSettings = useStore((s) => s.loadGuildSettings);
-
-  // El panel y los ajustes del servidor se recargan al cambiar de servidor o de bot.
-  useEffect(() => {
-    loadGuildPanel(activeGuildId);
-    loadGuildSettings(activeGuildId);
-  }, [activeGuildId, config.active_bot_id]);
-
-  const handleGuildChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const id = e.target.value;
-    try {
-      await setActiveGuild(id);
-      setActiveGuildId(id);
-    } catch {
-      // se mantiene la guild anterior si falla
-    }
-  };
 
   return (
     <header className="header">
       <div className="header-left">
-        <h1 className="page-title">PANEL DE CONTROL</h1>
-        <span className="divider">/</span>
-        <Select
-          aria-label="Servidor activo"
-          value={activeGuildId ?? ''}
-          onChange={handleGuildChange}
-        >
-          {!activeGuildId && <option value="" disabled>Selecciona servidor</option>}
-          {guilds.map((g) => (
-            <option key={g.id} value={g.id}>{g.name}</option>
-          ))}
-        </Select>
+        <h1 className="page-title">{titulo}</h1>
       </div>
       <div className="header-center">
         <div className={`connection-status ${botStatus.connected ? 'connected' : 'disconnected'}`}>
