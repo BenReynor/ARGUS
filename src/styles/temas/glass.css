@@ -1,0 +1,84 @@
+/* tema.css — estilo-glass (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
+
+:root[data-tema="glass"] {
+  --bg: #0f172a;
+  --surface: #1c2438;
+  --surface-2: #232d44;
+  --surface-hover: #2a3550;
+  --border: #334063;
+  --border-strong: #6b7a99;
+  --text: #f1f5ff;
+  --text-2: #c3cbe0;
+  --text-3: #9aa5c0;
+  --accent: #7aa2ff;
+  --accent-hover: #9bb9ff;
+  --accent-text: #0b1020;
+  --accent-soft: #7aa2ff26;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #fb7185;
+  --info: #7dd3fc;
+  --focus: #a5c0ff;
+  --shadow-1: 0 1px 0 rgb(255 255 255 / 0.06) inset, 0 4px 16px rgb(0 0 0 / 0.25);
+  --shadow-2: 0 1px 0 rgb(255 255 255 / 0.08) inset, 0 16px 48px rgb(0 0 0 / 0.4);
+  --glass-bg: rgb(255 255 255 / 0.07);
+  --glass-borde: rgb(255 255 255 / 0.14);
+  --glass-blur: 20px;
+  --fondo-app: radial-gradient(1200px 800px at 15% 10%, #3b4cca55, transparent 60%), radial-gradient(900px 700px at 85% 90%, #b4479a44, transparent 60%), #0f172a;
+  --font-ui: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 28px;
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-bold: 600;
+  --lh: 1.5;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 18px;
+  --border-w: 1px;
+  --dur-fast: 120ms;
+  --dur: 220ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --control-h: 36px;
+  --sidebar-w: 248px;
+  --header-h: 52px;
+}
+
+:root[data-tema="glass"][data-modo="claro"] {
+  --bg: #e9eef8;
+  --surface: #f7f9fd;
+  --surface-2: #eef2fa;
+  --surface-hover: #e3e9f5;
+  --border: #cfd8ea;
+  --border-strong: #7d8aa6;
+  --text: #0f172a;
+  --text-2: #3b4660;
+  --text-3: #56627d;
+  --accent: #3355e0;
+  --accent-hover: #2442c0;
+  --accent-text: #ffffff;
+  --accent-soft: #3355e01a;
+  --success: #15803d;
+  --warning: #a16207;
+  --danger: #be123c;
+  --info: #0369a1;
+  --focus: #3355e0;
+  --shadow-1: 0 1px 0 rgb(255 255 255 / 0.7) inset, 0 4px 16px rgb(15 23 42 / 0.08);
+  --shadow-2: 0 1px 0 rgb(255 255 255 / 0.8) inset, 0 16px 48px rgb(15 23 42 / 0.14);
+  --glass-bg: rgb(255 255 255 / 0.55);
+  --glass-borde: rgb(255 255 255 / 0.7);
+  --glass-blur: 20px;
+  --fondo-app: radial-gradient(1200px 800px at 15% 10%, #9fb4ff66, transparent 60%), radial-gradient(900px 700px at 85% 90%, #f5a8d855, transparent 60%), #e9eef8;
+}

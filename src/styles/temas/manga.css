@@ -1,0 +1,76 @@
+/* tema.css — estilo-manga (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
+
+:root[data-tema="manga"] {
+  --bg: #fbfaf7;
+  --surface: #ffffff;
+  --surface-2: #f1efe9;
+  --surface-hover: #e9e6de;
+  --border: #2b2b2b;
+  --border-strong: #111111;
+  --text: #111111;
+  --text-2: #3a3a3a;
+  --text-3: #5e5e5e;
+  --accent: #111111;
+  --accent-hover: #333333;
+  --accent-text: #ffffff;
+  --accent-soft: #e9e6de;
+  --success: #1e6b36;
+  --warning: #8a5a00;
+  --danger: #d7263d;
+  --info: #1f4f9e;
+  --focus: #d7263d;
+  --shadow-1: 3px 3px 0 #111111;
+  --shadow-2: 6px 6px 0 #111111;
+  --font-ui: 'Noto Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Bangers', 'Noto Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 15px;
+  --fs-lg: 18px;
+  --fs-xl: 24px;
+  --fs-2xl: 36px;
+  --fw-normal: 400;
+  --fw-medium: 600;
+  --fw-bold: 900;
+  --lh: 1.5;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --radius-sm: 0px;
+  --radius: 0px;
+  --radius-lg: 0px;
+  --border-w: 2.5px;
+  --dur-fast: 80ms;
+  --dur: 150ms;
+  --ease: cubic-bezier(0.5, 0, 0.1, 1);
+  --control-h: 38px;
+  --sidebar-w: 250px;
+  --header-h: 56px;
+}
+
+:root[data-tema="manga"][data-modo="noir"] {
+  --bg: #0c0c0c;
+  --surface: #141414;
+  --surface-2: #1d1d1d;
+  --surface-hover: #262626;
+  --border: #e8e6e1;
+  --border-strong: #f5f3ee;
+  --text: #f5f3ee;
+  --text-2: #cfccc5;
+  --text-3: #a8a49c;
+  --accent: #f5f3ee;
+  --accent-hover: #ffffff;
+  --accent-text: #0c0c0c;
+  --accent-soft: #262626;
+  --success: #5fd18a;
+  --warning: #f2c14e;
+  --danger: #ff4d5e;
+  --info: #7fb2ff;
+  --focus: #ff4d5e;
+  --shadow-1: 3px 3px 0 #f5f3ee;
+  --shadow-2: 6px 6px 0 #f5f3ee;
+}

@@ -1,0 +1,53 @@
+/* tema.css — estilo-retro (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
+
+:root[data-tema="retro"] {
+  --bg: #1a1c2c;
+  --surface: #333c57;
+  --surface-2: #29366f;
+  --surface-hover: #3b4a7a;
+  --border: #566c86;
+  --border-strong: #94b0c2;
+  --text: #f4f4f4;
+  --text-2: #d3dde4;
+  --text-3: #a9c1cf;
+  --accent: #73eff7;
+  --accent-hover: #a7f070;
+  --accent-text: #1a1c2c;
+  --accent-soft: #41a6f633;
+  --success: #a7f070;
+  --warning: #ffcd75;
+  --danger: #ef7d57;
+  --info: #41a6f6;
+  --focus: #ffcd75;
+  --shadow-1: 4px 4px 0 #0d0e16;
+  --shadow-2: 6px 6px 0 #0d0e16;
+  --font-ui: 'VT323', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --font-display: 'Press Start 2P', 'VT323', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --font-mono: 'VT323', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --fs-xs: 16px;
+  --fs-sm: 18px;
+  --fs-md: 20px;
+  --fs-lg: 22px;
+  --fs-xl: 26px;
+  --fs-2xl: 32px;
+  --fw-normal: 400;
+  --fw-medium: 400;
+  --fw-bold: 400;
+  --lh: 1.25;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --radius-sm: 0px;
+  --radius: 0px;
+  --radius-lg: 0px;
+  --border-w: 3px;
+  --dur-fast: 80ms;
+  --dur: 160ms;
+  --ease: steps(4, end);
+  --control-h: 40px;
+  --sidebar-w: 260px;
+  --header-h: 56px;
+}

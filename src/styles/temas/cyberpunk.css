@@ -1,0 +1,53 @@
+/* tema.css — estilo-cyberpunk (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
+
+:root[data-tema="cyberpunk"] {
+  --bg: #05070d;
+  --surface: #0b1020;
+  --surface-2: #0f1629;
+  --surface-hover: #142040;
+  --border: #1c2a4a;
+  --border-strong: #4a6fa8;
+  --text: #e6f1ff;
+  --text-2: #9fb3d1;
+  --text-3: #7d93b5;
+  --accent: #00e5ff;
+  --accent-hover: #5cefff;
+  --accent-text: #021018;
+  --accent-soft: #00e5ff1f;
+  --success: #2bff88;
+  --warning: #ffd23f;
+  --danger: #ff3b6b;
+  --info: #7aa2ff;
+  --focus: #00e5ff;
+  --shadow-1: 0 0 0 1px #00e5ff14;
+  --shadow-2: 0 0 24px #00e5ff26, 0 12px 32px rgb(0 0 0 / 0.6);
+  --font-ui: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Orbitron', 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 28px;
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-bold: 700;
+  --lh: 1.45;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --radius-sm: 0px;
+  --radius: 2px;
+  --radius-lg: 4px;
+  --border-w: 1px;
+  --dur-fast: 80ms;
+  --dur: 140ms;
+  --ease: cubic-bezier(0.3, 0, 0, 1);
+  --control-h: 34px;
+  --sidebar-w: 248px;
+  --header-h: 52px;
+}

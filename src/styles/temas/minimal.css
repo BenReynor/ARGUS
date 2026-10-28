@@ -1,0 +1,76 @@
+/* tema.css — estilo-minimal (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
+
+:root[data-tema="minimal"] {
+  --bg: #0b0b0c;
+  --surface: #131316;
+  --surface-2: #18181b;
+  --surface-hover: #1f1f23;
+  --border: #26262b;
+  --border-strong: #63636c;
+  --text: #ededef;
+  --text-2: #a1a1aa;
+  --text-3: #8b8b94;
+  --accent: #5b57e8;
+  --accent-hover: #6c68f0;
+  --accent-text: #ffffff;
+  --accent-soft: #5b57e826;
+  --success: #3fb950;
+  --warning: #d29922;
+  --danger: #f85149;
+  --info: #58a6ff;
+  --focus: #8b88ff;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-2: 0 8px 24px rgb(0 0 0 / 0.5);
+  --font-ui: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 28px;
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-bold: 600;
+  --lh: 1.5;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+  --border-w: 1px;
+  --dur-fast: 100ms;
+  --dur: 160ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --control-h: 34px;
+  --sidebar-w: 240px;
+  --header-h: 52px;
+}
+
+:root[data-tema="minimal"][data-modo="claro"] {
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;
+  --surface-hover: #ececef;
+  --border: #e4e4e7;
+  --border-strong: #8e8e96;
+  --text: #18181b;
+  --text-2: #52525b;
+  --text-3: #6b6b74;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-text: #ffffff;
+  --accent-soft: #4f46e51a;
+  --success: #1a7f37;
+  --warning: #9a6700;
+  --danger: #cf222e;
+  --info: #0969da;
+  --focus: #4f46e5;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.06);
+  --shadow-2: 0 8px 24px rgb(0 0 0 / 0.08);
+}

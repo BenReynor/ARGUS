@@ -1,0 +1,53 @@
+/* tema.css — estilo-brutalista (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
+
+:root[data-tema="brutalista"] {
+  --bg: #f2f0e9;
+  --surface: #ffffff;
+  --surface-2: #e9e6dc;
+  --surface-hover: #fff27a;
+  --border: #000000;
+  --border-strong: #000000;
+  --text: #000000;
+  --text-2: #1f1f1f;
+  --text-3: #404040;
+  --accent: #ff4f00;
+  --accent-hover: #ff7a3d;
+  --accent-text: #000000;
+  --accent-soft: #ffd9c7;
+  --success: #007a45;
+  --warning: #ffd400;
+  --danger: #d10000;
+  --info: #0047ff;
+  --focus: #0047ff;
+  --shadow-1: 4px 4px 0 #000000;
+  --shadow-2: 8px 8px 0 #000000;
+  --font-ui: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Archivo Black', 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --fs-xs: 12px;
+  --fs-sm: 14px;
+  --fs-md: 16px;
+  --fs-lg: 20px;
+  --fs-xl: 28px;
+  --fs-2xl: 44px;
+  --fw-normal: 400;
+  --fw-medium: 600;
+  --fw-bold: 700;
+  --lh: 1.4;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --radius-sm: 0px;
+  --radius: 0px;
+  --radius-lg: 0px;
+  --border-w: 3px;
+  --dur-fast: 0ms;
+  --dur: 90ms;
+  --ease: linear;
+  --control-h: 44px;
+  --sidebar-w: 260px;
+  --header-h: 64px;
+}

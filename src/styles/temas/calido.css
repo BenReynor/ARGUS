@@ -1,0 +1,53 @@
+/* tema.css — estilo-calido (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
+
+:root[data-tema="calido"] {
+  --bg: #faf7f2;
+  --surface: #ffffff;
+  --surface-2: #f3ede4;
+  --surface-hover: #efe6d8;
+  --border: #e7ddce;
+  --border-strong: #94826a;
+  --text: #2b2420;
+  --text-2: #5c5048;
+  --text-3: #7a6c61;
+  --accent: #c4472a;
+  --accent-hover: #a83a20;
+  --accent-text: #ffffff;
+  --accent-soft: #c4472a1a;
+  --success: #2f7a4f;
+  --warning: #a8670f;
+  --danger: #c0312b;
+  --info: #2f6db5;
+  --focus: #c4472a;
+  --shadow-1: 0 1px 3px rgb(80 50 20 / 0.08);
+  --shadow-2: 0 10px 30px rgb(80 50 20 / 0.12);
+  --font-ui: 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --fs-xs: 13px;
+  --fs-sm: 14px;
+  --fs-md: 16px;
+  --fs-lg: 18px;
+  --fs-xl: 22px;
+  --fs-2xl: 30px;
+  --fw-normal: 400;
+  --fw-medium: 600;
+  --fw-bold: 800;
+  --lh: 1.6;
+  --sp-1: 6px;
+  --sp-2: 10px;
+  --sp-3: 16px;
+  --sp-4: 20px;
+  --sp-5: 28px;
+  --sp-6: 40px;
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 20px;
+  --border-w: 1px;
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --ease: cubic-bezier(0.25, 0.8, 0.25, 1);
+  --control-h: 44px;
+  --sidebar-w: 260px;
+  --header-h: 64px;
+}
