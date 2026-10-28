@@ -95,11 +95,11 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
 
-            // Run migrations synchronously
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            let pool = rt.block_on(db::get_pool(&handle)).unwrap();
-            rt.block_on(sqlx::migrate!("./migrations").run(&pool))
-                .unwrap();
+            // Abre la BD (y aplica migraciones) en el runtime de Tauri y la
+            // registra ANTES de que nada la pida con `db::get_pool`.
+            let ruta = db::ruta_bd(&handle)?;
+            let pool = tauri::async_runtime::block_on(db::abrir_bd(&ruta))?;
+            app.manage(pool);
 
             // Load the saved config; a failure is logged but must not abort startup
             let app_state = app.state::<AppState>();

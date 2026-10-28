@@ -7,8 +7,45 @@ use tauri::Manager;
 const DB_NAME: &str = "argus.db";
 
 pub async fn get_pool(app: &AppHandle) -> Result<SqlitePool> {
-    let pool = app.state::<sqlx::Pool<sqlx::Sqlite>>();
+    let pool = app
+        .try_state::<sqlx::Pool<sqlx::Sqlite>>()
+        .ok_or_else(|| anyhow::anyhow!("La base de datos no está abierta"))?;
     Ok(pool.inner().clone())
+}
+
+/// Ruta de la base de datos: `<config del sistema>/argus/argus.db`
+/// (en Linux `~/.config/argus/argus.db`).
+pub fn ruta_bd(app: &AppHandle) -> Result<std::path::PathBuf> {
+    Ok(app.path().config_dir()?.join("argus").join(DB_NAME))
+}
+
+/// Abre (o crea) la base de datos en `ruta` y aplica las migraciones.
+/// La carpeta queda con permisos 0700 y el archivo con 0600 en Unix.
+pub async fn abrir_bd(ruta: &std::path::Path) -> Result<SqlitePool> {
+    use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+    if let Some(dir) = ruta.parent() {
+        std::fs::create_dir_all(dir)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+        }
+    }
+    let opciones = SqliteConnectOptions::new()
+        .filename(ruta)
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect_with(opciones)
+        .await?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(ruta, std::fs::Permissions::from_mode(0o600))?;
+    }
+    run_migrations(&pool).await?;
+    Ok(pool)
 }
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
@@ -717,5 +754,27 @@ mod guild_settings_tests {
         let s: GuildSettings = serde_json::from_str("{\"notes\":\"x\"}").unwrap();
         assert_eq!(s.notes, "x");
         assert!(!s.personality_enabled);
+    }
+}
+
+#[cfg(test)]
+mod abrir_bd_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn crea_la_bd_aplica_migraciones_y_se_reabre() {
+        let dir = std::env::temp_dir().join(format!("argus_abrir_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let ruta = dir.join("argus").join(DB_NAME);
+
+        let pool = abrir_bd(&ruta).await.expect("primera apertura");
+        assert!(ruta.exists());
+        assert!(list_bots(&pool).await.expect("tabla bots").is_empty());
+        pool.close().await;
+
+        // Reabrir una BD existente no falla (migraciones ya aplicadas)
+        let pool = abrir_bd(&ruta).await.expect("segunda apertura");
+        pool.close().await;
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
