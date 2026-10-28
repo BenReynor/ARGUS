@@ -126,10 +126,32 @@ Prueba final manual (el dueño, con la app compilada desde el acceso directo):
 - Cambios hechos en Discord (canal, rol, miembro que entra o sale) aparecen en ARGUS sin recargar.
 - Quitar el bot de un servidor: desaparece de la lista sin errores.
 
+## FASE 5 — Interfaz y temas
+Rehacer la GUI con las skills de diseño (`ui-tokens` + `estilo-*`, en ~/.claude/skills): temas intercambiables, tema por defecto `discord`. Cada tarea sigue la skill `ui-tokens` y la del estilo indicado, y cubre los estados vacío, cargando y error.
+
+- [ ] Sistema de temas intercambiables
+  criterio: los 10 `tema.css` de las skills estilo-* (minimal, discord, cyberpunk, calido, datos, anime, manga, glass, retro, brutalista) están copiados en src/styles/temas/ e importados; las fuentes se instalan con los paquetes @fontsource que indica cada skill y se importan en src/main.tsx; `Config` (Rust y TS) tiene `ui_theme` (por defecto "discord") y `ui_mode` (por defecto "") con `#[serde(default)]`; al arrancar y al cambiarlos se aplican a `document.documentElement.dataset.tema/.modo`; SettingsView tiene una sección "Apariencia" con una muestra de cada tema (fondo, acento y texto) y su variante de modo si existe; tsc, npm run build y cargo test pasan
+- [ ] Migrar los estilos a los tokens del contrato
+  criterio: src/styles.css usa solo variables del contrato ui-tokens (desaparecen --bg-primary, --accent-cyan, etc.); fuera de src/styles/temas/ no queda ningún color literal (`#hex`, `rgb(`) en src/ — ni en CSS ni en estilos inline de los .tsx —; existe una base común (html/body, foco visible con --focus, scrollbars, `prefers-reduced-motion`); tsc y npm run build pasan
+- [ ] Componentes base compartidos
+  criterio: src/components/ui/ contiene Button (primario/secundario/peligro/ghost, tamaños, estado cargando y deshabilitado), Input, Select, Card, Badge, Avatar (imagen o iniciales), EstadoVacio, Cargando (skeleton) y ErrorPanel (mensaje + reintentar), todos solo con tokens y con foco visible; las vistas existentes empiezan a usarlos en lugar de botones/inputs sueltos; tsc y npm run build pasan
+- [ ] Estructura de la ventana estilo Discord
+  criterio: App muestra, siguiendo la skill estilo-discord: riel de servidores a la izquierda (iconos redondos del servidor o iniciales, squircle en hover/activo, píldora del activo, botón "+" que abre el enlace de invitación), columna de navegación con el bot activo (avatar y nombre) y las secciones, cabecera de la sección y área principal; cambiar de servidor desde el riel equivale al selector del Header (que se elimina o se integra); funciona igual con cualquier tema porque solo usa tokens; tsc y npm run build pasan
+- [ ] Rediseñar el panel del servidor (Dashboard)
+  criterio: Dashboard usa Card/Badge/Button: cabecera con icono y nombre del servidor y estado del Gateway (en vivo / desconectado), KPIs (miembros, canales, roles) con números tabulares, lista de permisos del bot con ✓/✗ y explicación de los que faltan, botón Resincronizar con progreso y actividad reciente (cambios del mapa); estados vacío (sin bot o sin servidor, con la acción para resolverlo), cargando y error; tsc y npm run build pasan
+- [ ] Rediseñar Canales, Roles y Miembros
+  criterio: ChannelsView muestra un árbol por categorías con icono por tipo de canal y búsqueda; RolesView lista los roles con su color, posición y resumen de permisos; MembersView lista avatar, nombre, roles como Badge y acciones (rol, DM, timeout) en un menú, desactivadas con explicación si al bot le falta el permiso; las tres con estados vacío/cargando/error y búsqueda; tsc y npm run build pasan
+- [ ] Rediseñar Ajustes, Logs y notificaciones
+  criterio: SettingsView en secciones con título y descripción (Bots, Este servidor, Apariencia, General), formularios con etiqueta, ayuda y error por campo; LogsView con filtros por nivel y búsqueda, marca de tiempo en --text-3 y nivel como Badge; Notification como toasts apilables (éxito/aviso/error) con cierre y que desaparecen solos; tsc y npm run build pasan
+
+Revisión manual (el dueño):
+- Abrir la app y recorrer todas las vistas con cada tema; nada ilegible ni roto en ninguno.
+- Cambiar de tema en Apariencia y reiniciar: el tema elegido se conserva.
+
 ## Después del MVP (sin criterios todavía: se detallan al empezar cada bloque)
 - Edición completa del servidor: crear/editar/borrar canales, categorías y roles; permisos y overwrites; ban/kick con confirmación.
 - Plantillas: esquema, vista de plantillas, vista previa en árbol, aplicador ordenado (roles → categorías → canales → overwrites), validación de permisos, crear servidor nuevo desde plantilla.
 - Personalidad del bot: perfiles (prompt, modelo, canales, reglas), escuchar MESSAGE_CREATE, filtros (mención, canal, cooldown, ignorar bots), proveedor LLM configurable (Ollama / compatible OpenAI), memoria corta por canal, anti-spam, modo observador, comandos slash.
 - Vigilancia y logs: niveles y timestamps, eventos con filtros, vista timeline, alertas nativas, health check del Gateway, interacción opcional con otros bots con reglas anti-bucle.
 - Integraciones: Telegram, backup automático, MCP propio de ARGUS, agentes CLI.
-- UX y rendimiento: i18n ES/EN, temas, listas virtualizadas, paginación de miembros en la UI, métricas, revisar CPU/RAM.
+- UX y rendimiento: i18n ES/EN, listas virtualizadas, paginación de miembros en la UI, métricas, revisar CPU/RAM.
