@@ -107,7 +107,7 @@
 
 /* Logs */
 .logs__filtros { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
-.logs__lista { display: flex; flex-direction: column; max-height: 60vh; overflow-y: auto; font-family: var(--font-mono); font-size: var(--fs-sm); border: var(--border-w) solid var(--border); border-radius: var(--radius-sm); }
+.logs__lista { display: flex; flex-direction: column; flex: 1; min-height: 12rem; overflow-y: auto; font-family: var(--font-mono); font-size: var(--fs-sm); border: var(--border-w) solid var(--border); border-radius: var(--radius-sm); }
 .logs__fila { display: flex; align-items: baseline; gap: var(--sp-2); padding: var(--sp-1) var(--sp-3); border-bottom: var(--border-w) solid var(--border); }
 .logs__hora { color: var(--text-3); flex: none; }
 .logs__texto { color: var(--text); overflow-wrap: anywhere; }

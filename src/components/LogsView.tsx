@@ -66,7 +66,7 @@ export const LogsView: React.FC = () => {
   };
 
   return (
-    <div className="vista">
+    <div className="vista vista--llena">
       <div className="vista__cabecera">
         <h2>Logs</h2>
         <div className="logs__filtros">
