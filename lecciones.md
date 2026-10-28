@@ -61,3 +61,8 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - Síntoma: El agente no cumplió el criterio tras 2 intentos.
 - Causa: agente_fallo en la iteración 9: claude salió con rc=1 sin cambios
 - Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-10-28 10:23 — Tarea bloqueada: Interfaz: moderación de miembros
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: agente_fallo en la iteración 10: claude salió con rc=1 sin cambios
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
