@@ -14,15 +14,15 @@ Tauri 2 · React + TypeScript · Rust · SQLite · [twilight](https://twilight.r
 
 ## Estado
 
-En desarrollo. La base de datos, el cifrado de tokens, la configuración y la
-interfaz existen; la conexión real con Discord se está construyendo ahora.
+MVP completo en código, pendiente de la prueba final en un servidor real.
 
 | Fase | Contenido | Estado |
 |---|---|---|
 | 0 · Fundamentos | Modelo multi-servidor, persistencia, tipos Rust ↔ TS, selector de servidor | ✅ |
-| 1 · Bots genéricos | Registrar bots por token (nombre y avatar oficiales), elegir el bot activo, listar sus servidores | 🚧 |
-| 2 · Datos y acciones reales | Canales, roles y miembros reales; mensajes y DM; roles; timeout | ⏳ |
-| 3 · Mapa en vivo | Gateway: sincronización completa y cambios al instante | ⏳ |
+| 1 · Bots genéricos | Registrar bots por token (nombre y avatar oficiales), elegir el bot activo, listar sus servidores | ✅ |
+| 2 · Datos y acciones reales | Invitar el bot, aviso de intents, canales/roles/miembros reales, permisos del bot y panel por servidor, configuración por servidor, mensajes y DM, roles, timeout | ✅ |
+| 3 · Mapa en vivo | Gateway: sincronización completa, cambios al instante, mapa e historial guardados, resincronizar | ✅ |
+| 4 · Prueba real | Tests de integración contra un servidor de pruebas ([`docs/PRUEBA_REAL.md`](docs/PRUEBA_REAL.md)) + revisión manual | 🧪 |
 
 Después del MVP: edición completa del servidor, plantillas de servidor,
 personalidad del bot (respuestas con un modelo de lenguaje configurable),
