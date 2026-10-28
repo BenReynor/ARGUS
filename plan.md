@@ -129,7 +129,7 @@ Prueba final manual (el dueño, con la app compilada desde el acceso directo):
 ## FASE 5 — Interfaz y temas
 Rehacer la GUI con las skills de diseño (`ui-tokens` + `estilo-*`, en ~/.claude/skills): temas intercambiables, tema por defecto `discord`. Cada tarea sigue la skill `ui-tokens` y la del estilo indicado, y cubre los estados vacío, cargando y error.
 
-- [ ] Sistema de temas intercambiables
+- [x] Sistema de temas intercambiables
   criterio: los 10 `tema.css` de las skills estilo-* (minimal, discord, cyberpunk, calido, datos, anime, manga, glass, retro, brutalista) están copiados en src/styles/temas/ e importados; las fuentes se instalan con los paquetes @fontsource que indica cada skill y se importan en src/main.tsx; `Config` (Rust y TS) tiene `ui_theme` (por defecto "discord") y `ui_mode` (por defecto "") con `#[serde(default)]`; al arrancar y al cambiarlos se aplican a `document.documentElement.dataset.tema/.modo`; SettingsView tiene una sección "Apariencia" con una muestra de cada tema (fondo, acento y texto) y su variante de modo si existe; tsc, npm run build y cargo test pasan
 - [ ] Migrar los estilos a los tokens del contrato
   criterio: src/styles.css usa solo variables del contrato ui-tokens (desaparecen --bg-primary, --accent-cyan, etc.); fuera de src/styles/temas/ no queda ningún color literal (`#hex`, `rgb(`) en src/ — ni en CSS ni en estilos inline de los .tsx —; existe una base común (html/body, foco visible con --focus, scrollbars, `prefers-reduced-motion`); tsc y npm run build pasan
