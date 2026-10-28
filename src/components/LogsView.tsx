@@ -68,7 +68,7 @@ export const LogsView: React.FC = () => {
   return (
     <div className="vista vista--llena">
       <div className="vista__cabecera">
-        <h2>Logs</h2>
+        <h2 className="vista__solo-lector">Logs</h2>
         <div className="logs__filtros">
           <Select
             aria-label="Filtrar por nivel"
@@ -94,14 +94,14 @@ export const LogsView: React.FC = () => {
             <input type="checkbox" checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} />
             <span>Auto-scroll</span>
           </label>
-          <Button variante="ghost" onClick={copyAll} disabled={visibles.length === 0}>
-            <Copy size={14} /> Copiar
+          <Button variante="ghost" className="logs__accion" title="Copiar" aria-label="Copiar" onClick={copyAll} disabled={visibles.length === 0}>
+            <Copy size={14} aria-hidden="true" /> <span className="logs__accion-texto">Copiar</span>
           </Button>
-          <Button variante="ghost" onClick={downloadLogs} disabled={visibles.length === 0}>
-            <Download size={14} /> Descargar
+          <Button variante="ghost" className="logs__accion" title="Descargar" aria-label="Descargar" onClick={downloadLogs} disabled={visibles.length === 0}>
+            <Download size={14} aria-hidden="true" /> <span className="logs__accion-texto">Descargar</span>
           </Button>
-          <Button variante="peligro" onClick={clearLogs} disabled={logs.length === 0}>
-            <Trash2 size={14} /> Limpiar
+          <Button variante="peligro" className="logs__accion" title="Limpiar" aria-label="Limpiar" onClick={clearLogs} disabled={logs.length === 0}>
+            <Trash2 size={14} aria-hidden="true" /> <span className="logs__accion-texto">Limpiar</span>
           </Button>
         </div>
       </div>

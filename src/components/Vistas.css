@@ -4,8 +4,15 @@
 .vista { min-width: 0; max-width: 100%; }
 .vista__cabecera h2 { margin: 0; font-family: var(--font-display); font-size: var(--fs-lg); font-weight: var(--fw-bold); }
 .vista__acciones { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-left: auto; }
-.vista__buscar { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-3); max-width: 100%; }
-.vista__buscar .ui-control { min-width: 0; width: 240px; max-width: 100%; }
+.vista__buscar { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-3); flex: 1 1 240px; min-width: 0; max-width: 560px; }
+.vista__buscar .ui-control { flex: 1; min-width: 0; width: 100%; }
+/* El bloque de acciones/filtros ocupa el espacio libre de la cabecera para que
+   el buscador crezca con la ventana en vez de quedarse fijo en una esquina. */
+.vista__acciones, .logs__filtros { flex: 1 1 320px; justify-content: flex-end; }
+/* Un desplegable en la cabecera ocupa solo lo suyo (si no, se estiraba a toda
+   la fila y mandaba el buscador a otra línea). */
+.vista__acciones > .ui-campo, .logs__filtros > .ui-campo { flex: none; }
+.vista__acciones select.ui-control, .logs__filtros select.ui-control { width: auto; min-width: 180px; }
 .vista__cuenta, .num { font-variant-numeric: tabular-nums; }
 .num { text-align: right; }
 .vista__titulo-panel { margin: 0; font-size: var(--fs-md); }
@@ -90,7 +97,9 @@
 .toast__texto { flex: 1; font-size: var(--fs-sm); overflow-wrap: anywhere; }
 
 /* Ajustes */
-.ajustes { display: flex; flex-direction: column; gap: var(--sp-5); padding: var(--sp-4); max-width: 760px; }
+.ajustes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-5); padding: var(--sp-4); }
+@media (max-width: 1100px) { .ajustes { grid-template-columns: minmax(0, 1fr); } }
+.ajustes > .vista__cabecera, .ajustes__seccion--ancha { grid-column: 1 / -1; }
 .ajustes__seccion { display: flex; flex-direction: column; gap: var(--sp-3); }
 .ajustes__seccion > header h3 { font-size: var(--fs-md); font-weight: var(--fw-bold); }
 .ajustes__seccion > header p { color: var(--text-2); font-size: var(--fs-sm); }
@@ -107,6 +116,16 @@
 
 /* Logs */
 .logs__filtros { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+/* En Logs no hay título visible: la barra empieza a la izquierda y el buscador
+   ocupa todo el espacio libre de la fila. */
+.vista--llena .logs__filtros { justify-content: flex-start; }
+.vista--llena .logs__filtros .vista__buscar { max-width: none; }
+/* En anchos medianos los botones quedan solo con icono (el nombre sigue en el
+   tooltip y en aria-label) para que la barra no salte a dos líneas. */
+@media (max-width: 1280px) {
+  .logs__accion-texto { display: none; }
+  .logs__accion { padding-inline: var(--sp-2); }
+}
 .logs__lista { display: flex; flex-direction: column; flex: 1; min-height: 12rem; overflow-y: auto; font-family: var(--font-mono); font-size: var(--fs-sm); border: var(--border-w) solid var(--border); border-radius: var(--radius-sm); }
 .logs__fila { display: flex; align-items: baseline; gap: var(--sp-2); padding: var(--sp-1) var(--sp-3); border-bottom: var(--border-w) solid var(--border); }
 .logs__hora { color: var(--text-3); flex: none; }

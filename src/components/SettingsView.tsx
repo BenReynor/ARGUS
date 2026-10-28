@@ -7,8 +7,8 @@ import './Vistas.css';
 import { Save, Trash2, Plus, Server, CheckCircle, AlertCircle, Eye, EyeOff, Copy } from 'lucide-react';
 import { TEMAS, aplicarTema } from '../temas';
 
-const Seccion: React.FC<{ titulo: string; descripcion: string; children: React.ReactNode }> = ({ titulo, descripcion, children }) => (
-  <Card className="ajustes__seccion">
+const Seccion: React.FC<{ titulo: string; descripcion: string; ancha?: boolean; children: React.ReactNode }> = ({ titulo, descripcion, ancha, children }) => (
+  <Card className={`ajustes__seccion${ancha ? ' ajustes__seccion--ancha' : ''}`}>
     <header>
       <h3>{titulo}</h3>
       <p>{descripcion}</p>
@@ -221,7 +221,7 @@ export const SettingsView: React.FC = () => {
   return (
     <div className="vista ajustes">
       <div className="vista__cabecera">
-        <h2>Ajustes</h2>
+        <h2 className="vista__solo-lector">Ajustes</h2>
       </div>
 
       <Seccion titulo="Bots" descripcion="Registra los bots propios que ARGUS puede usar y elige con cuál trabajar.">
@@ -288,7 +288,7 @@ export const SettingsView: React.FC = () => {
 
       <Seccion titulo="Este servidor" descripcion="Ajustes propios de ARGUS para el servidor activo.">
         {!activeGuildId ? (
-          <EstadoVacio titulo="Ningún servidor seleccionado" descripcion="Elige un servidor en la cabecera para configurarlo." />
+          <EstadoVacio titulo="Ningún servidor seleccionado" descripcion="Elige un servidor en la columna de la izquierda para configurarlo." />
         ) : !guildSettings ? (
           <Cargando lineas={3} />
         ) : (
@@ -324,7 +324,7 @@ export const SettingsView: React.FC = () => {
         )}
       </Seccion>
 
-      <Seccion titulo="Apariencia" descripcion="Elige el tema y el modo de la interfaz. Se aplica al instante y se guarda.">
+      <Seccion ancha titulo="Apariencia" descripcion="Elige el tema y el modo de la interfaz. Se aplica al instante y se guarda.">
         <div className="temas-rejilla" role="radiogroup" aria-label="Tema de la interfaz">
           {TEMAS.flatMap((t) => {
             const variantes = [{ modo: '', nombre: t.nombre }];
@@ -363,7 +363,7 @@ export const SettingsView: React.FC = () => {
         </div>
       </Seccion>
 
-      <Seccion titulo="General" descripcion="Comportamiento de la aplicación y servidor con el que arranca.">
+      <Seccion ancha titulo="General" descripcion="Comportamiento de la aplicación y servidor con el que arranca.">
         <Input
           etiqueta="ID del servidor activo"
           ayuda="Clic derecho en el servidor → Copiar ID (con el modo desarrollador de Discord activo)."
