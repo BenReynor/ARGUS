@@ -151,7 +151,7 @@ Revisión manual (el dueño):
 ## FASE 6 — Pulido visual con las skills de diseño
 Cada tarea nombra las skills que el agente debe cargar y seguir (Dédalo las carga y el revisor comprueba sus reglas). Tema por defecto: discord; todo debe verse bien con los 10 temas.
 
-- [ ] Limpiar el CSS según la skill ui-tokens
+- [x] Limpiar el CSS según la skill ui-tokens
   criterio: siguiendo la skill ui-tokens, en src/ (fuera de src/styles/temas/) no queda ningún color, sombra ni radio literal (ni `rgba(`/`#hex` en Vistas.css, ui.css u otros) y solo se usan variables del contrato (desaparecen las que no existen, como --radius-md); los estados vacío, cargando y error de todas las vistas usan EstadoVacio, Cargando y ErrorPanel; tsc y npm run build pasan
 - [ ] Rasgos propios de los estilos minimal, discord, cyberpunk, calido y datos
   criterio: usando las skills estilo-minimal, estilo-discord, estilo-cyberpunk, estilo-calido y estilo-datos, existe src/styles/temas/rasgos.css con reglas acotadas a cada `[data-tema="…"]` que aplican los rasgos característicos que describe cada skill (p. ej. cyberpunk: títulos en mayúsculas con espaciado y esquinas cortadas en tarjetas clave; datos: tablas compactas con números tabulares; calido: controles grandes y botones con icono y texto; discord: squircle y píldora del riel); los componentes no cambian de API; tsc y npm run build pasan
