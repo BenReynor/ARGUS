@@ -148,6 +148,28 @@ Revisión manual (el dueño):
 - Abrir la app y recorrer todas las vistas con cada tema; nada ilegible ni roto en ninguno.
 - Cambiar de tema en Apariencia y reiniciar: el tema elegido se conserva.
 
+## FASE 6 — Pulido visual con las skills de diseño
+Cada tarea nombra las skills que el agente debe cargar y seguir (Dédalo las carga y el revisor comprueba sus reglas). Tema por defecto: discord; todo debe verse bien con los 10 temas.
+
+- [ ] Limpiar el CSS según la skill ui-tokens
+  criterio: siguiendo la skill ui-tokens, en src/ (fuera de src/styles/temas/) no queda ningún color, sombra ni radio literal (ni `rgba(`/`#hex` en Vistas.css, ui.css u otros) y solo se usan variables del contrato (desaparecen las que no existen, como --radius-md); los estados vacío, cargando y error de todas las vistas usan EstadoVacio, Cargando y ErrorPanel; tsc y npm run build pasan
+- [ ] Rasgos propios de los estilos minimal, discord, cyberpunk, calido y datos
+  criterio: usando las skills estilo-minimal, estilo-discord, estilo-cyberpunk, estilo-calido y estilo-datos, existe src/styles/temas/rasgos.css con reglas acotadas a cada `[data-tema="…"]` que aplican los rasgos característicos que describe cada skill (p. ej. cyberpunk: títulos en mayúsculas con espaciado y esquinas cortadas en tarjetas clave; datos: tablas compactas con números tabulares; calido: controles grandes y botones con icono y texto; discord: squircle y píldora del riel); los componentes no cambian de API; tsc y npm run build pasan
+- [ ] Rasgos propios de los estilos anime, manga, glass, retro y brutalista
+  criterio: usando las skills estilo-anime, estilo-manga, estilo-glass, estilo-retro y estilo-brutalista, rasgos.css añade sus rasgos acotados a cada `[data-tema="…"]` (anime: bordes de tinta y sombras planas que se hunden al pulsar; manga: tramas de puntos en cabeceras y bocadillos en tooltips; glass: fondo `--fondo-app` y paneles de vidrio con respaldo sólido; retro: bordes de bloque, `image-rendering: pixelated` y animaciones a pasos; brutalista: bordes negros gruesos y sombras duras que se desplazan); con `prefers-reduced-motion` no hay animaciones decorativas; tsc y npm run build pasan
+- [ ] Vista previa real de cada tema en Apariencia
+  criterio: siguiendo la skill ui-tokens, la sección Apariencia de SettingsView muestra para cada tema una miniatura que es un trozo de UI real (barra lateral, tarjeta, botón primario y un badge) envuelta en un contenedor con `data-tema` (y `data-modo` si aplica) de ese tema, de modo que se ve con sus propios colores, fuentes y rasgos; el tema activo está marcado y se puede elegir con teclado; tsc y npm run build pasan
+- [ ] Pulir la ventana principal con estilo-discord
+  criterio: usando las skills estilo-discord y diseno-interfaces, el riel de servidores, la columna de navegación (bot activo con avatar y punto de estado del Gateway, secciones con icono) y la cabecera siguen las reglas de layout y componentes de estilo-discord; jerarquía tipográfica de como máximo 3 tamaños por vista; tooltips con el nombre completo de cada servidor en el riel; tsc y npm run build pasan
+- [ ] Pulir el panel del servidor y las vistas de datos
+  criterio: usando la skill diseno-interfaces, Dashboard, ChannelsView, RolesView y MembersView tienen jerarquía clara (título de vista, acciones arriba a la derecha, contenido en tarjetas o tablas), números tabulares alineados, textos de estados vacíos que dicen qué hacer, y búsqueda con atajo `/`; ninguna vista desborda en horizontal a 900 px de ancho (minWidth de la ventana); tsc y npm run build pasan
+- [ ] Accesibilidad y teclado
+  criterio: siguiendo las skills diseno-interfaces y ui-tokens, todos los controles son alcanzables con Tab en orden lógico, tienen foco visible con --focus y `aria-label` cuando solo muestran un icono; los menús y diálogos se cierran con Escape y devuelven el foco; los toasts usan `role="status"` (o `alert` para errores); tsc y npm run build pasan
+
+Revisión manual (el dueño):
+- Recorrer todas las vistas con cada uno de los 10 temas (y sus modos): cada uno se reconoce por su estilo y nada es ilegible.
+- Usar la app solo con teclado durante un minuto.
+
 ## Después del MVP (sin criterios todavía: se detallan al empezar cada bloque)
 - Edición completa del servidor: crear/editar/borrar canales, categorías y roles; permisos y overwrites; ban/kick con confirmación.
 - Plantillas: esquema, vista de plantillas, vista previa en árbol, aplicador ordenado (roles → categorías → canales → overwrites), validación de permisos, crear servidor nuevo desde plantilla.
