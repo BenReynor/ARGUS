@@ -148,8 +148,8 @@ async fn da_y_quita_un_rol() {
 #[ignore]
 async fn aplica_y_retira_un_timeout() {
     let Some(e) = entorno() else { return };
-    let aplicar = discord::set_member_timeout(&e.token, None, &e.guild, &e.user, 1).await;
-    let retirar = discord::set_member_timeout(&e.token, None, &e.guild, &e.user, 0).await;
+    let aplicar = discord::set_member_timeout(&e.token, None, &e.guild, &e.user, 1, None).await;
+    let retirar = discord::set_member_timeout(&e.token, None, &e.guild, &e.user, 0, None).await;
     aplicar.expect("aplicar timeout de 1 minuto (el usuario no puede ser admin ni dueño)");
     retirar.expect("retirar el timeout");
 }

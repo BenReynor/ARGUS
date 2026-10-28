@@ -433,6 +433,7 @@ pub async fn set_member_role(
 
 /// Máximo que admite Discord para un timeout: 28 días.
 pub const TIMEOUT_MAX_MINUTOS: u32 = 28 * 24 * 60;
+pub const ERROR_TIMEOUT_MAX: &str = "El silencio no puede superar los 28 días (40320 minutos)";
 
 /// Silencia a un miembro (`PATCH /guilds/{id}/members/{user_id}` con
 /// `communication_disabled_until`). 0 minutos quita el timeout.
@@ -442,10 +443,12 @@ pub async fn set_member_timeout(
     guild_id: &str,
     user_id: &str,
     minutos: u32,
+    motivo: Option<&str>,
 ) -> Result<(), String> {
     if minutos > TIMEOUT_MAX_MINUTOS {
-        return Err("El silencio no puede superar los 28 días (40320 minutos)".to_string());
+        return Err(ERROR_TIMEOUT_MAX.to_string());
     }
+    let motivo = validar_motivo(motivo)?;
     let gid = parse_guild_id(guild_id)?;
     let uid = parse_id(user_id, "usuario")?;
     let hasta = if minutos == 0 {
@@ -458,12 +461,16 @@ pub async fn set_member_timeout(
         )
     };
     let client = build_client(token, base_url);
-    client
+    let mut peticion = client
         .update_guild_member(gid, uid)
         .communication_disabled_until(hasta)
-        .map_err(|_| "Duración de silencio inválida".to_string())?
-        .await
-        .map_err(traducir_error)?;
+        .map_err(|_| "Duración de silencio inválida".to_string())?;
+    if let Some(m) = motivo {
+        peticion = peticion
+            .reason(m)
+            .map_err(|_| "Motivo inválido".to_string())?;
+    }
+    peticion.await.map_err(traducir_error)?;
     Ok(())
 }
 

@@ -294,6 +294,121 @@ pub struct QuitarPermisoCanalParams {
     pub tipo: String,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct ExpulsarParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// ID del usuario.
+    pub user_id: String,
+    /// Motivo; queda en el registro de auditoría.
+    pub motivo: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct BanearParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// ID del usuario (puede no estar en el servidor).
+    pub user_id: String,
+    /// Motivo; queda en el registro de auditoría.
+    pub motivo: Option<String>,
+    /// Días de mensajes a borrar, de 0 a 7 (por defecto 0).
+    pub dias_mensajes: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct SilenciarParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// ID del usuario.
+    pub user_id: String,
+    /// Duración en minutos (máximo 40320 = 28 días); 0 quita el silencio.
+    pub minutos: u32,
+    /// Motivo; queda en el registro de auditoría.
+    pub motivo: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct CambiarApodoParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// ID del usuario.
+    pub user_id: String,
+    /// Apodo nuevo (hasta 32 caracteres); vacío u omitido lo borra.
+    pub apodo: Option<String>,
+    /// Motivo; queda en el registro de auditoría.
+    pub motivo: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct EditarServidorParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// Nombre nuevo (2–100 caracteres).
+    pub nombre: Option<String>,
+    /// Descripción nueva (hasta 120 caracteres); texto vacío la borra.
+    pub descripcion: Option<String>,
+    /// Nivel de verificación (0–4).
+    pub nivel_verificacion: Option<u8>,
+    /// Filtro de contenido explícito (0–2).
+    pub filtro_contenido_explicito: Option<u8>,
+    /// Notificaciones por defecto (0 = todos los mensajes, 1 = solo menciones).
+    pub notificaciones_por_defecto: Option<u8>,
+    /// ID del canal de sistema; texto vacío lo quita.
+    pub canal_del_sistema_id: Option<String>,
+    /// ID del canal AFK; texto vacío lo quita.
+    pub canal_afk_id: Option<String>,
+    /// Inactividad AFK en segundos (60, 300, 900, 1800 o 3600).
+    pub afk_segundos: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct CrearInvitacionParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// ID del canal al que lleva la invitación.
+    pub channel_id: String,
+    /// Caducidad en segundos (0 = no caduca; máximo 604800; por defecto 86400).
+    pub caducidad_segundos: Option<u32>,
+    /// Usos máximos (0 = ilimitados; máximo 100; por defecto 0).
+    pub usos_maximos: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct BorrarInvitacionParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// Código de la invitación (la parte final del enlace).
+    pub codigo: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct CrearWebhookParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// ID del canal donde publicará el webhook.
+    pub channel_id: String,
+    /// Nombre del webhook (1–80 caracteres).
+    pub nombre: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct BorrarWebhookParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// ID del webhook.
+    pub webhook_id: String,
+}
+
 #[derive(Clone)]
 pub struct ArgusMcp {
     pool: SqlitePool,
@@ -1010,6 +1125,188 @@ impl ArgusMcp {
         .map_err(|e| self.limpiar(e))?;
         Self::mensaje(texto)
     }
+
+    // ------------------------------- escritura: moderación, servidor, invitaciones, webhooks
+
+    pub async fn expulsar_json(&self, p: &ExpulsarParams) -> Result<String, String> {
+        let gid = self.servidor_de(p.guild_id.as_deref()).await?;
+        let texto = commands::expulsar_miembro(
+            &self.state,
+            &gid,
+            p.user_id.trim(),
+            p.motivo.as_deref(),
+            self.url(),
+        )
+        .await
+        .map_err(|e| self.limpiar(e))?;
+        Self::mensaje(texto)
+    }
+
+    pub async fn banear_json(&self, p: &BanearParams) -> Result<String, String> {
+        let gid = self.servidor_de(p.guild_id.as_deref()).await?;
+        // Fuera de 0–7 (incluso si no cabe en u8) se rechaza con el mismo mensaje de la app.
+        let dias = u8::try_from(p.dias_mensajes.unwrap_or(0)).unwrap_or(u8::MAX);
+        let texto = commands::banear_miembro(
+            &self.state,
+            &gid,
+            p.user_id.trim(),
+            p.motivo.as_deref(),
+            dias,
+            self.url(),
+        )
+        .await
+        .map_err(|e| self.limpiar(e))?;
+        Self::mensaje(texto)
+    }
+
+    pub async fn desbanear_json(
+        &self,
+        guild_id: Option<&str>,
+        user_id: &str,
+        motivo: Option<&str>,
+    ) -> Result<String, String> {
+        let gid = self.servidor_de(guild_id).await?;
+        let texto = commands::quitar_ban(&self.state, &gid, user_id.trim(), motivo, self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        Self::mensaje(texto)
+    }
+
+    pub async fn silenciar_json(&self, p: &SilenciarParams) -> Result<String, String> {
+        let gid = self.servidor_de(p.guild_id.as_deref()).await?;
+        let texto = commands::silenciar_miembro(
+            &self.state,
+            &gid,
+            p.user_id.trim(),
+            p.minutos,
+            p.motivo.as_deref(),
+            self.url(),
+        )
+        .await
+        .map_err(|e| self.limpiar(e))?;
+        Self::mensaje(texto)
+    }
+
+    pub async fn cambiar_apodo_json(&self, p: &CambiarApodoParams) -> Result<String, String> {
+        let gid = self.servidor_de(p.guild_id.as_deref()).await?;
+        let texto = commands::cambiar_apodo(
+            &self.state,
+            &gid,
+            p.user_id.trim(),
+            p.apodo.as_deref(),
+            p.motivo.as_deref(),
+            self.url(),
+        )
+        .await
+        .map_err(|e| self.limpiar(e))?;
+        Self::mensaje(texto)
+    }
+
+    /// Lee los ajustes actuales y cambia solo los campos indicados; el guardado
+    /// es el de la app (`PATCH /guilds/{id}` con todos los campos).
+    pub async fn editar_servidor_json(&self, p: &EditarServidorParams) -> Result<String, String> {
+        let gid = self.servidor_de(p.guild_id.as_deref()).await?;
+        let mut a = commands::leer_ajustes_servidor(&self.state, &gid, self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        if let Some(n) = &p.nombre {
+            a.name = n.clone();
+        }
+        if let Some(d) = &p.descripcion {
+            a.description = Some(d.clone());
+        }
+        if let Some(n) = p.nivel_verificacion {
+            a.verification_level = n;
+        }
+        if let Some(n) = p.filtro_contenido_explicito {
+            a.explicit_content_filter = n;
+        }
+        if let Some(n) = p.notificaciones_por_defecto {
+            a.default_message_notifications = n;
+        }
+        if let Some(c) = &p.canal_del_sistema_id {
+            a.system_channel_id = Some(c.clone());
+        }
+        if let Some(c) = &p.canal_afk_id {
+            a.afk_channel_id = Some(c.clone());
+        }
+        if let Some(s) = p.afk_segundos {
+            a.afk_timeout = s;
+        }
+        let nuevo = commands::guardar_ajustes_servidor(&self.state, &gid, &a, self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        Ok(json!({
+            "servidor": {
+                "nombre": nuevo.name,
+                "descripcion": nuevo.description,
+                "nivel_verificacion": nuevo.verification_level,
+                "filtro_contenido_explicito": nuevo.explicit_content_filter,
+                "notificaciones_por_defecto": nuevo.default_message_notifications,
+                "canal_del_sistema_id": nuevo.system_channel_id,
+                "canal_afk_id": nuevo.afk_channel_id,
+                "afk_segundos": nuevo.afk_timeout,
+            }
+        })
+        .to_string())
+    }
+
+    pub async fn crear_invitacion_json(&self, p: &CrearInvitacionParams) -> Result<String, String> {
+        let gid = self.servidor_de(p.guild_id.as_deref()).await?;
+        let invitacion = commands::crear_invitacion(
+            &self.state,
+            &gid,
+            p.channel_id.trim(),
+            p.caducidad_segundos.unwrap_or(86_400),
+            p.usos_maximos.unwrap_or(0),
+            self.url(),
+        )
+        .await
+        .map_err(|e| self.limpiar(e))?;
+        Ok(json!({ "invitacion": invitacion }).to_string())
+    }
+
+    pub async fn borrar_invitacion_json(
+        &self,
+        guild_id: Option<&str>,
+        codigo: &str,
+    ) -> Result<String, String> {
+        let gid = self.servidor_de(guild_id).await?;
+        let texto = commands::borrar_invitacion(&self.state, &gid, codigo.trim(), self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        Self::mensaje(texto)
+    }
+
+    /// Única respuesta que incluye la URL completa del webhook (lleva su token).
+    pub async fn crear_webhook_json(&self, p: &CrearWebhookParams) -> Result<String, String> {
+        let gid = self.servidor_de(p.guild_id.as_deref()).await?;
+        let w = commands::crear_webhook(
+            &self.state,
+            &gid,
+            p.channel_id.trim(),
+            &p.nombre,
+            self.url(),
+        )
+        .await
+        .map_err(|e| self.limpiar(e))?;
+        Ok(json!({
+            "webhook": { "id": w.id, "nombre": w.name, "canal_id": w.channel_id, "url": w.url }
+        })
+        .to_string())
+    }
+
+    pub async fn borrar_webhook_json(
+        &self,
+        guild_id: Option<&str>,
+        webhook_id: &str,
+    ) -> Result<String, String> {
+        let gid = self.servidor_de(guild_id).await?;
+        let texto = commands::borrar_webhook(&self.state, &gid, webhook_id.trim(), self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        Self::mensaje(texto)
+    }
 }
 
 /// Minúsculas y sin tildes para comparar textos sueltos («categoría» = «categoria»).
@@ -1449,6 +1746,110 @@ impl ArgusMcp {
     ) -> Result<String, String> {
         self.quitar_permiso_canal_json(&p).await
     }
+
+    #[tool(
+        name = "expulsar",
+        description = "Expulsa a un miembro del servidor. El `motivo` queda en el registro de auditoría. Requiere «Expulsar miembros»; se rechaza al dueño y a quien tenga un rol igual o superior al del bot. `guild_id` es opcional."
+    )]
+    async fn expulsar(&self, Parameters(p): Parameters<ExpulsarParams>) -> Result<String, String> {
+        self.expulsar_json(&p).await
+    }
+
+    #[tool(
+        name = "banear",
+        description = "Banea a un usuario (aunque no esté en el servidor), con `motivo` para el registro de auditoría y `dias_mensajes` (0–7) de mensajes a borrar. Requiere «Banear miembros»; se rechaza al dueño y a quien tenga un rol igual o superior al del bot. `guild_id` es opcional."
+    )]
+    async fn banear(&self, Parameters(p): Parameters<BanearParams>) -> Result<String, String> {
+        self.banear_json(&p).await
+    }
+
+    #[tool(
+        name = "desbanear",
+        description = "Quita el ban a un usuario, con `motivo` opcional para el registro de auditoría. Requiere «Banear miembros». `guild_id` es opcional."
+    )]
+    async fn desbanear(&self, Parameters(p): Parameters<ExpulsarParams>) -> Result<String, String> {
+        self.desbanear_json(p.guild_id.as_deref(), &p.user_id, p.motivo.as_deref())
+            .await
+    }
+
+    #[tool(
+        name = "silenciar",
+        description = "Silencia (timeout) a un miembro durante `minutos` (máximo 40320 = 28 días); 0 quita el silencio. El `motivo` queda en el registro de auditoría. Requiere «Moderar miembros»; se rechaza al dueño y a quien tenga un rol igual o superior al del bot. `guild_id` es opcional."
+    )]
+    async fn silenciar(
+        &self,
+        Parameters(p): Parameters<SilenciarParams>,
+    ) -> Result<String, String> {
+        self.silenciar_json(&p).await
+    }
+
+    #[tool(
+        name = "cambiar_apodo",
+        description = "Cambia el apodo de un miembro en el servidor (hasta 32 caracteres); sin `apodo` lo borra. El `motivo` queda en el registro de auditoría. Requiere «Gestionar apodos»; se rechaza al dueño y a quien tenga un rol igual o superior al del bot (el propio bot siempre puede). `guild_id` es opcional."
+    )]
+    async fn cambiar_apodo(
+        &self,
+        Parameters(p): Parameters<CambiarApodoParams>,
+    ) -> Result<String, String> {
+        self.cambiar_apodo_json(&p).await
+    }
+
+    #[tool(
+        name = "editar_servidor",
+        description = "Edita los ajustes generales del servidor (nombre, descripción, nivel de verificación, filtro de contenido, notificaciones por defecto, canal de sistema, canal AFK y tiempo AFK); solo cambia los campos indicados y un texto vacío en descripción o canales los quita. Requiere «Gestionar servidor». `guild_id` es opcional."
+    )]
+    async fn editar_servidor(
+        &self,
+        Parameters(p): Parameters<EditarServidorParams>,
+    ) -> Result<String, String> {
+        self.editar_servidor_json(&p).await
+    }
+
+    #[tool(
+        name = "crear_invitacion",
+        description = "Crea una invitación a un canal (`caducidad_segundos` 0–604800, por defecto 86400; `usos_maximos` 0–100, por defecto ilimitados). Requiere «Crear invitaciones». `guild_id` es opcional."
+    )]
+    async fn crear_invitacion(
+        &self,
+        Parameters(p): Parameters<CrearInvitacionParams>,
+    ) -> Result<String, String> {
+        self.crear_invitacion_json(&p).await
+    }
+
+    #[tool(
+        name = "borrar_invitacion",
+        description = "Borra una invitación por su código. Requiere «Gestionar servidor». `guild_id` es opcional."
+    )]
+    async fn borrar_invitacion(
+        &self,
+        Parameters(p): Parameters<BorrarInvitacionParams>,
+    ) -> Result<String, String> {
+        self.borrar_invitacion_json(p.guild_id.as_deref(), &p.codigo)
+            .await
+    }
+
+    #[tool(
+        name = "crear_webhook",
+        description = "Crea un webhook en un canal y devuelve su URL completa (es la única vez que se muestra: contiene el token, guárdala con cuidado). Requiere «Gestionar webhooks». `guild_id` es opcional."
+    )]
+    async fn crear_webhook(
+        &self,
+        Parameters(p): Parameters<CrearWebhookParams>,
+    ) -> Result<String, String> {
+        self.crear_webhook_json(&p).await
+    }
+
+    #[tool(
+        name = "borrar_webhook",
+        description = "Borra un webhook por su ID (acción irreversible). Requiere «Gestionar webhooks». `guild_id` es opcional."
+    )]
+    async fn borrar_webhook(
+        &self,
+        Parameters(p): Parameters<BorrarWebhookParams>,
+    ) -> Result<String, String> {
+        self.borrar_webhook_json(p.guild_id.as_deref(), &p.webhook_id)
+            .await
+    }
 }
 
 #[tool_handler]
@@ -1469,7 +1870,7 @@ mod tests {
     use crate::crypto;
     use crate::db::{self, BotConfig};
     use chrono::Utc;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     const TOKEN: &str = "token-secreto-de-prueba.XYZ";
@@ -2610,5 +3011,403 @@ mod tests {
         }
         let crear = tools.iter().find(|t| t.name == "crear_rol").unwrap();
         assert!(crear.input_schema["properties"]["permisos"].is_object());
+    }
+
+    // ------------------------- moderación, servidor, invitaciones y webhooks
+
+    const KICK: u64 = 1 << 1;
+    const BAN: u64 = 1 << 2;
+    const GESTIONAR_SERVIDOR: u64 = 1 << 5;
+    const CREAR_INVITACION: u64 = 1;
+    const GESTIONAR_APODOS: u64 = 1 << 27;
+    const GESTIONAR_WEBHOOKS: u64 = 1 << 29;
+    const MODERAR: u64 = 1 << 40;
+    const DUENO: &str = "No se puede hacer eso al dueño del servidor";
+    const JERARQUIA_MIEMBRO: &str = "Ese miembro tiene un rol igual o superior al del bot: sube el rol del bot en Ajustes del servidor → Roles";
+
+    fn expulsar_a(user: &str) -> ExpulsarParams {
+        ExpulsarParams {
+            guild_id: None,
+            user_id: user.into(),
+            motivo: None,
+        }
+    }
+
+    fn banear_a(user: &str, dias: Option<u32>) -> BanearParams {
+        BanearParams {
+            guild_id: None,
+            user_id: user.into(),
+            motivo: None,
+            dias_mensajes: dias,
+        }
+    }
+
+    fn silenciar_a(user: &str, minutos: u32) -> SilenciarParams {
+        SilenciarParams {
+            guild_id: None,
+            user_id: user.into(),
+            minutos,
+            motivo: None,
+        }
+    }
+
+    fn apodo_de(user: &str, apodo: Option<&str>) -> CambiarApodoParams {
+        CambiarApodoParams {
+            guild_id: None,
+            user_id: user.into(),
+            apodo: apodo.map(Into::into),
+            motivo: None,
+        }
+    }
+
+    fn servidor_vacio() -> EditarServidorParams {
+        EditarServidorParams {
+            guild_id: None,
+            nombre: None,
+            descripcion: None,
+            nivel_verificacion: None,
+            filtro_contenido_explicito: None,
+            notificaciones_por_defecto: None,
+            canal_del_sistema_id: None,
+            canal_afk_id: None,
+            afk_segundos: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn modera_con_el_motivo_en_la_auditoria() {
+        let (_d, mcp, s) = mcp_con_servidor(KICK | BAN | MODERAR | GESTIONAR_APODOS, true).await;
+        Mock::given(method("DELETE"))
+            .and(path("/api/v10/guilds/555/members/1001"))
+            .and(header("x-audit-log-reason", "spam"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&s)
+            .await;
+        Mock::given(method("PUT"))
+            .and(path("/api/v10/guilds/555/bans/1001"))
+            .and(header("x-audit-log-reason", "insultos"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"delete_message_seconds": 2 * 86400}),
+            ))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&s)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path("/api/v10/guilds/555/bans/1004"))
+            .and(header("x-audit-log-reason", "perdonado"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&s)
+            .await;
+        let ana = miembro("1001", "ana", Some("Anita"), &["700"]);
+        Mock::given(method("PATCH"))
+            .and(path("/api/v10/guilds/555/members/1001"))
+            .and(header("x-audit-log-reason", "calma"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"communication_disabled_until": null}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(ana.clone()))
+            .expect(1)
+            .mount(&s)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path("/api/v10/guilds/555/members/1001"))
+            .and(header("x-audit-log-reason", "normas"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"nick": "Nuevo"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(ana))
+            .expect(1)
+            .mount(&s)
+            .await;
+
+        let mut p = expulsar_a("1001");
+        p.motivo = Some("spam".into());
+        assert!(mcp.expulsar_json(&p).await.unwrap().contains("expulsado"));
+        let mut p = banear_a("1001", Some(2));
+        p.motivo = Some("insultos".into());
+        assert!(mcp.banear_json(&p).await.unwrap().contains("baneado"));
+        let r = mcp
+            .desbanear_json(None, "1004", Some("perdonado"))
+            .await
+            .unwrap();
+        assert!(r.contains("Ban de 1004 quitado"));
+        let mut p = silenciar_a("1001", 0);
+        p.motivo = Some("calma".into());
+        assert!(mcp.silenciar_json(&p).await.unwrap().contains("quitado"));
+        let mut p = apodo_de("1001", Some("Nuevo"));
+        p.motivo = Some("normas".into());
+        assert!(mcp.cambiar_apodo_json(&p).await.unwrap().contains("Apodo"));
+    }
+
+    #[tokio::test]
+    async fn silencia_con_duracion() {
+        let (_d, mcp, s) = mcp_con_servidor(MODERAR, true).await;
+        let ana = miembro("1001", "ana", Some("Anita"), &["700"]);
+        aceptar(
+            &s,
+            "PATCH",
+            "/api/v10/guilds/555/members/1001",
+            200,
+            Some(ana),
+            1,
+        )
+        .await;
+        let r = mcp.silenciar_json(&silenciar_a("1001", 10)).await.unwrap();
+        assert!(r.contains("silenciado por 10 minutos"), "{r}");
+        let peticiones = s.received_requests().await.unwrap();
+        let patch = peticiones
+            .iter()
+            .find(|r| r.method.as_str() == "PATCH")
+            .unwrap();
+        let cuerpo: serde_json::Value = serde_json::from_slice(&patch.body).unwrap();
+        assert!(cuerpo["communication_disabled_until"].is_string());
+        // Más de 28 días: error de la app, sin llamar a Discord.
+        let e = mcp
+            .silenciar_json(&silenciar_a("1001", 40321))
+            .await
+            .unwrap_err();
+        assert!(e.contains("28 días"), "{e}");
+    }
+
+    #[tokio::test]
+    async fn moderacion_rechaza_dueno_y_jerarquia_con_el_mensaje_de_la_app() {
+        let (_d, mcp, s) = mcp_con_servidor(KICK | BAN | MODERAR | GESTIONAR_APODOS, true).await;
+        con_rol_alto(&s, KICK | BAN | MODERAR | GESTIONAR_APODOS).await;
+        get_json(
+            &s,
+            "/api/v10/guilds/555/members/1002",
+            miembro("1002", "beto", None, &["900"]),
+        )
+        .await;
+        prohibir_cambios(&s).await;
+        // El dueño es «9».
+        assert_eq!(
+            mcp.expulsar_json(&expulsar_a("9")).await.unwrap_err(),
+            DUENO
+        );
+        assert_eq!(
+            mcp.banear_json(&banear_a("9", None)).await.unwrap_err(),
+            DUENO
+        );
+        assert_eq!(
+            mcp.silenciar_json(&silenciar_a("9", 5)).await.unwrap_err(),
+            DUENO
+        );
+        let e = mcp.cambiar_apodo_json(&apodo_de("9", Some("x"))).await;
+        assert_eq!(e.unwrap_err(), DUENO);
+        // «1002» tiene un rol por encima del bot.
+        assert_eq!(
+            mcp.expulsar_json(&expulsar_a("1002")).await.unwrap_err(),
+            JERARQUIA_MIEMBRO
+        );
+        assert_eq!(
+            mcp.banear_json(&banear_a("1002", None)).await.unwrap_err(),
+            JERARQUIA_MIEMBRO
+        );
+        assert_eq!(
+            mcp.silenciar_json(&silenciar_a("1002", 5))
+                .await
+                .unwrap_err(),
+            JERARQUIA_MIEMBRO
+        );
+        let e = mcp.cambiar_apodo_json(&apodo_de("1002", Some("x"))).await;
+        assert_eq!(e.unwrap_err(), JERARQUIA_MIEMBRO);
+        // Días de mensajes fuera de 0–7.
+        let e = mcp.banear_json(&banear_a("1001", Some(8))).await;
+        assert_eq!(
+            e.unwrap_err(),
+            "Los días de mensajes a borrar deben estar entre 0 y 7"
+        );
+        let e = mcp.banear_json(&banear_a("1001", Some(300))).await;
+        assert!(e.unwrap_err().contains("entre 0 y 7"));
+    }
+
+    #[tokio::test]
+    async fn moderacion_sin_permiso_no_llega_a_discord() {
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_MENSAJES, true).await;
+        prohibir_cambios(&s).await;
+        let falta = |p: &str| format!("Al bot le falta el permiso «{p}»");
+        let e = mcp.expulsar_json(&expulsar_a("1001")).await;
+        assert_eq!(e.unwrap_err(), falta("Expulsar miembros"));
+        let e = mcp.banear_json(&banear_a("1001", None)).await;
+        assert_eq!(e.unwrap_err(), falta("Banear miembros"));
+        let e = mcp.desbanear_json(None, "1004", None).await;
+        assert_eq!(e.unwrap_err(), falta("Banear miembros"));
+        let e = mcp.silenciar_json(&silenciar_a("1001", 5)).await;
+        assert_eq!(e.unwrap_err(), falta("Moderar miembros"));
+        let e = mcp.cambiar_apodo_json(&apodo_de("1001", Some("x"))).await;
+        assert_eq!(e.unwrap_err(), falta("Gestionar apodos"));
+        let e = mcp.editar_servidor_json(&servidor_vacio()).await;
+        assert_eq!(e.unwrap_err(), falta("Gestionar servidor"));
+        let p = CrearInvitacionParams {
+            guild_id: None,
+            channel_id: "11".into(),
+            caducidad_segundos: None,
+            usos_maximos: None,
+        };
+        let e = mcp.crear_invitacion_json(&p).await;
+        assert_eq!(e.unwrap_err(), falta("Crear invitaciones"));
+        let e = mcp.borrar_invitacion_json(None, "abc123").await;
+        assert_eq!(e.unwrap_err(), falta("Gestionar servidor"));
+        let p = CrearWebhookParams {
+            guild_id: None,
+            channel_id: "11".into(),
+            nombre: "Avisos".into(),
+        };
+        let e = mcp.crear_webhook_json(&p).await;
+        assert_eq!(e.unwrap_err(), falta("Gestionar webhooks"));
+        let e = mcp.borrar_webhook_json(None, "900").await;
+        assert_eq!(e.unwrap_err(), falta("Gestionar webhooks"));
+    }
+
+    #[tokio::test]
+    async fn edita_el_servidor_cambiando_solo_los_campos_indicados() {
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_SERVIDOR, true).await;
+        let guild = json!({
+            "id": "555", "name": "Taller 2", "owner_id": "9", "description": null,
+            "roles": [], "emojis": [], "features": [], "afk_timeout": 300,
+            "afk_channel_id": null, "system_channel_id": "11",
+            "default_message_notifications": 1, "explicit_content_filter": 2,
+            "verification_level": 1, "mfa_level": 0, "nsfw_level": 0,
+            "premium_tier": 0, "system_channel_flags": 0
+        });
+        Mock::given(method("PATCH"))
+            .and(path("/api/v10/guilds/555"))
+            .and(wiremock::matchers::body_partial_json(json!({
+                "name": "Taller 2", "verification_level": 1, "afk_channel_id": null,
+                "system_channel_id": "11", "explicit_content_filter": 2
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(guild))
+            .expect(1)
+            .mount(&s)
+            .await;
+        let mut p = servidor_vacio();
+        p.nombre = Some("Taller 2".into());
+        p.nivel_verificacion = Some(1);
+        p.canal_afk_id = Some(String::new());
+        let r = v(mcp.editar_servidor_json(&p).await.unwrap());
+        assert_eq!(r["servidor"]["nombre"], "Taller 2");
+        assert_eq!(r["servidor"]["nivel_verificacion"], 1);
+        assert!(r["servidor"]["canal_afk_id"].is_null());
+        // Validaciones de la app: sin llamar a Discord.
+        let mut p = servidor_vacio();
+        p.nivel_verificacion = Some(9);
+        assert!(mcp.editar_servidor_json(&p).await.is_err());
+        let mut p = servidor_vacio();
+        p.nombre = Some("x".into());
+        assert!(mcp.editar_servidor_json(&p).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn crea_y_borra_invitaciones() {
+        let (_d, mcp, s) = mcp_con_servidor(CREAR_INVITACION | GESTIONAR_SERVIDOR, true).await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/channels/11/invites"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"max_age": 3600, "max_uses": 5}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"code": "abc123", "uses": 0, "max_uses": 5, "max_age": 3600,
+                       "channel": {"id": "11", "name": "general"}}),
+            ))
+            .expect(1)
+            .mount(&s)
+            .await;
+        aceptar(
+            &s,
+            "DELETE",
+            "/api/v10/invites/abc123",
+            200,
+            Some(json!({"code": "abc123"})),
+            1,
+        )
+        .await;
+        let p = CrearInvitacionParams {
+            guild_id: None,
+            channel_id: "11".into(),
+            caducidad_segundos: Some(3600),
+            usos_maximos: Some(5),
+        };
+        let r = v(mcp.crear_invitacion_json(&p).await.unwrap());
+        assert_eq!(r["invitacion"]["code"], "abc123");
+        assert_eq!(r["invitacion"]["url"], "https://discord.gg/abc123");
+        let r = mcp.borrar_invitacion_json(None, "abc123").await.unwrap();
+        assert!(r.contains("abc123"));
+        // Más de 7 días: error de la app.
+        let p = CrearInvitacionParams {
+            caducidad_segundos: Some(604_801),
+            ..p
+        };
+        let e = mcp.crear_invitacion_json(&p).await.unwrap_err();
+        assert!(e.contains("7 días"), "{e}");
+    }
+
+    #[tokio::test]
+    async fn crea_y_borra_webhooks_y_solo_al_crear_da_la_url() {
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_WEBHOOKS, true).await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/channels/11/webhooks"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "Avisos"}),
+            ))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"id": "901", "name": "Avisos", "channel_id": "11",
+                       "token": WEBHOOK_TOKEN, "type": 1})),
+            )
+            .expect(1)
+            .mount(&s)
+            .await;
+        aceptar(&s, "DELETE", "/api/v10/webhooks/900", 204, None, 1).await;
+        let p = CrearWebhookParams {
+            guild_id: None,
+            channel_id: "11".into(),
+            nombre: "Avisos".into(),
+        };
+        let r = v(mcp.crear_webhook_json(&p).await.unwrap());
+        assert_eq!(r["webhook"]["id"], "901");
+        assert_eq!(
+            r["webhook"]["url"],
+            format!("https://discord.com/api/webhooks/901/{WEBHOOK_TOKEN}")
+        );
+        let r = mcp.borrar_webhook_json(None, "900").await.unwrap();
+        assert!(r.contains("900"));
+        // Nombre vacío: error de la app.
+        let vacio = CrearWebhookParams {
+            nombre: "  ".into(),
+            ..p
+        };
+        assert!(mcp.crear_webhook_json(&vacio).await.is_err());
+        // El listado sigue sin token.
+        let lista = mcp.listar_webhooks_json(None).await.unwrap();
+        assert!(!lista.contains(WEBHOOK_TOKEN));
+    }
+
+    #[tokio::test]
+    async fn las_herramientas_de_moderacion_estan_registradas() {
+        let tools = ArgusMcp::tool_router().list_all();
+        let nombres: Vec<_> = tools.iter().map(|t| t.name.to_string()).collect();
+        for n in [
+            "expulsar",
+            "banear",
+            "desbanear",
+            "silenciar",
+            "cambiar_apodo",
+            "editar_servidor",
+            "crear_invitacion",
+            "borrar_invitacion",
+            "crear_webhook",
+            "borrar_webhook",
+        ] {
+            assert!(nombres.contains(&n.to_string()), "falta {n}");
+        }
+        let banear = tools.iter().find(|t| t.name == "banear").unwrap();
+        assert!(banear.input_schema["properties"]["dias_mensajes"].is_object());
+        assert!(banear.input_schema["properties"]["motivo"].is_object());
+        let silenciar = tools.iter().find(|t| t.name == "silenciar").unwrap();
+        assert!(silenciar.input_schema["properties"]["minutos"].is_object());
     }
 }

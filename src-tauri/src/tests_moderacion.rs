@@ -4,7 +4,9 @@ use chrono::Utc;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use crate::commands::{banear_miembro, cambiar_apodo, expulsar_miembro, listar_bans, quitar_ban};
+use crate::commands::{
+    banear_miembro, cambiar_apodo, expulsar_miembro, listar_bans, quitar_ban, silenciar_miembro,
+};
 use crate::crypto;
 use crate::state::{AppState, BotConfig};
 
@@ -361,4 +363,77 @@ async fn apodo_demasiado_largo_no_llama_a_discord() {
     .await
     .unwrap_err();
     assert_eq!(e, "El apodo no puede superar los 32 caracteres");
+}
+
+const MODERAR: u64 = 1 << 40;
+
+#[tokio::test]
+async fn silencia_y_quita_timeout_con_motivo() {
+    let server = MockServer::start().await;
+    mock_servidor(&server, MODERAR).await;
+    Mock::given(method("PATCH"))
+        .and(path("/api/v10/guilds/555/members/1001"))
+        .and(header("x-audit-log-reason", "calma"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(miembro_json("1001", &["700"])))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let state = estado("token-mod11");
+    let addr = server.address().to_string();
+    let r = silenciar_miembro(&state, "555", "1001", 10, Some("calma"), Some(&addr))
+        .await
+        .unwrap();
+    assert!(r.contains("silenciado"), "{r}");
+    let r = silenciar_miembro(&state, "555", "1001", 0, Some("calma"), Some(&addr))
+        .await
+        .unwrap();
+    assert!(r.contains("quitado"), "{r}");
+    let reqs: Vec<_> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.method.as_str() == "PATCH")
+        .collect();
+    let b1: serde_json::Value = serde_json::from_slice(&reqs[0].body).unwrap();
+    assert!(b1["communication_disabled_until"].is_string(), "{b1}");
+    let b2: serde_json::Value = serde_json::from_slice(&reqs[1].body).unwrap();
+    assert!(b2["communication_disabled_until"].is_null(), "{b2}");
+}
+
+#[tokio::test]
+async fn silencio_rechaza_dueno_jerarquia_permiso_y_exceso() {
+    let server = MockServer::start().await;
+    mock_servidor(&server, MODERAR).await;
+    prohibir_cambios(&server).await;
+    let state = estado("token-mod12");
+    let addr = server.address().to_string();
+    let a = Some(addr.as_str());
+    assert_eq!(
+        silenciar_miembro(&state, "555", "9", 5, None, a)
+            .await
+            .unwrap_err(),
+        DUENO
+    );
+    assert_eq!(
+        silenciar_miembro(&state, "555", "1002", 5, None, a)
+            .await
+            .unwrap_err(),
+        JERARQUIA
+    );
+    assert!(silenciar_miembro(&state, "555", "1001", 40321, None, a)
+        .await
+        .unwrap_err()
+        .contains("28 días"));
+
+    let server = MockServer::start().await;
+    mock_servidor(&server, 0).await;
+    prohibir_cambios(&server).await;
+    let addr = server.address().to_string();
+    assert_eq!(
+        silenciar_miembro(&state, "555", "1001", 5, None, Some(&addr))
+            .await
+            .unwrap_err(),
+        "Al bot le falta el permiso «Moderar miembros»"
+    );
 }

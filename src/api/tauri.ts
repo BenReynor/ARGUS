@@ -58,7 +58,7 @@ export const sendDM = (userId: string, content: string) => invoke<string>('send_
 export const getMemberInfo = (guildId: string, userId: string) => invoke<Member>('get_member_info', { guild_id: guildId, user_id: userId });
 export const addRole = (guildId: string, userId: string, roleId: string) => invoke<string>('add_role', { guild_id: guildId, user_id: userId, role_id: roleId });
 export const removeRole = (guildId: string, userId: string, roleId: string) => invoke<string>('remove_role', { guild_id: guildId, user_id: userId, role_id: roleId });
-export const timeoutMember = (guildId: string, userId: string, durationMinutes: number) => invoke<string>('timeout_member', { guild_id: guildId, user_id: userId, duration_minutes: durationMinutes });
+export const timeoutMember = (guildId: string, userId: string, durationMinutes: number, reason?: string) => invoke<string>('timeout_member', { guild_id: guildId, user_id: userId, duration_minutes: durationMinutes, reason: reason ?? null });
 
 // Config
 export const getConfig = () => invoke<Config>('get_config');
