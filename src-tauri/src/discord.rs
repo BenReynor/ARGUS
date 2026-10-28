@@ -2,6 +2,7 @@
 
 use twilight_http::client::ClientBuilder;
 use twilight_http::error::ErrorType;
+use twilight_http::request::AuditLogReason;
 use twilight_http::Client;
 
 /// Construye un cliente de Discord a partir de un token.
@@ -463,6 +464,209 @@ pub async fn set_member_timeout(
         .map_err(|_| "Duración de silencio inválida".to_string())?
         .await
         .map_err(traducir_error)?;
+    Ok(())
+}
+
+/// Id del dueño del servidor (`GET /guilds/{id}`).
+pub async fn fetch_guild_owner_id(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+) -> Result<Option<String>, String> {
+    let gid = parse_guild_id(guild_id)?;
+    let client = build_client(token, base_url);
+    let cuerpo = client
+        .guild(gid)
+        .await
+        .map_err(traducir_error)?
+        .bytes()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    Ok(serde_json::from_slice::<serde_json::Value>(&cuerpo)
+        .ok()
+        .and_then(|v| v.get("owner_id")?.as_str().map(str::to_string)))
+}
+
+/// Máximo de caracteres del motivo de auditoría que admite Discord.
+const MAX_MOTIVO: usize = 512;
+
+fn validar_motivo(motivo: Option<&str>) -> Result<Option<&str>, String> {
+    let motivo = motivo.map(str::trim).filter(|m| !m.is_empty());
+    if motivo.is_some_and(|m| m.chars().count() > MAX_MOTIVO) {
+        return Err(format!(
+            "El motivo no puede superar los {MAX_MOTIVO} caracteres"
+        ));
+    }
+    Ok(motivo)
+}
+
+/// Expulsa a un miembro (`DELETE /guilds/{id}/members/{user_id}`); el motivo
+/// viaja en la cabecera `X-Audit-Log-Reason`.
+pub async fn kick_guild_member(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+    user_id: &str,
+    motivo: Option<&str>,
+) -> Result<(), String> {
+    let motivo = validar_motivo(motivo)?;
+    let gid = parse_guild_id(guild_id)?;
+    let uid = parse_id(user_id, "usuario")?;
+    let client = build_client(token, base_url);
+    let mut peticion = client.remove_guild_member(gid, uid);
+    if let Some(m) = motivo {
+        peticion = peticion
+            .reason(m)
+            .map_err(|_| "Motivo inválido".to_string())?;
+    }
+    peticion.await.map_err(traducir_error)?;
+    Ok(())
+}
+
+/// Motivo codificado como lo espera `X-Audit-Log-Reason` (porcentaje UTF-8).
+fn codificar_motivo(motivo: &str) -> String {
+    let mut s = String::new();
+    for b in motivo.bytes() {
+        if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
+            s.push(b as char);
+        } else {
+            s.push_str(&format!("%{b:02X}"));
+        }
+    }
+    s
+}
+
+/// Máximo de días de mensajes que se pueden borrar al banear.
+pub const BAN_DIAS_MAX: u8 = 7;
+
+/// Banea a un miembro (`PUT /guilds/{id}/bans/{user_id}`) borrando sus mensajes
+/// de los últimos `dias` (0–7); el motivo va en `X-Audit-Log-Reason`.
+pub async fn ban_guild_member(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+    user_id: &str,
+    motivo: Option<&str>,
+    dias: u8,
+) -> Result<(), String> {
+    if dias > BAN_DIAS_MAX {
+        return Err("Los días de mensajes a borrar deben estar entre 0 y 7".to_string());
+    }
+    let motivo = validar_motivo(motivo)?;
+    let gid = parse_guild_id(guild_id)?;
+    let uid = parse_id::<twilight_model::id::marker::UserMarker>(user_id, "usuario")?;
+    // twilight 0.15 manda `delete_message_seconds` en la query, pero Discord lo
+    // lee del cuerpo JSON: se arma la petición a mano (con la cabecera de motivo).
+    let cuerpo = serde_json::json!({"delete_message_seconds": u32::from(dias) * 86_400});
+    let mut constructor =
+        twilight_http::request::Request::builder(&twilight_http::routing::Route::CreateBan {
+            delete_message_seconds: None,
+            guild_id: gid.get(),
+            user_id: uid.get(),
+        })
+        .json(&cuerpo)
+        .map_err(|e| format!("Petición inválida: {e}"))?;
+    if let Some(m) = motivo {
+        // Los tipos de cabecera son los de la versión de `http` de twilight:
+        // se obtienen por inferencia con `parse`.
+        let nombre = "x-audit-log-reason"
+            .parse()
+            .map_err(|_| "Motivo inválido".to_string())?;
+        let valor = codificar_motivo(m)
+            .parse()
+            .map_err(|_| "Motivo inválido".to_string())?;
+        constructor = constructor.headers(std::iter::once((nombre, valor)));
+    }
+    build_client(token, base_url)
+        .request::<twilight_http::response::marker::EmptyBody>(constructor.build())
+        .await
+        .map_err(traducir_error)?;
+    Ok(())
+}
+
+/// Quita un ban (`DELETE /guilds/{id}/bans/{user_id}`).
+pub async fn unban_guild_member(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+    user_id: &str,
+    motivo: Option<&str>,
+) -> Result<(), String> {
+    let motivo = validar_motivo(motivo)?;
+    let gid = parse_guild_id(guild_id)?;
+    let uid = parse_id(user_id, "usuario")?;
+    let client = build_client(token, base_url);
+    let mut peticion = client.delete_ban(gid, uid);
+    if let Some(m) = motivo {
+        peticion = peticion
+            .reason(m)
+            .map_err(|_| "Motivo inválido".to_string())?;
+    }
+    peticion.await.map_err(traducir_error)?;
+    Ok(())
+}
+
+/// Un ban del servidor, listo para la UI.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Ban {
+    pub user_id: String,
+    pub username: String,
+    pub reason: Option<String>,
+}
+
+/// Lista los bans (`GET /guilds/{id}/bans`).
+pub async fn fetch_guild_bans(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+) -> Result<Vec<Ban>, String> {
+    let gid = parse_guild_id(guild_id)?;
+    let client = build_client(token, base_url);
+    let bans = client
+        .bans(gid)
+        .await
+        .map_err(traducir_error)?
+        .models()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    Ok(bans
+        .into_iter()
+        .map(|b| Ban {
+            user_id: b.user.id.to_string(),
+            username: b.user.name,
+            reason: b.reason,
+        })
+        .collect())
+}
+
+/// Cambia el apodo de un miembro (`PATCH /guilds/{id}/members/{user_id}`);
+/// `None` o vacío lo borra.
+pub async fn set_member_nickname(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+    user_id: &str,
+    apodo: Option<&str>,
+    motivo: Option<&str>,
+) -> Result<(), String> {
+    let apodo = apodo.map(str::trim).filter(|a| !a.is_empty());
+    if apodo.is_some_and(|a| a.chars().count() > 32) {
+        return Err("El apodo no puede superar los 32 caracteres".to_string());
+    }
+    let motivo = validar_motivo(motivo)?;
+    let gid = parse_guild_id(guild_id)?;
+    let uid = parse_id(user_id, "usuario")?;
+    let client = build_client(token, base_url);
+    let mut peticion = client
+        .update_guild_member(gid, uid)
+        .nick(apodo)
+        .map_err(|_| "Apodo inválido".to_string())?;
+    if let Some(m) = motivo {
+        peticion = peticion
+            .reason(m)
+            .map_err(|_| "Motivo inválido".to_string())?;
+    }
+    peticion.await.map_err(traducir_error)?;
     Ok(())
 }
 

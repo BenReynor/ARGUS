@@ -397,6 +397,186 @@ pub(crate) async fn exigir_jerarquia(
     Ok(())
 }
 
+const ERROR_DUENO: &str = "No se puede hacer eso al dueño del servidor";
+const ERROR_JERARQUIA_MIEMBRO: &str =
+    "Ese miembro tiene un rol igual o superior al del bot: sube el rol del bot en Ajustes del servidor → Roles";
+
+/// Comprueba que el bot puede moderar a `user_id`: no es el dueño y su rol más
+/// alto queda por debajo del del bot. Con `permitir_ausente`, un usuario que no
+/// está en el servidor (p. ej. banear por id) solo pasa la comprobación del dueño.
+async fn exigir_jerarquia_miembro(
+    state: &AppState,
+    guild_id: &str,
+    user_id: &str,
+    permitir_ausente: bool,
+    base_url: Option<&str>,
+) -> Result<(), String> {
+    let token = token_del_bot_activo(state)?;
+    let dueno = crate::discord::fetch_guild_owner_id(&token, base_url, guild_id).await?;
+    if dueno.as_deref() == Some(user_id) {
+        return Err(ERROR_DUENO.to_string());
+    }
+    let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
+    let objetivo = match leer_miembro(state, guild_id, user_id, base_url).await {
+        Ok(m) => m,
+        Err(_) if permitir_ausente => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    let roles = leer_roles(state, guild_id, base_url).await?;
+    let del_bot = leer_miembro(state, guild_id, &bot.id, base_url).await?;
+    let mas_alto = |m: &Member| {
+        roles
+            .iter()
+            .filter(|r| m.roles.contains(&r.id))
+            .map(|r| r.position)
+            .max()
+            .unwrap_or(0)
+    };
+    if mas_alto(&objetivo) >= mas_alto(&del_bot) {
+        return Err(ERROR_JERARQUIA_MIEMBRO.to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn kick_member(
+    state: State<'_, AppState>,
+    guild_id: String,
+    user_id: String,
+    reason: Option<String>,
+) -> Result<String, String> {
+    expulsar_miembro(&state, &guild_id, &user_id, reason.as_deref(), None).await
+}
+
+pub(crate) async fn expulsar_miembro(
+    state: &AppState,
+    guild_id: &str,
+    user_id: &str,
+    motivo: Option<&str>,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso(state, guild_id, "Expulsar miembros", base_url).await?;
+    exigir_jerarquia_miembro(state, guild_id, user_id, false, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::discord::kick_guild_member(&token, base_url, guild_id, user_id, motivo).await?;
+    Ok(format!("Usuario {user_id} expulsado"))
+}
+
+#[tauri::command]
+pub async fn ban_member(
+    state: State<'_, AppState>,
+    guild_id: String,
+    user_id: String,
+    reason: Option<String>,
+    delete_message_days: Option<u8>,
+) -> Result<String, String> {
+    banear_miembro(
+        &state,
+        &guild_id,
+        &user_id,
+        reason.as_deref(),
+        delete_message_days.unwrap_or(0),
+        None,
+    )
+    .await
+}
+
+pub(crate) async fn banear_miembro(
+    state: &AppState,
+    guild_id: &str,
+    user_id: &str,
+    motivo: Option<&str>,
+    dias: u8,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    if dias > crate::discord::BAN_DIAS_MAX {
+        return Err("Los días de mensajes a borrar deben estar entre 0 y 7".to_string());
+    }
+    exigir_permiso(state, guild_id, "Banear miembros", base_url).await?;
+    exigir_jerarquia_miembro(state, guild_id, user_id, true, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::discord::ban_guild_member(&token, base_url, guild_id, user_id, motivo, dias).await?;
+    Ok(format!("Usuario {user_id} baneado"))
+}
+
+#[tauri::command]
+pub async fn unban_member(
+    state: State<'_, AppState>,
+    guild_id: String,
+    user_id: String,
+    reason: Option<String>,
+) -> Result<String, String> {
+    quitar_ban(&state, &guild_id, &user_id, reason.as_deref(), None).await
+}
+
+pub(crate) async fn quitar_ban(
+    state: &AppState,
+    guild_id: &str,
+    user_id: &str,
+    motivo: Option<&str>,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso(state, guild_id, "Banear miembros", base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::discord::unban_guild_member(&token, base_url, guild_id, user_id, motivo).await?;
+    Ok(format!("Ban de {user_id} quitado"))
+}
+
+#[tauri::command]
+pub async fn list_bans(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<Vec<crate::discord::Ban>, String> {
+    listar_bans(&state, &guild_id, None).await
+}
+
+pub(crate) async fn listar_bans(
+    state: &AppState,
+    guild_id: &str,
+    base_url: Option<&str>,
+) -> Result<Vec<crate::discord::Ban>, String> {
+    exigir_permiso(state, guild_id, "Banear miembros", base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::discord::fetch_guild_bans(&token, base_url, guild_id).await
+}
+
+#[tauri::command]
+pub async fn set_nickname(
+    state: State<'_, AppState>,
+    guild_id: String,
+    user_id: String,
+    nickname: Option<String>,
+    reason: Option<String>,
+) -> Result<String, String> {
+    cambiar_apodo(
+        &state,
+        &guild_id,
+        &user_id,
+        nickname.as_deref(),
+        reason.as_deref(),
+        None,
+    )
+    .await
+}
+
+pub(crate) async fn cambiar_apodo(
+    state: &AppState,
+    guild_id: &str,
+    user_id: &str,
+    apodo: Option<&str>,
+    motivo: Option<&str>,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso(state, guild_id, "Gestionar apodos", base_url).await?;
+    let es_el_bot = state.get_active_bot().is_some_and(|b| b.id == user_id);
+    if !es_el_bot {
+        exigir_jerarquia_miembro(state, guild_id, user_id, false, base_url).await?;
+    }
+    let token = token_del_bot_activo(state)?;
+    crate::discord::set_member_nickname(&token, base_url, guild_id, user_id, apodo, motivo).await?;
+    Ok(format!("Apodo de {user_id} actualizado"))
+}
+
 /// Tras cambiar roles, vuelve a leerlos y actualiza el mapa guardado (si hay uno).
 async fn refrescar_roles_del_mapa(
     state: &AppState,

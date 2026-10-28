@@ -19,6 +19,8 @@ mod sync;
 #[cfg(test)]
 mod tests_canales;
 #[cfg(test)]
+mod tests_moderacion;
+#[cfg(test)]
 mod tests_permisos_canal;
 #[cfg(test)]
 mod tests_roles;
@@ -70,6 +72,11 @@ pub fn run() {
             reorder_roles,
             set_channel_permission,
             delete_channel_permission,
+            kick_member,
+            ban_member,
+            unban_member,
+            list_bans,
+            set_nickname,
             guild_info,
             send_message,
             send_dm,
