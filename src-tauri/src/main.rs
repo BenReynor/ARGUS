@@ -17,6 +17,8 @@ mod persistencia;
 mod state;
 mod sync;
 #[cfg(test)]
+mod tests_ajustes;
+#[cfg(test)]
 mod tests_canales;
 #[cfg(test)]
 mod tests_moderacion;
@@ -72,6 +74,9 @@ pub fn run() {
             reorder_roles,
             set_channel_permission,
             delete_channel_permission,
+            get_guild_settings_discord,
+            update_guild_discord,
+            audit_log,
             kick_member,
             ban_member,
             unban_member,

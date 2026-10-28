@@ -1260,6 +1260,277 @@ pub async fn fetch_bot_permissions(
     Ok(nombres_de_permisos(bits))
 }
 
+/// Ajustes generales de un servidor, tal como los edita la UI.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AjustesServidor {
+    pub name: String,
+    pub description: Option<String>,
+    pub verification_level: u8,
+    pub explicit_content_filter: u8,
+    pub default_message_notifications: u8,
+    pub system_channel_id: Option<String>,
+    pub afk_channel_id: Option<String>,
+    pub afk_timeout: u32,
+}
+
+/// Tiempos de inactividad (segundos) que admite Discord.
+const AFK_TIEMPOS: [u32; 5] = [60, 300, 900, 1800, 3600];
+
+fn id_opcional(texto: &Option<String>, que: &str) -> Result<Option<String>, String> {
+    match texto.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        None => Ok(None),
+        Some(t) => {
+            parse_id::<twilight_model::id::marker::ChannelMarker>(t, que)?;
+            Ok(Some(t.to_string()))
+        }
+    }
+}
+
+fn validar_ajustes(a: &AjustesServidor) -> Result<serde_json::Value, String> {
+    let nombre = a.name.trim();
+    if nombre.chars().count() < 2 || nombre.chars().count() > 100 {
+        return Err("El nombre del servidor debe tener entre 2 y 100 caracteres".to_string());
+    }
+    let descripcion = a
+        .description
+        .as_deref()
+        .map(str::trim)
+        .filter(|d| !d.is_empty());
+    if descripcion.is_some_and(|d| d.chars().count() > 120) {
+        return Err("La descripción no puede superar los 120 caracteres".to_string());
+    }
+    if a.verification_level > 4 {
+        return Err("Nivel de verificación inválido (0–4)".to_string());
+    }
+    if a.explicit_content_filter > 2 {
+        return Err("Filtro de contenido inválido (0–2)".to_string());
+    }
+    if a.default_message_notifications > 1 {
+        return Err("Notificaciones por defecto inválidas (0–1)".to_string());
+    }
+    if !AFK_TIEMPOS.contains(&a.afk_timeout) {
+        return Err("El tiempo AFK debe ser 60, 300, 900, 1800 o 3600 segundos".to_string());
+    }
+    let sistema = id_opcional(&a.system_channel_id, "canal del sistema")?;
+    let afk = id_opcional(&a.afk_channel_id, "canal AFK")?;
+    Ok(serde_json::json!({
+        "name": nombre,
+        "description": descripcion,
+        "verification_level": a.verification_level,
+        "explicit_content_filter": a.explicit_content_filter,
+        "default_message_notifications": a.default_message_notifications,
+        "system_channel_id": sistema,
+        "afk_channel_id": afk,
+        "afk_timeout": a.afk_timeout,
+    }))
+}
+
+fn ajustes_desde_json(json: &serde_json::Value) -> AjustesServidor {
+    let texto = |k: &str| json.get(k).and_then(|v| v.as_str()).map(str::to_string);
+    let numero = |k: &str| json.get(k).and_then(|v| v.as_u64()).unwrap_or(0);
+    AjustesServidor {
+        name: texto("name").unwrap_or_default(),
+        description: texto("description"),
+        verification_level: numero("verification_level") as u8,
+        explicit_content_filter: numero("explicit_content_filter") as u8,
+        default_message_notifications: numero("default_message_notifications") as u8,
+        system_channel_id: texto("system_channel_id"),
+        afk_channel_id: texto("afk_channel_id"),
+        afk_timeout: numero("afk_timeout") as u32,
+    }
+}
+
+/// Lee los ajustes del servidor (`GET /guilds/{id}`).
+pub async fn fetch_guild_settings(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+) -> Result<AjustesServidor, String> {
+    let gid = parse_guild_id(guild_id)?;
+    let cuerpo = build_client(token, base_url)
+        .guild(gid)
+        .await
+        .map_err(traducir_error)?
+        .bytes()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    let json: serde_json::Value = serde_json::from_slice(&cuerpo)
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    Ok(ajustes_desde_json(&json))
+}
+
+/// Guarda los ajustes del servidor (`PATCH /guilds/{id}`) y devuelve los
+/// valores que Discord confirma.
+pub async fn update_guild_settings(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+    ajustes: &AjustesServidor,
+) -> Result<AjustesServidor, String> {
+    let cuerpo = validar_ajustes(ajustes)?;
+    let gid = parse_guild_id(guild_id)?;
+    let peticion =
+        twilight_http::request::Request::builder(&twilight_http::routing::Route::UpdateGuild {
+            guild_id: gid.get(),
+        })
+        .json(&cuerpo)
+        .map_err(|e| format!("Petición inválida: {e}"))?
+        .build();
+    let respuesta = build_client(token, base_url)
+        .request::<twilight_http::response::marker::EmptyBody>(peticion)
+        .await
+        .map_err(traducir_error)?
+        .bytes()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    let json: serde_json::Value = serde_json::from_slice(&respuesta)
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    Ok(ajustes_desde_json(&json))
+}
+
+/// Una entrada del registro de auditoría con textos legibles en español.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EntradaAuditoria {
+    pub id: String,
+    pub action_type: u32,
+    pub accion: String,
+    pub autor: String,
+    pub objetivo: String,
+    pub reason: Option<String>,
+    pub fecha: String,
+}
+
+/// Número máximo de entradas de auditoría que se devuelven.
+pub const AUDITORIA_LIMITE: u16 = 50;
+
+fn nombre_accion(tipo: u32) -> String {
+    match tipo {
+        1 => "Servidor modificado",
+        10 => "Canal creado",
+        11 => "Canal modificado",
+        12 => "Canal eliminado",
+        13 => "Permiso de canal creado",
+        14 => "Permiso de canal modificado",
+        15 => "Permiso de canal eliminado",
+        20 => "Miembro expulsado",
+        21 => "Miembros purgados",
+        22 => "Miembro baneado",
+        23 => "Ban quitado",
+        24 => "Miembro modificado",
+        25 => "Roles de miembro modificados",
+        26 => "Miembro movido de voz",
+        27 => "Miembro desconectado de voz",
+        28 => "Bot añadido",
+        30 => "Rol creado",
+        31 => "Rol modificado",
+        32 => "Rol eliminado",
+        40 => "Invitación creada",
+        41 => "Invitación modificada",
+        42 => "Invitación eliminada",
+        50 => "Webhook creado",
+        51 => "Webhook modificado",
+        52 => "Webhook eliminado",
+        60 => "Emoji creado",
+        61 => "Emoji modificado",
+        62 => "Emoji eliminado",
+        72 => "Mensaje eliminado",
+        73 => "Mensajes eliminados en masa",
+        74 => "Mensaje fijado",
+        75 => "Mensaje desfijado",
+        80 => "Integración creada",
+        81 => "Integración modificada",
+        82 => "Integración eliminada",
+        110 => "Hilo creado",
+        111 => "Hilo modificado",
+        112 => "Hilo eliminado",
+        _ => return format!("Acción {tipo}"),
+    }
+    .to_string()
+}
+
+/// Fecha UTC legible (`dd/mm/aaaa HH:MM UTC`) sacada de un snowflake de Discord.
+fn fecha_de_snowflake(id: &str) -> String {
+    const EPOCA_DISCORD_MS: i64 = 1_420_070_400_000;
+    id.parse::<u64>()
+        .ok()
+        .and_then(|n| chrono::DateTime::from_timestamp_millis((n >> 22) as i64 + EPOCA_DISCORD_MS))
+        .map(|f| f.format("%d/%m/%Y %H:%M UTC").to_string())
+        .unwrap_or_default()
+}
+
+fn interpretar_auditoria(json: &serde_json::Value) -> Vec<EntradaAuditoria> {
+    let usuarios = json.get("users").and_then(|u| u.as_array());
+    let nombre_de = |id: &str| -> Option<String> {
+        usuarios?
+            .iter()
+            .find(|u| u.get("id").and_then(|v| v.as_str()) == Some(id))
+            .and_then(|u| {
+                u.get("global_name")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| u.get("username").and_then(|v| v.as_str()))
+                    .map(str::to_string)
+            })
+    };
+    json.get("audit_log_entries")
+        .and_then(|e| e.as_array())
+        .map(|entradas| {
+            entradas
+                .iter()
+                .take(AUDITORIA_LIMITE as usize)
+                .map(|e| {
+                    let texto = |k: &str| e.get(k).and_then(|v| v.as_str()).map(str::to_string);
+                    let id = texto("id").unwrap_or_default();
+                    let tipo = e.get("action_type").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                    let autor = texto("user_id")
+                        .map(|u| nombre_de(&u).unwrap_or(u))
+                        .unwrap_or_else(|| "Desconocido".to_string());
+                    let objetivo = texto("target_id")
+                        .map(|t| nombre_de(&t).unwrap_or(t))
+                        .unwrap_or_else(|| "—".to_string());
+                    EntradaAuditoria {
+                        fecha: fecha_de_snowflake(&id),
+                        id,
+                        action_type: tipo,
+                        accion: nombre_accion(tipo),
+                        autor,
+                        objetivo,
+                        reason: texto("reason").filter(|r| !r.trim().is_empty()),
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Últimas 50 entradas del registro de auditoría (`GET /guilds/{id}/audit-logs`).
+pub async fn fetch_audit_log(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+) -> Result<Vec<EntradaAuditoria>, String> {
+    let gid = parse_guild_id(guild_id)?;
+    let peticion =
+        twilight_http::request::Request::builder(&twilight_http::routing::Route::GetAuditLogs {
+            action_type: None,
+            after: None,
+            before: None,
+            guild_id: gid.get(),
+            limit: Some(AUDITORIA_LIMITE),
+            user_id: None,
+        })
+        .build();
+    let cuerpo = build_client(token, base_url)
+        .request::<twilight_http::response::marker::EmptyBody>(peticion)
+        .await
+        .map_err(traducir_error)?
+        .bytes()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    let json: serde_json::Value = serde_json::from_slice(&cuerpo)
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    Ok(interpretar_auditoria(&json))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

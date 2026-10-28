@@ -577,6 +577,62 @@ pub(crate) async fn cambiar_apodo(
     Ok(format!("Apodo de {user_id} actualizado"))
 }
 
+#[tauri::command]
+pub async fn get_guild_settings_discord(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<crate::discord::AjustesServidor, String> {
+    leer_ajustes_servidor(&state, &guild_id, None).await
+}
+
+pub(crate) async fn leer_ajustes_servidor(
+    state: &AppState,
+    guild_id: &str,
+    base_url: Option<&str>,
+) -> Result<crate::discord::AjustesServidor, String> {
+    exigir_permiso(state, guild_id, "Gestionar servidor", base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::discord::fetch_guild_settings(&token, base_url, guild_id).await
+}
+
+#[tauri::command]
+pub async fn update_guild_discord(
+    state: State<'_, AppState>,
+    guild_id: String,
+    settings: crate::discord::AjustesServidor,
+) -> Result<crate::discord::AjustesServidor, String> {
+    guardar_ajustes_servidor(&state, &guild_id, &settings, None).await
+}
+
+pub(crate) async fn guardar_ajustes_servidor(
+    state: &AppState,
+    guild_id: &str,
+    ajustes: &crate::discord::AjustesServidor,
+    base_url: Option<&str>,
+) -> Result<crate::discord::AjustesServidor, String> {
+    exigir_permiso(state, guild_id, "Gestionar servidor", base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::discord::update_guild_settings(&token, base_url, guild_id, ajustes).await
+}
+
+#[tauri::command]
+pub async fn audit_log(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<Vec<crate::discord::EntradaAuditoria>, String> {
+    leer_auditoria(&state, &guild_id, None).await
+}
+
+pub(crate) async fn leer_auditoria(
+    state: &AppState,
+    guild_id: &str,
+    base_url: Option<&str>,
+) -> Result<Vec<crate::discord::EntradaAuditoria>, String> {
+    exigir_permiso(state, guild_id, "Ver registro de auditoría", base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::discord::fetch_audit_log(&token, base_url, guild_id).await
+}
+
 /// Tras cambiar roles, vuelve a leerlos y actualiza el mapa guardado (si hay uno).
 async fn refrescar_roles_del_mapa(
     state: &AppState,
