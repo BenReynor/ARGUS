@@ -195,7 +195,7 @@ Si el bot tiene Administrador (o el permiso concreto), ARGUS puede gestionar tod
   criterio: siguiendo las skills ui-tokens y diseno-interfaces, el menú de cada miembro en MembersView añade cambiar apodo, expulsar y banear (diálogo con motivo y días de mensajes a borrar, confirmación); el dueño y los miembros por encima del bot muestran esas acciones desactivadas con la explicación; una pestaña «Baneados» lista los baneos con motivo y permite desbanear; tsc y npm run build pasan
 - [B] Interfaz: ajustes del servidor y auditoría
   criterio: siguiendo las skills ui-tokens, estilo-discord y diseno-interfaces, una nueva sección «Servidor» en la navegación permite editar nombre, descripción, nivel de verificación, filtro de contenido, notificaciones y canales del sistema/AFK (desplegables con los canales reales), con Guardar/Descartar; debajo, el registro de auditoría con filtro por tipo de acción; tsc y npm run build pasan
-- [ ] Interfaz: mensajes, invitaciones y webhooks
+- [B] Interfaz: mensajes, invitaciones y webhooks
   criterio: siguiendo las skills ui-tokens, estilo-discord y diseno-interfaces, al abrir un canal de texto se ven sus últimos mensajes (autor, fecha, contenido, adjuntos como enlace) con acciones borrar, fijar/desfijar y selección múltiple para borrado en bloque (avisando del límite de 14 días); el canal tiene además pestañas «Invitaciones» (crear con caducidad y usos, copiar enlace, borrar) y «Webhooks» (crear, copiar URL, borrar); tsc y npm run build pasan
 
 Verificación manual en tu servidor de pruebas (con el bot como Administrador):
