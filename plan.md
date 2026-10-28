@@ -141,7 +141,7 @@ Rehacer la GUI con las skills de diseño (`ui-tokens` + `estilo-*`, en ~/.claude
   criterio: Dashboard usa Card/Badge/Button: cabecera con icono y nombre del servidor y estado del Gateway (en vivo / desconectado), KPIs (miembros, canales, roles) con números tabulares, lista de permisos del bot con ✓/✗ y explicación de los que faltan, botón Resincronizar con progreso y actividad reciente (cambios del mapa); estados vacío (sin bot o sin servidor, con la acción para resolverlo), cargando y error; tsc y npm run build pasan
 - [x] Rediseñar Canales, Roles y Miembros
   criterio: ChannelsView muestra un árbol por categorías con icono por tipo de canal y búsqueda; RolesView lista los roles con su color, posición y resumen de permisos; MembersView lista avatar, nombre, roles como Badge y acciones (rol, DM, timeout) en un menú, desactivadas con explicación si al bot le falta el permiso; las tres con estados vacío/cargando/error y búsqueda; tsc y npm run build pasan
-- [ ] Rediseñar Ajustes, Logs y notificaciones
+- [x] Rediseñar Ajustes, Logs y notificaciones
   criterio: SettingsView en secciones con título y descripción (Bots, Este servidor, Apariencia, General), formularios con etiqueta, ayuda y error por campo; LogsView con filtros por nivel y búsqueda, marca de tiempo en --text-3 y nivel como Badge; Notification como toasts apilables (éxito/aviso/error) con cierre y que desaparecen solos; tsc y npm run build pasan
 
 Revisión manual (el dueño):
