@@ -6,6 +6,7 @@ build/
 .env.local
 *.pem
 target/
+src-tauri/binaries/
 Cargo.lock
 .DS_Store
 *.swp

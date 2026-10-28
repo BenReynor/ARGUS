@@ -118,6 +118,17 @@
 .ajustes__fila > .ui-campo { flex: 1; min-width: 220px; }
 .ajustes__ayuda { color: var(--text-3); font-size: var(--fs-sm); }
 .ajustes__aviso { color: var(--warning); font-size: var(--fs-sm); display: flex; gap: var(--sp-1); align-items: center; }
+.ajustes__codigo { display: flex; flex-direction: column; gap: var(--sp-2); }
+.ajustes__codigo-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.ajustes__codigo-etiqueta { color: var(--text-2); font-size: var(--fs-sm); font-weight: var(--fw-medium); }
+.ajustes__codigo code, .ajustes__codigo pre {
+  font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text);
+}
+.ajustes__codigo > code, .ajustes__codigo pre {
+  margin: 0; padding: var(--sp-3); background: var(--surface-2);
+  border: var(--border-w) solid var(--border); border-radius: var(--radius);
+  overflow-x: auto; user-select: all; word-break: break-all; white-space: pre-wrap;
+}
 .ajustes__ok { color: var(--success); font-size: var(--fs-sm); }
 .ajustes__error { color: var(--danger); font-size: var(--fs-sm); }
 .ajustes__interruptor { display: flex; align-items: flex-start; gap: var(--sp-2); cursor: pointer; }

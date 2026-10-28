@@ -118,6 +118,7 @@ pub fn run() {
             delete_bot,
             set_active_bot,
             invite_url,
+            ruta_mcp,
             list_templates,
             save_template,
             delete_template,

@@ -1554,6 +1554,25 @@ pub async fn invite_url(app: AppHandle, state: State<'_, AppState>) -> Result<St
     enlace_de_invitacion(&pool, &state, None).await
 }
 
+/// Ruta del binario `argus-mcp`, que se instala junto al ejecutable de la app.
+pub fn ruta_del_mcp() -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("No se pudo localizar ARGUS: {e}"))?;
+    let nombre = if cfg!(windows) {
+        "argus-mcp.exe"
+    } else {
+        "argus-mcp"
+    };
+    let dir = exe
+        .parent()
+        .ok_or("No se pudo localizar la carpeta de ARGUS")?;
+    Ok(dir.join(nombre).to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn ruta_mcp() -> Result<String, String> {
+    ruta_del_mcp()
+}
+
 pub async fn enlace_de_invitacion(
     pool: &sqlx::SqlitePool,
     state: &AppState,
@@ -1974,6 +1993,12 @@ mod tests {
             .expect(1)
             .mount(server)
             .await;
+    }
+
+    #[test]
+    fn ruta_del_mcp_apunta_a_argus_mcp_junto_al_ejecutable() {
+        let ruta = ruta_del_mcp().unwrap();
+        assert!(ruta.contains("argus-mcp"), "{ruta}");
     }
 
     #[tokio::test]

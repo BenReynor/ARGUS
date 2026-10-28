@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore, useConfig, useUiSettings, useSetActiveTab, useShowNotification, useActiveGuildId, useGuildSettings } from '../store/useStore';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { getConfig, saveConfig, saveGuildSettings, addBot, deleteBot, startBot, getBotStatus, inviteUrl } from '../api/tauri';
+import { getConfig, saveConfig, saveGuildSettings, addBot, deleteBot, startBot, getBotStatus, inviteUrl, rutaMcp } from '../api/tauri';
 import { Button, Input, Card, Cargando, EstadoVacio } from './ui';
 import './Vistas.css';
 import { Save, Trash2, Plus, Server, CheckCircle, AlertCircle, Eye, EyeOff, Copy } from 'lucide-react';
@@ -218,6 +218,23 @@ export const SettingsView: React.FC = () => {
     showNotification('Token copiado', 'info');
   };
 
+  const [rutaMcpBin, setRutaMcpBin] = useState('');
+  useEffect(() => {
+    rutaMcp()
+      .then(setRutaMcpBin)
+      .catch((e) => showNotification(typeof e === 'string' ? e : 'No se pudo localizar argus-mcp', 'error'));
+  }, []);
+  const comandoMcp = `claude mcp add argus -- ${/\s/.test(rutaMcpBin) ? JSON.stringify(rutaMcpBin) : rutaMcpBin}`;
+  const jsonMcp = JSON.stringify({ mcpServers: { argus: { command: rutaMcpBin, args: [] } } }, null, 2);
+  const copiar = async (texto: string, aviso: string) => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      showNotification(aviso, 'success');
+    } catch {
+      showNotification('No se pudo copiar al portapapeles', 'error');
+    }
+  };
+
   return (
     <div className="vista ajustes">
       <div className="vista__cabecera">
@@ -320,6 +337,40 @@ export const SettingsView: React.FC = () => {
                 {!savingGuild && <Save size={16} />} Guardar ajustes del servidor
               </Button>
             </div>
+          </>
+        )}
+      </Seccion>
+
+      <Seccion ancha titulo="MCP" descripcion="Conecta Claude Code u otro cliente MCP a tus bots con el binario argus-mcp. Funciona con ARGUS cerrado.">
+        {!rutaMcpBin ? (
+          <Cargando lineas={2} />
+        ) : (
+          <>
+            <div className="ajustes__codigo">
+              <span className="ajustes__codigo-etiqueta">Ruta del binario</span>
+              <code>{rutaMcpBin}</code>
+            </div>
+            <div className="ajustes__codigo">
+              <div className="ajustes__codigo-cabecera">
+                <span className="ajustes__codigo-etiqueta">Claude Code</span>
+                <Button variante="secundario" onClick={() => copiar(comandoMcp, 'Comando copiado')}>
+                  <Copy size={14} /> Copiar
+                </Button>
+              </div>
+              <pre><code>{comandoMcp}</code></pre>
+            </div>
+            <div className="ajustes__codigo">
+              <div className="ajustes__codigo-cabecera">
+                <span className="ajustes__codigo-etiqueta">Otros clientes (JSON)</span>
+                <Button variante="secundario" onClick={() => copiar(jsonMcp, 'JSON copiado')}>
+                  <Copy size={14} /> Copiar
+                </Button>
+              </div>
+              <pre><code>{jsonMcp}</code></pre>
+            </div>
+            <p className="ajustes__aviso">
+              <AlertCircle size={14} /> El MCP puede hacer todo lo que permitan los permisos del bot activo: úsalo solo con clientes de confianza.
+            </p>
           </>
         )}
       </Seccion>
