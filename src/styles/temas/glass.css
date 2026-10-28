@@ -1,6 +1,7 @@
 /* tema.css — estilo-glass (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
 
 [data-tema="glass"] {
+  color-scheme: dark;
   --bg: #0f172a;
   --surface: #1c2438;
   --surface-2: #232d44;
@@ -57,6 +58,7 @@
 }
 
 [data-tema="glass"][data-modo="claro"] {
+  color-scheme: light;
   --bg: #e9eef8;
   --surface: #f7f9fd;
   --surface-2: #eef2fa;

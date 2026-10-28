@@ -1,6 +1,7 @@
 /* tema.css — estilo-anime (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
 
 [data-tema="anime"] {
+  color-scheme: light;
   --bg: #fff7fb;
   --surface: #ffffff;
   --surface-2: #ffeef7;
@@ -53,6 +54,7 @@
 }
 
 [data-tema="anime"][data-modo="noche"] {
+  color-scheme: dark;
   --bg: #170f24;
   --surface: #21152f;
   --surface-2: #2a1b3d;

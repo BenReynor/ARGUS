@@ -1,6 +1,7 @@
 /* tema.css — estilo-brutalista (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
 
 [data-tema="brutalista"] {
+  color-scheme: light;
   --bg: #f2f0e9;
   --surface: #ffffff;
   --surface-2: #e9e6dc;

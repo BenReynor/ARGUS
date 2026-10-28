@@ -1,6 +1,7 @@
 /* tema.css — estilo-manga (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
 
 [data-tema="manga"] {
+  color-scheme: light;
   --bg: #fbfaf7;
   --surface: #ffffff;
   --surface-2: #f1efe9;
@@ -53,6 +54,7 @@
 }
 
 [data-tema="manga"][data-modo="noir"] {
+  color-scheme: dark;
   --bg: #0c0c0c;
   --surface: #141414;
   --surface-2: #1d1d1d;

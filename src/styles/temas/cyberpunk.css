@@ -1,6 +1,7 @@
 /* tema.css — estilo-cyberpunk (contrato ui-tokens). Copia este archivo a src/styles/temas/. */
 
 [data-tema="cyberpunk"] {
+  color-scheme: dark;
   --bg: #05070d;
   --surface: #0b1020;
   --surface-2: #0f1629;

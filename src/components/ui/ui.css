@@ -48,6 +48,11 @@
   width: 100%;
 }
 .ui-control::placeholder { color: var(--text-3); }
+/* Opciones de los desplegables: la lista la dibuja el sistema; sin esto, el
+   texto del tema podía quedar ilegible sobre el fondo del sistema. */
+.ui-control option { background-color: var(--surface); color: var(--text); }
+.ui-control option:checked { background-color: var(--accent); color: var(--accent-text); }
+.ui-control option:disabled { color: var(--text-3); }
 .ui-control:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-color: var(--focus); }
 .ui-control[aria-invalid='true'] { border-color: var(--danger); }
 .ui-campo__error { font-size: var(--fs-sm); color: var(--danger); }
