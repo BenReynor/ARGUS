@@ -173,7 +173,7 @@ Revisión manual (el dueño):
 ## FASE 7 — Control total del servidor
 Si el bot tiene Administrador (o el permiso concreto), ARGUS puede gestionar todo el servidor desde la interfaz. Discord mantiene dos límites que ni un administrador salta y la app los explica: no se toca un rol igual o superior al rol más alto del bot, ni se expulsa/banea/silencia al dueño. Backend: cada tarea con tests contra el Discord falso (wiremock); toda acción comprueba antes el permiso con el cálculo de `bot_permissions` (Administrador lo concede todo) y, tras cambiar algo, actualiza el mapa (`set_map` + evento `map-updated`) para que se vea sin el Gateway.
 
-- [ ] Backend: canales y categorías
+- [x] Backend: canales y categorías
   criterio: comandos `create_channel` (nombre, tipo texto/voz/categoría/anuncios/foro, categoría padre, tema, NSFW, slowmode), `update_channel` (mismos campos y mover de categoría), `delete_channel` y `reorder_channels` (posiciones) con twilight; sin «Gestionar canales» devuelven «Al bot le falta el permiso «Gestionar canales»» sin llamar a Discord; tras cada cambio el mapa del servidor se actualiza; tests con el Discord falso de cada comando y del caso sin permiso
 - [ ] Backend: roles y jerarquía
   criterio: comandos `create_role` (nombre, color, separado, mencionable, permisos como texto de bits), `update_role`, `delete_role` y `reorder_roles`; una función compartida comprueba la jerarquía: tocar un rol con posición igual o mayor que el rol más alto del bot devuelve «Ese rol está por encima del rol del bot: súbelo en Ajustes del servidor → Roles» (el dueño del servidor no aplica: es el bot quien actúa); tests con el Discord falso, incluidos jerarquía y falta de permiso
