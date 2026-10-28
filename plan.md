@@ -163,7 +163,7 @@ Cada tarea nombra las skills que el agente debe cargar y seguir (Dédalo las car
   criterio: usando las skills estilo-discord y diseno-interfaces, el riel de servidores, la columna de navegación (bot activo con avatar y punto de estado del Gateway, secciones con icono) y la cabecera siguen las reglas de layout y componentes de estilo-discord; jerarquía tipográfica de como máximo 3 tamaños por vista; tooltips con el nombre completo de cada servidor en el riel; tsc y npm run build pasan
 - [x] Pulir el panel del servidor y las vistas de datos
   criterio: usando la skill diseno-interfaces, Dashboard, ChannelsView, RolesView y MembersView tienen jerarquía clara (título de vista, acciones arriba a la derecha, contenido en tarjetas o tablas), números tabulares alineados, textos de estados vacíos que dicen qué hacer, y búsqueda con atajo `/`; ninguna vista desborda en horizontal a 900 px de ancho (minWidth de la ventana); tsc y npm run build pasan
-- [ ] Accesibilidad y teclado
+- [x] Accesibilidad y teclado
   criterio: siguiendo las skills diseno-interfaces y ui-tokens, todos los controles son alcanzables con Tab en orden lógico, tienen foco visible con --focus y `aria-label` cuando solo muestran un icono; los menús y diálogos se cierran con Escape y devuelven el foco; los toasts usan `role="status"` (o `alert` para errores); tsc y npm run build pasan
 
 Revisión manual (el dueño):
