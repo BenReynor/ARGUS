@@ -1195,6 +1195,85 @@ pub fn nombres_de_permisos(bits: u64) -> Vec<String> {
         .collect()
 }
 
+/// Nombres de la API de Discord de cada permiso (posición del bit, nombre).
+const PERMISOS_API: &[(u32, &str)] = &[
+    (0, "CreateInstantInvite"),
+    (1, "KickMembers"),
+    (2, "BanMembers"),
+    (3, "Administrator"),
+    (4, "ManageChannels"),
+    (5, "ManageGuild"),
+    (6, "AddReactions"),
+    (7, "ViewAuditLog"),
+    (8, "PrioritySpeaker"),
+    (9, "Stream"),
+    (10, "ViewChannel"),
+    (11, "SendMessages"),
+    (12, "SendTtsMessages"),
+    (13, "ManageMessages"),
+    (14, "EmbedLinks"),
+    (15, "AttachFiles"),
+    (16, "ReadMessageHistory"),
+    (17, "MentionEveryone"),
+    (18, "UseExternalEmojis"),
+    (19, "ViewGuildInsights"),
+    (20, "Connect"),
+    (21, "Speak"),
+    (22, "MuteMembers"),
+    (23, "DeafenMembers"),
+    (24, "MoveMembers"),
+    (25, "UseVad"),
+    (26, "ChangeNickname"),
+    (27, "ManageNicknames"),
+    (28, "ManageRoles"),
+    (29, "ManageWebhooks"),
+    (30, "ManageGuildExpressions"),
+    (31, "UseApplicationCommands"),
+    (32, "RequestToSpeak"),
+    (33, "ManageEvents"),
+    (34, "ManageThreads"),
+    (35, "CreatePublicThreads"),
+    (36, "CreatePrivateThreads"),
+    (37, "UseExternalStickers"),
+    (38, "SendMessagesInThreads"),
+    (39, "UseEmbeddedActivities"),
+    (40, "ModerateMembers"),
+    (41, "ViewCreatorMonetizationAnalytics"),
+    (42, "UseSoundboard"),
+    (43, "CreateGuildExpressions"),
+    (44, "CreateEvents"),
+    (45, "UseExternalSounds"),
+    (46, "SendVoiceMessages"),
+    (49, "SendPolls"),
+    (50, "UseExternalApps"),
+];
+
+fn normalizar_permiso(texto: &str) -> String {
+    texto
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
+/// Convierte una lista de nombres de permisos en el texto de bits que espera
+/// Discord. Acepta el nombre de la API (`ManageMessages`, `MANAGE_MESSAGES`) o
+/// el nombre en español que ARGUS muestra («Gestionar mensajes»).
+pub fn bits_desde_nombres(nombres: &[String]) -> Result<String, String> {
+    let mut bits: u64 = 0;
+    for nombre in nombres {
+        let buscado = normalizar_permiso(nombre);
+        let bit = PERMISOS_API
+            .iter()
+            .chain(PERMISOS_DISCORD.iter())
+            .find(|(_, n)| normalizar_permiso(n) == buscado)
+            .map(|(bit, _)| *bit)
+            .ok_or_else(|| format!("Permiso desconocido: «{}»", nombre.trim()))?;
+        bits |= 1 << bit;
+    }
+    Ok(bits.to_string())
+}
+
 /// Datos del servidor con recuento aproximado de miembros
 /// (`GET /guilds/{id}?with_counts=true`).
 pub async fn fetch_guild_info(
