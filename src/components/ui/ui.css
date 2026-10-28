@@ -1,0 +1,117 @@
+/* Componentes base de ARGUS. Solo variables del contrato ui-tokens. */
+
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: var(--control-h);
+  padding: 0 var(--sp-4);
+  border: var(--border-w) solid transparent;
+  border-radius: var(--radius);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.ui-btn--sm { min-height: calc(var(--control-h) - var(--sp-2)); padding: 0 var(--sp-3); font-size: var(--fs-sm); }
+.ui-btn--lg { min-height: calc(var(--control-h) + var(--sp-2)); padding: 0 var(--sp-5); font-size: var(--fs-lg); }
+.ui-btn--primario { background: var(--accent); color: var(--accent-text); }
+.ui-btn--primario:hover:not(:disabled) { background: var(--accent-hover); }
+.ui-btn--secundario { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
+.ui-btn--secundario:hover:not(:disabled) { background: var(--surface-hover); }
+.ui-btn--peligro { background: var(--danger); color: var(--accent-text); }
+.ui-btn--peligro:hover:not(:disabled) { opacity: 0.9; }
+.ui-btn--ghost { background: transparent; color: var(--text-2); }
+.ui-btn--ghost:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
+.ui-btn[aria-busy='true'] { cursor: progress; }
+.ui-spinner {
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: ui-giro 0.7s linear infinite;
+}
+@keyframes ui-giro { to { transform: rotate(360deg); } }
+
+.ui-campo { display: flex; flex-direction: column; gap: var(--sp-1); }
+.ui-campo > label { font-size: var(--fs-sm); color: var(--text-2); }
+.ui-control {
+  min-height: var(--control-h);
+  padding: 0 var(--sp-3);
+  background: var(--surface-2);
+  color: var(--text);
+  border: var(--border-w) solid var(--border-strong);
+  border-radius: var(--radius);
+  font-size: var(--fs-md);
+  width: 100%;
+}
+.ui-control::placeholder { color: var(--text-3); }
+.ui-control:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-color: var(--focus); }
+.ui-control[aria-invalid='true'] { border-color: var(--danger); }
+.ui-campo__error { font-size: var(--fs-sm); color: var(--danger); }
+
+.ui-card {
+  background: var(--surface);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  padding: var(--sp-4);
+}
+.ui-card__titulo { font-family: var(--font-display); font-size: var(--fs-lg); font-weight: var(--fw-bold); margin-bottom: var(--sp-3); }
+
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: var(--border-w) solid var(--border);
+}
+.ui-badge--acento { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.ui-badge--exito { color: var(--success); border-color: var(--success); }
+.ui-badge--aviso { color: var(--warning); border-color: var(--warning); }
+.ui-badge--peligro { color: var(--danger); border-color: var(--danger); }
+.ui-badge--info { color: var(--info); border-color: var(--info); }
+
+.ui-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--ui-avatar-size, 32px);
+  height: var(--ui-avatar-size, 32px);
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  overflow: hidden;
+}
+.ui-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.ui-estado {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-6);
+  text-align: center;
+  color: var(--text-2);
+}
+.ui-estado__titulo { font-size: var(--fs-lg); font-weight: var(--fw-bold); color: var(--text); }
+.ui-estado--error { border: var(--border-w) solid var(--danger); border-radius: var(--radius-lg); background: var(--surface); }
+.ui-estado--error .ui-estado__titulo { color: var(--danger); }
+
+.ui-skeleton {
+  display: block;
+  height: var(--sp-4);
+  margin-bottom: var(--sp-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-hover);
+  animation: pulse 1.4s var(--ease) infinite;
+}

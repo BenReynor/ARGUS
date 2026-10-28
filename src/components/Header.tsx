@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useStore, useConfig, useBotStatus, useActiveGuildId, useSetActiveGuildId, useLoadGuildPanel } from '../store/useStore';
 import { listGuilds, setActiveGuild } from '../api/tauri';
 import type { Guild } from '../api/tauri';
+import { Select } from './ui';
 import { Server, Cpu, MemoryStick, Wifi, WifiOff, Zap } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -41,8 +42,7 @@ export const Header: React.FC = () => {
       <div className="header-left">
         <h1 className="page-title">PANEL DE CONTROL</h1>
         <span className="divider">/</span>
-        <select
-          className="server-name"
+        <Select
           aria-label="Servidor activo"
           value={activeGuildId ?? ''}
           onChange={handleGuildChange}
@@ -51,7 +51,7 @@ export const Header: React.FC = () => {
           {guilds.map((g) => (
             <option key={g.id} value={g.id}>{g.name}</option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="header-center">
         <div className={`connection-status ${botStatus.connected ? 'connected' : 'disconnected'}`}>

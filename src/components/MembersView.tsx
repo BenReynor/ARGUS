@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useServerMap, useSetSelectedMember, useSelectedMember, useAddLog, useShowNotification, useConfig, useGuildPanel, motivoPermisoAusente } from '../store/useStore';
 import { listMembers, sendDM, addRole, removeRole, timeoutMember, getMemberInfo } from '../api/tauri';
-import { Users, User, Bot, Mail, Shield, Ban, MoreVertical, Copy, Search, ChevronRight, X } from 'lucide-react';
+import { Button, Input, Select, Avatar, Badge } from './ui';
+import { Users, Mail, Shield, Ban, MoreVertical, Copy, Search, ChevronRight, X } from 'lucide-react';
 import type { Member, Role } from '../types';
 
 export const MembersView: React.FC = () => {
@@ -77,14 +78,14 @@ export const MembersView: React.FC = () => {
       <div className="view-header">
         <h2>MIEMBROS</h2>
         <div className="header-controls">
-          <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="select">
+          <Select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} aria-label="Ordenar por">
             <option value="name">Nombre</option>
             <option value="roles">Roles</option>
             <option value="status">Estado</option>
-          </select>
+          </Select>
           <div className="search-box">
             <Search size={16} />
-            <input
+            <Input
               type="text"
               placeholder="Buscar miembro..."
               value={search}
@@ -110,7 +111,7 @@ export const MembersView: React.FC = () => {
               <tr key={member.user_id} onClick={() => setSelectedMember(member)}>
                 <td>
                   <div className="member-cell">
-                    {member.bot ? <Bot size={16} className="bot-icon" /> : <User size={16} />}
+                    <Avatar src={member.avatar} nombre={member.nickname || member.username} tamano={28} />
                     <div>
                       <span className="member-name">{member.nickname || member.username}</span>
                       {member.username !== (member.nickname || member.username) && (
@@ -136,9 +137,9 @@ export const MembersView: React.FC = () => {
                   </div>
                 </td>
                 <td>
-                  <span className={`type-badge ${member.bot ? 'bot' : 'human'}`}>
+                  <Badge tono={member.bot ? 'acento' : 'neutro'}>
                     {member.bot ? 'BOT' : 'HUMANO'}
-                  </span>
+                  </Badge>
                 </td>
                 <td>
                   <div className="action-buttons">
@@ -197,9 +198,9 @@ export const MembersView: React.FC = () => {
                 {roles.filter(r => r.name !== '@everyone').map((role) => {
                   const tiene = selectedMember.roles.includes(role.name);
                   return (
-                    <button key={role.id} className="btn-ghost" onClick={() => handleRole(selectedMember, role, !tiene)} title={tiene ? 'Quitar rol' : 'Añadir rol'}>
+                    <Button key={role.id} variante="ghost" tamano="sm" onClick={() => handleRole(selectedMember, role, !tiene)} title={tiene ? 'Quitar rol' : 'Añadir rol'}>
                       {tiene ? '− ' : '+ '}{role.name}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -207,18 +208,18 @@ export const MembersView: React.FC = () => {
             <div className="detail-actions">
               {!selectedMember.bot && (
                 <>
-                  <button className="btn-secondary" onClick={() => handleDM(selectedMember.user_id, selectedMember.username)}>
+                  <Button variante="secundario" onClick={() => handleDM(selectedMember.user_id, selectedMember.username)}>
                     <Mail size={14} /> ENVIAR DM
-                  </button>
-                  <button className="btn-warning" disabled={!!motivoTimeout} title={motivoTimeout ?? undefined} onClick={() => handleTimeout(selectedMember.user_id, selectedMember.username)}>
+                  </Button>
+                  <Button variante="peligro" disabled={!!motivoTimeout} title={motivoTimeout ?? undefined} onClick={() => handleTimeout(selectedMember.user_id, selectedMember.username)}>
                     <Ban size={14} /> TIMEOUT
-                  </button>
+                  </Button>
                   {motivoTimeout && <span className="member-username">{motivoTimeout}</span>}
                 </>
               )}
-              <button className="btn-ghost" onClick={() => copyId(selectedMember.user_id)}>
+              <Button variante="ghost" onClick={() => copyId(selectedMember.user_id)}>
                 <Copy size={14} /> COPIAR ID
-              </button>
+              </Button>
             </div>
           </div>
         </div>

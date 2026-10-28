@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLogs, useAddLog, useClearLogs, useShowNotification } from '../store/useStore';
-import { Trash2, Copy, Download, Filter, X, Loader2 } from 'lucide-react';
+import { Trash2, Copy, Download, Filter, X } from 'lucide-react';
+import { Button, Input, EstadoVacio } from './ui';
 
 export const LogsView: React.FC = () => {
   const logs = useLogs();
@@ -52,7 +53,7 @@ export const LogsView: React.FC = () => {
         <div className="header-controls">
           <div className="search-box">
             <Filter size={16} />
-            <input
+            <Input
               type="text"
               placeholder="Filtrar logs..."
               value={filter}
@@ -66,24 +67,21 @@ export const LogsView: React.FC = () => {
             <input type="checkbox" checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} />
             <span>Auto-scroll</span>
           </label>
-          <button className="btn-ghost" onClick={copyAll}>
+          <Button variante="ghost" onClick={copyAll}>
             <Copy size={14} /> COPIAR
-          </button>
-          <button className="btn-ghost" onClick={downloadLogs}>
+          </Button>
+          <Button variante="ghost" onClick={downloadLogs}>
             <Download size={14} /> DESCARGAR
-          </button>
-          <button className="btn-ghost danger" onClick={clearLogs}>
+          </Button>
+          <Button variante="peligro" onClick={clearLogs}>
             <Trash2 size={14} /> LIMPIAR
-          </button>
+          </Button>
         </div>
       </div>
 
       <div className="log-container" ref={logContainerRef}>
         {filteredLogs.length === 0 ? (
-          <div className="no-logs">
-            <Loader2 size={32} className="spin" />
-            <p>No hay logs{filter ? ' que coincidan' : ''}</p>
-          </div>
+          <EstadoVacio titulo={`No hay logs${filter ? ' que coincidan' : ''}`} />
         ) : (
           filteredLogs.map((log, i) => (
             <div key={i} className={`log-entry ${getLogClass(log)}`}>

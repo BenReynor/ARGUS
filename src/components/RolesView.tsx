@@ -3,6 +3,7 @@ import { useServerMap, useShowNotification } from '../store/useStore';
 import { listRoles } from '../api/tauri';
 import { Shield, Users, Hash, Copy, Search, Settings, Trash2, Plus, Edit2, Eye, EyeOff, X } from 'lucide-react';
 import type { Role } from '../types';
+import { Button, Input } from './ui';
 
 export const RolesView: React.FC = () => {
   const serverMap = useServerMap();
@@ -32,16 +33,16 @@ export const RolesView: React.FC = () => {
         <div className="header-controls">
           <div className="search-box">
             <Search size={16} />
-            <input
+            <Input
               type="text"
               placeholder="Filtrar roles..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <button className="btn-primary">
+          <Button>
             <Plus size={14} /> NUEVO ROL
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -123,7 +124,7 @@ export const RolesView: React.FC = () => {
             <div className="modal-body">
               <div className="form-group">
                 <label>Nombre</label>
-                <input defaultValue={editingRole.name} />
+                <Input defaultValue={editingRole.name} />
               </div>
               <div className="form-group">
                 <label>Color (hex)</label>
@@ -139,8 +140,8 @@ export const RolesView: React.FC = () => {
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setEditingRole(null)}>Cancelar</button>
-              <button className="btn-primary">Guardar cambios</button>
+              <Button variante="secundario" onClick={() => setEditingRole(null)}>Cancelar</Button>
+              <Button>Guardar cambios</Button>
             </div>
           </div>
         </div>

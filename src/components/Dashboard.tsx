@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useServerMap, useBotStatus, useAddLog, useShowNotification, useSetActiveTab, useConfig, useActiveGuildId, useGuildPanel, PERMISOS_REQUERIDOS } from '../store/useStore';
 import { startBot, stopBot, resyncMap, onSyncProgress } from '../api/tauri';
 import type { SyncProgress } from '../api/tauri';
+import { Button } from './ui';
 import { Users, Hash, Shield, Activity, Zap, Circle, Server, RefreshCw } from 'lucide-react';
 
 interface StatItem {
@@ -132,7 +133,7 @@ export const Dashboard: React.FC = () => {
           <div className={`system-status ${botStatus.connected ? 'online' : botStatus.running ? 'connecting' : 'offline'}`}>
             <Circle className={`status-dot ${botStatus.connected ? 'online' : botStatus.running ? 'connecting' : 'offline'}`} size={10} />
             <span>{botStatus.connected ? 'SISTEMA OPERATIVO' : botStatus.running ? 'INICIALIZANDO...' : 'SISTEMA APAGADO'}</span>
-            <button className="btn-primary" onClick={handleBotToggle}>
+            <Button onClick={handleBotToggle}>
               {botStatus.running ? (
                 <>
                   <Circle className="status-online" size={12} />
@@ -144,7 +145,7 @@ export const Dashboard: React.FC = () => {
                   ENCENDER BOT
                 </>
               )}
-            </button>
+            </Button>
           </div>
         </div>
 

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useStore, useConfig, useUiSettings, useSetActiveTab, useShowNotification, useActiveGuildId, useGuildSettings } from '../store/useStore';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { getConfig, saveConfig, saveGuildSettings, addBot, deleteBot, startBot, getBotStatus, inviteUrl } from '../api/tauri';
-import { Save, Key, Trash2, Plus, Server, ToggleLeft, ToggleRight, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Copy, Palette } from 'lucide-react';
+import { Button, Input } from './ui';
+import { Save, Key, Trash2, Plus, Server, ToggleLeft, ToggleRight, CheckCircle, AlertCircle, Eye, EyeOff, Copy, Palette } from 'lucide-react';
 import { TEMAS, aplicarTema } from '../temas';
 
 export const SettingsView: React.FC = () => {
@@ -199,7 +200,7 @@ export const SettingsView: React.FC = () => {
           <div className="form-group">
             <label>Bot Token</label>
             <div className="input-with-actions">
-              <input
+              <Input
                 type={showToken ? 'text' : 'password'}
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
@@ -213,10 +214,10 @@ export const SettingsView: React.FC = () => {
               </button>
             </div>
             <p className="help-text">Token del bot desde Discord Developer Portal → Bot → Reset Token. El nombre y el avatar se leen de Discord.</p>
-            <button className="btn-secondary" onClick={handleAddBot} disabled={adding || !token.trim()}>
-              {adding ? <Loader2 size={14} className="spin" /> : <Plus size={14} />}
+            <Button variante="secundario" onClick={handleAddBot} cargando={adding} disabled={!token.trim()}>
+              {!adding && <Plus size={14} />}
               AÑADIR BOT
-            </button>
+            </Button>
           </div>
 
           {config.bots.map((b) => (
@@ -230,21 +231,21 @@ export const SettingsView: React.FC = () => {
               {confirmRemove === b.id ? (
                 <div className="input-with-actions">
                   <span>¿Quitar el bot «{b.name}»? Se borrará su token guardado.</span>
-                  <button className="btn-secondary" onClick={() => handleRemoveBot(b.id)}>CONFIRMAR</button>
-                  <button className="btn-secondary" onClick={() => setConfirmRemove(null)}>CANCELAR</button>
+                  <Button variante="peligro" onClick={() => handleRemoveBot(b.id)}>CONFIRMAR</Button>
+                  <Button variante="secundario" onClick={() => setConfirmRemove(null)}>CANCELAR</Button>
                 </div>
               ) : (
-                <button className="btn-secondary" onClick={() => setConfirmRemove(b.id)}>
+                <Button variante="secundario" onClick={() => setConfirmRemove(b.id)}>
                   <Trash2 size={14} /> QUITAR BOT
-                </button>
+                </Button>
               )}
             </div>
           ))}
 
           <div className="form-group">
-            <button className="btn-secondary" onClick={handleInvite} disabled={!config.active_bot_id}>
+            <Button variante="secundario" onClick={handleInvite} disabled={!config.active_bot_id}>
               <Server size={14} /> Invitar a un servidor
-            </button>
+            </Button>
             <p className="help-text">Abre en el navegador el enlace de Discord para añadir el bot activo a uno de tus servidores.</p>
           </div>
 
@@ -265,19 +266,14 @@ export const SettingsView: React.FC = () => {
           </div>
 
           <div className="test-connection">
-            <button className="btn-secondary" onClick={handleTestConnection} disabled={testing || (!token && !hasSavedBot)}>
-              {testing ? (
-                <>
-                  <Loader2 size={16} className="spin" />
-                  PROBANDO...
-                </>
-              ) : (
+            <Button variante="secundario" onClick={handleTestConnection} cargando={testing} disabled={!token && !hasSavedBot}>
+              {testing ? 'PROBANDO...' : (
                 <>
                   <Server size={14} />
                   PROBAR CONEXIÓN
                 </>
               )}
-            </button>
+            </Button>
             {testResult === 'success' && (
               <div className="test-success">
                 <CheckCircle size={16} /> Conexión exitosa - Bot online en gateway
@@ -402,9 +398,9 @@ export const SettingsView: React.FC = () => {
                   <span>Plantillas</span>
                 </label>
               </div>
-              <button className="btn btn-primary" onClick={handleSaveGuild} disabled={savingGuild}>
-                {savingGuild ? <Loader2 size={16} className="spin" /> : <Save size={16} />} Guardar ajustes del servidor
-              </button>
+              <Button onClick={handleSaveGuild} cargando={savingGuild}>
+                {!savingGuild && <Save size={16} />} Guardar ajustes del servidor
+              </Button>
             </>
           )}
         </section>
@@ -412,19 +408,14 @@ export const SettingsView: React.FC = () => {
         <section className="settings-section">
           <h3><Save size={18} /> ACCIONES</h3>
           <div className="settings-actions">
-            <button className="btn-primary" onClick={handleSave} disabled={saving}>
-              {saving ? (
-                <>
-                  <Loader2 size={16} className="spin" />
-                  GUARDANDO...
-                </>
-              ) : (
+            <Button onClick={handleSave} cargando={saving}>
+              {saving ? 'GUARDANDO...' : (
                 <>
                   <Save size={14} />
                   GUARDAR CONFIGURACIÓN
                 </>
               )}
-            </button>
+            </Button>
           </div>
         </section>
       </div>
