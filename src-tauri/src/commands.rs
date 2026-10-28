@@ -3,7 +3,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::crypto;
 use crate::db::{self, BotConfig as DbBotConfig, CliAgentConfig, VigilanceConfig};
-use crate::discord::DatosCanal;
+use crate::discord::{DatosCanal, DatosRol};
 use crate::state::{
     AppState, BotConfig, BotStatus, Channel, Config, Guild, Member, Role, ServerMap,
 };
@@ -360,6 +360,168 @@ pub(crate) async fn reordenar_canales(
     crate::discord::reorder_guild_channels(&token, base_url, guild_id, posiciones).await?;
     refrescar_canales_del_mapa(state, guild_id, base_url).await?;
     Ok(format!("{} canales reordenados", posiciones.len()))
+}
+
+const PERMISO_GESTIONAR_ROLES: &str = "Gestionar roles";
+const ERROR_JERARQUIA: &str =
+    "Ese rol está por encima del rol del bot: súbelo en Ajustes del servidor → Roles";
+
+/// Comprueba la jerarquía: el bot solo puede tocar roles con posición menor que
+/// su rol más alto. Cada objetivo es (id del rol, posición de destino si se
+/// reordena); el destino también debe quedar por debajo. El dueño del servidor
+/// no cuenta: quien actúa es el bot.
+pub(crate) async fn exigir_jerarquia(
+    state: &AppState,
+    guild_id: &str,
+    objetivos: &[(&str, Option<u64>)],
+    base_url: Option<&str>,
+) -> Result<(), String> {
+    let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
+    let roles = leer_roles(state, guild_id, base_url).await?;
+    let miembro = leer_miembro(state, guild_id, &bot.id, base_url).await?;
+    let tope = roles
+        .iter()
+        .filter(|r| miembro.roles.contains(&r.id))
+        .map(|r| r.position)
+        .max()
+        .unwrap_or(0);
+    for (id, nueva) in objetivos {
+        let rol = roles
+            .iter()
+            .find(|r| r.id == *id)
+            .ok_or_else(|| format!("El rol {id} no existe en el servidor"))?;
+        if rol.position >= tope || nueva.is_some_and(|n| n >= tope as u64) {
+            return Err(ERROR_JERARQUIA.to_string());
+        }
+    }
+    Ok(())
+}
+
+/// Tras cambiar roles, vuelve a leerlos y actualiza el mapa guardado (si hay uno).
+async fn refrescar_roles_del_mapa(
+    state: &AppState,
+    guild_id: &str,
+    base_url: Option<&str>,
+) -> Result<(), String> {
+    if state.get_map(guild_id).is_none() {
+        return Ok(());
+    }
+    let roles = leer_roles(state, guild_id, base_url).await?;
+    if let Some(mapa) = state.server_maps.lock().unwrap().get_mut(guild_id) {
+        mapa.roles = roles;
+        mapa.last_updated = Utc::now().to_rfc3339();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn create_role(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    datos: DatosRol,
+) -> Result<Role, String> {
+    let rol = crear_rol(&state, &guild_id, &datos, None).await?;
+    avisar_mapa_actualizado(&app);
+    Ok(rol)
+}
+
+pub(crate) async fn crear_rol(
+    state: &AppState,
+    guild_id: &str,
+    datos: &DatosRol,
+    base_url: Option<&str>,
+) -> Result<Role, String> {
+    exigir_permiso(state, guild_id, PERMISO_GESTIONAR_ROLES, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    let rol = crate::discord::create_guild_role(&token, base_url, guild_id, datos).await?;
+    refrescar_roles_del_mapa(state, guild_id, base_url).await?;
+    Ok(rol)
+}
+
+#[tauri::command]
+pub async fn update_role(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    role_id: String,
+    datos: DatosRol,
+) -> Result<Role, String> {
+    let rol = editar_rol(&state, &guild_id, &role_id, &datos, None).await?;
+    avisar_mapa_actualizado(&app);
+    Ok(rol)
+}
+
+pub(crate) async fn editar_rol(
+    state: &AppState,
+    guild_id: &str,
+    role_id: &str,
+    datos: &DatosRol,
+    base_url: Option<&str>,
+) -> Result<Role, String> {
+    exigir_permiso(state, guild_id, PERMISO_GESTIONAR_ROLES, base_url).await?;
+    exigir_jerarquia(state, guild_id, &[(role_id, None)], base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    let rol = crate::discord::update_guild_role(&token, base_url, guild_id, role_id, datos).await?;
+    refrescar_roles_del_mapa(state, guild_id, base_url).await?;
+    Ok(rol)
+}
+
+#[tauri::command]
+pub async fn delete_role(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    role_id: String,
+) -> Result<String, String> {
+    let mensaje = borrar_rol(&state, &guild_id, &role_id, None).await?;
+    avisar_mapa_actualizado(&app);
+    Ok(mensaje)
+}
+
+pub(crate) async fn borrar_rol(
+    state: &AppState,
+    guild_id: &str,
+    role_id: &str,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso(state, guild_id, PERMISO_GESTIONAR_ROLES, base_url).await?;
+    exigir_jerarquia(state, guild_id, &[(role_id, None)], base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::discord::delete_guild_role(&token, base_url, guild_id, role_id).await?;
+    refrescar_roles_del_mapa(state, guild_id, base_url).await?;
+    Ok(format!("Rol {role_id} borrado"))
+}
+
+/// Cada par es (id del rol, nueva posición).
+#[tauri::command]
+pub async fn reorder_roles(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    positions: Vec<(String, u64)>,
+) -> Result<String, String> {
+    let mensaje = reordenar_roles(&state, &guild_id, &positions, None).await?;
+    avisar_mapa_actualizado(&app);
+    Ok(mensaje)
+}
+
+pub(crate) async fn reordenar_roles(
+    state: &AppState,
+    guild_id: &str,
+    posiciones: &[(String, u64)],
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso(state, guild_id, PERMISO_GESTIONAR_ROLES, base_url).await?;
+    let objetivos: Vec<(&str, Option<u64>)> = posiciones
+        .iter()
+        .map(|(id, pos)| (id.as_str(), Some(*pos)))
+        .collect();
+    exigir_jerarquia(state, guild_id, &objetivos, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::discord::reorder_guild_roles(&token, base_url, guild_id, posiciones).await?;
+    refrescar_roles_del_mapa(state, guild_id, base_url).await?;
+    Ok(format!("{} roles reordenados", posiciones.len()))
 }
 
 /// Descifra el token del bot activo.

@@ -18,6 +18,8 @@ mod state;
 mod sync;
 #[cfg(test)]
 mod tests_canales;
+#[cfg(test)]
+mod tests_roles;
 
 use commands::*;
 use state::AppState;
@@ -60,6 +62,10 @@ pub fn run() {
             update_channel,
             delete_channel,
             reorder_channels,
+            create_role,
+            update_role,
+            delete_role,
+            reorder_roles,
             guild_info,
             send_message,
             send_dm,

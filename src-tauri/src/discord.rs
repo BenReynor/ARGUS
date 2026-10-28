@@ -654,6 +654,172 @@ pub async fn reorder_guild_channels(
     Ok(())
 }
 
+/// Campos editables de un rol. En `update_role` solo se envían los `Some`.
+/// `permissions` es el texto de bits de Discord (p. ej. `"8"`).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct DatosRol {
+    pub name: Option<String>,
+    pub color: Option<u32>,
+    pub hoist: Option<bool>,
+    pub mentionable: Option<bool>,
+    pub permissions: Option<String>,
+}
+
+fn validar_datos_rol(datos: &DatosRol) -> Result<(), String> {
+    if let Some(nombre) = &datos.name {
+        let largo = nombre.trim().chars().count();
+        if largo == 0 || largo > 100 {
+            return Err("El nombre del rol debe tener entre 1 y 100 caracteres".to_string());
+        }
+    }
+    if datos.color.is_some_and(|c| c > 0xFF_FFFF) {
+        return Err("El color del rol no es válido".to_string());
+    }
+    parse_permisos(datos)?;
+    Ok(())
+}
+
+fn parse_permisos(datos: &DatosRol) -> Result<Option<twilight_model::guild::Permissions>, String> {
+    datos
+        .permissions
+        .as_deref()
+        .map(|t| {
+            t.trim()
+                .parse::<u64>()
+                .ok()
+                .and_then(twilight_model::guild::Permissions::from_bits)
+                .ok_or_else(|| "Los permisos del rol no son válidos".to_string())
+        })
+        .transpose()
+}
+
+/// Crea un rol (`POST /guilds/{id}/roles`).
+pub async fn create_guild_role(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+    datos: &DatosRol,
+) -> Result<crate::state::Role, String> {
+    validar_datos_rol(datos)?;
+    let nombre = datos
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .ok_or("El rol necesita un nombre")?;
+    let gid = parse_guild_id(guild_id)?;
+    let client = build_client(token, base_url);
+    let mut peticion = client.create_role(gid).name(nombre);
+    if let Some(color) = datos.color {
+        peticion = peticion.color(color);
+    }
+    if let Some(separado) = datos.hoist {
+        peticion = peticion.hoist(separado);
+    }
+    if let Some(mencionable) = datos.mentionable {
+        peticion = peticion.mentionable(mencionable);
+    }
+    if let Some(permisos) = parse_permisos(datos)? {
+        peticion = peticion.permissions(permisos);
+    }
+    let rol = peticion
+        .await
+        .map_err(traducir_error)?
+        .model()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    Ok(convertir_rol(rol))
+}
+
+/// Edita un rol (`PATCH /guilds/{id}/roles/{role_id}`).
+pub async fn update_guild_role(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+    role_id: &str,
+    datos: &DatosRol,
+) -> Result<crate::state::Role, String> {
+    validar_datos_rol(datos)?;
+    let gid = parse_guild_id(guild_id)?;
+    let rid = parse_id(role_id, "rol")?;
+    let client = build_client(token, base_url);
+    let mut peticion = client.update_role(gid, rid);
+    if let Some(nombre) = datos.name.as_deref() {
+        peticion = peticion.name(Some(nombre.trim()));
+    }
+    if let Some(color) = datos.color {
+        peticion = peticion.color(Some(color));
+    }
+    if let Some(separado) = datos.hoist {
+        peticion = peticion.hoist(separado);
+    }
+    if let Some(mencionable) = datos.mentionable {
+        peticion = peticion.mentionable(mencionable);
+    }
+    if let Some(permisos) = parse_permisos(datos)? {
+        peticion = peticion.permissions(permisos);
+    }
+    let rol = peticion
+        .await
+        .map_err(traducir_error)?
+        .model()
+        .await
+        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+    Ok(convertir_rol(rol))
+}
+
+/// Borra un rol (`DELETE /guilds/{id}/roles/{role_id}`).
+pub async fn delete_guild_role(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+    role_id: &str,
+) -> Result<(), String> {
+    let gid = parse_guild_id(guild_id)?;
+    let rid = parse_id(role_id, "rol")?;
+    build_client(token, base_url)
+        .delete_role(gid, rid)
+        .await
+        .map_err(traducir_error)?;
+    Ok(())
+}
+
+/// Cambia las posiciones de varios roles (`PATCH /guilds/{id}/roles`).
+/// Cada par es (id del rol, posición).
+pub async fn reorder_guild_roles(
+    token: &str,
+    base_url: Option<&str>,
+    guild_id: &str,
+    posiciones: &[(String, u64)],
+) -> Result<(), String> {
+    if posiciones.is_empty() {
+        return Err("No hay posiciones que cambiar".to_string());
+    }
+    let gid = parse_guild_id(guild_id)?;
+    // twilight 0.15 serializa estos pares como `["id", pos]`, pero Discord
+    // espera objetos `{"id", "position"}`: se arma el cuerpo a mano.
+    let cuerpo = posiciones
+        .iter()
+        .map(|(id, pos)| {
+            parse_id::<twilight_model::id::marker::RoleMarker>(id, "rol")?;
+            Ok(serde_json::json!({"id": id, "position": pos}))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let peticion = twilight_http::request::Request::builder(
+        &twilight_http::routing::Route::UpdateRolePositions {
+            guild_id: gid.get(),
+        },
+    )
+    .json(&cuerpo)
+    .map_err(|e| format!("Petición inválida: {e}"))?
+    .build();
+    build_client(token, base_url)
+        .request::<twilight_http::response::marker::EmptyBody>(peticion)
+        .await
+        .map_err(traducir_error)?;
+    Ok(())
+}
+
 /// Permisos de Discord: (posición del bit, nombre en español).
 const PERMISOS_DISCORD: &[(u32, &str)] = &[
     (0, "Crear invitaciones"),
