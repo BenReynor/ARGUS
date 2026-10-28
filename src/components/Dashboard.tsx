@@ -28,10 +28,10 @@ export const Dashboard: React.FC = () => {
   const guildPanel = useGuildPanel();
 
   const stats: StatItem[] = [
-    { label: 'CANALES', value: serverMap?.channels.length || 0, icon: Hash, color: 'var(--accent-cyan)' },
-    { label: 'MIEMBROS', value: serverMap?.members.filter(m => !m.bot).length || 0, icon: Users, color: 'var(--accent-green)' },
-    { label: 'ROLES', value: serverMap?.roles.length || 0, icon: Shield, color: 'var(--accent-purple)' },
-    { label: 'BOTS', value: serverMap?.members.filter(m => m.bot).length || 0, icon: Activity, color: 'var(--accent-orange)' },
+    { label: 'CANALES', value: serverMap?.channels.length || 0, icon: Hash, color: 'var(--accent)' },
+    { label: 'MIEMBROS', value: serverMap?.members.filter(m => !m.bot).length || 0, icon: Users, color: 'var(--success)' },
+    { label: 'ROLES', value: serverMap?.roles.length || 0, icon: Shield, color: 'var(--info)' },
+    { label: 'BOTS', value: serverMap?.members.filter(m => m.bot).length || 0, icon: Activity, color: 'var(--warning)' },
   ];
 
   const quickActions: ActionItem[] = [
@@ -116,7 +116,7 @@ export const Dashboard: React.FC = () => {
               {PERMISOS_REQUERIDOS.map((permiso) => {
                 const tiene = guildPanel.permissions?.includes(permiso) ?? false;
                 return (
-                  <li key={permiso} style={{ color: tiene ? 'var(--accent-green)' : 'var(--accent-orange)' }}>
+                  <li key={permiso} style={{ color: tiene ? 'var(--success)' : 'var(--warning)' }}>
                     {tiene ? '✓' : '✗ Falta:'} {permiso}
                   </li>
                 );

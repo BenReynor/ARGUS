@@ -69,7 +69,7 @@ export const MembersView: React.FC = () => {
 
   const getRoleColor = (roleName: string) => {
     const role = roles.find(r => r.name === roleName);
-    return role ? `#${role.color.toString(16).padStart(6, '0')}` : 'var(--text-secondary)';
+    return role ? `#${role.color.toString(16).padStart(6, '0')}` : 'var(--text-2)';
   };
 
   return (
@@ -127,7 +127,7 @@ export const MembersView: React.FC = () => {
                     {member.roles.slice(0, 3).map((roleName, i) => {
                       const role = roles.find(r => r.name === roleName);
                       return (
-                        <span key={i} className="role-badge" style={{ backgroundColor: role ? `#${role.color.toString(16).padStart(6, '0')}33` : 'var(--bg-tertiary)', borderColor: getRoleColor(roleName) }}>
+                        <span key={i} className="role-badge" style={{ backgroundColor: role ? `#${role.color.toString(16).padStart(6, '0')}33` : 'var(--surface-2)', borderColor: getRoleColor(roleName) }}>
                           {roleName}
                         </span>
                       );
@@ -187,7 +187,7 @@ export const MembersView: React.FC = () => {
                 {selectedMember.roles.map((roleName) => {
                   const role = roles.find(r => r.name === roleName);
                   return (
-                    <span key={roleName} className="role-badge-detail" style={{ backgroundColor: role ? `#${role.color.toString(16).padStart(6, '0')}33` : 'var(--bg-tertiary)', borderColor: getRoleColor(roleName) }}>
+                    <span key={roleName} className="role-badge-detail" style={{ backgroundColor: role ? `#${role.color.toString(16).padStart(6, '0')}33` : 'var(--surface-2)', borderColor: getRoleColor(roleName) }}>
                       {roleName}
                     </span>
                   );

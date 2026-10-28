@@ -25,10 +25,10 @@ export const Notification: React.FC = () => {
   };
 
   const colors = {
-    success: 'var(--accent-green)',
-    error: 'var(--accent-red)',
-    info: 'var(--accent-cyan)',
-    warning: 'var(--accent-orange)',
+    success: 'var(--success)',
+    error: 'var(--danger)',
+    info: 'var(--info)',
+    warning: 'var(--warning)',
   };
 
   const Icon = icons[notification.type];

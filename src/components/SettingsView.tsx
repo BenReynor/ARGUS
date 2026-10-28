@@ -223,7 +223,7 @@ export const SettingsView: React.FC = () => {
             <div key={b.id} className="form-group">
               <label>{b.name}{b.id === config.active_bot_id ? ' (activo)' : ''}</label>
               {avisos[b.id] && (
-                <p className="help-text" style={{ color: 'var(--warning, #f5a623)' }}>
+                <p className="help-text" style={{ color: 'var(--warning)' }}>
                   <AlertCircle size={14} /> {avisos[b.id]}
                 </p>
               )}
@@ -320,8 +320,8 @@ export const SettingsView: React.FC = () => {
           <div className="form-group">
             {TEMAS.map((t) => {
               const activo = (config.ui_theme || 'discord') === t.id;
-              const variantes = [{ modo: '', nombre: 'Base', m: t.muestra }];
-              if (t.modo && t.muestraModo) variantes.push({ modo: t.modo, nombre: t.modoNombre ?? t.modo, m: t.muestraModo });
+              const variantes = [{ modo: '', nombre: 'Base', muestra: t.id }];
+              if (t.modo) variantes.push({ modo: t.modo, nombre: t.modoNombre ?? t.modo, muestra: `${t.id}-${t.modo}` });
               return (
                 <div key={t.id} className="input-with-actions">
                   <strong style={{ minWidth: 100 }}>{t.nombre}{activo ? ' (activo)' : ''}</strong>
@@ -330,13 +330,13 @@ export const SettingsView: React.FC = () => {
                     return (
                       <button
                         key={v.modo || 'base'}
-                        className="btn-secondary"
+                        className="btn-secondary muestra-tema"
+                        data-muestra={v.muestra}
                         aria-pressed={seleccionado}
                         title={`${t.nombre} · ${v.nombre}`}
                         onClick={() => handleTheme(t.id, v.modo)}
-                        style={{ background: v.m.bg, color: v.m.text, border: `2px solid ${seleccionado ? v.m.accent : 'transparent'}` }}
                       >
-                        <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: '50%', background: v.m.accent, marginRight: 6 }} />
+                        <span className="muestra-punto" />
                         {v.nombre}
                       </button>
                     );

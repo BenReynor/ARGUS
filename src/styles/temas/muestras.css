@@ -1,0 +1,18 @@
+/* Muestras (fondo, acento, texto) de cada tema para el selector de Ajustes.
+   Permiten pintar un tema sin activarlo: el selector usa data-muestra="<tema>[-<modo>]". */
+
+[data-muestra='minimal'] { --m-bg: #0b0b0c; --m-accent: #5b57e8; --m-text: #ededef; }
+[data-muestra='minimal-claro'] { --m-bg: #fafafa; --m-accent: #4f46e5; --m-text: #18181b; }
+[data-muestra='discord'] { --m-bg: #313338; --m-accent: #5a66f2; --m-text: #f2f3f5; }
+[data-muestra='cyberpunk'] { --m-bg: #05070d; --m-accent: #00e5ff; --m-text: #e6f1ff; }
+[data-muestra='calido'] { --m-bg: #faf7f2; --m-accent: #c4472a; --m-text: #2b2420; }
+[data-muestra='datos'] { --m-bg: #0d1117; --m-accent: #1f6feb; --m-text: #e6edf3; }
+[data-muestra='datos-claro'] { --m-bg: #f6f8fa; --m-accent: #0969da; --m-text: #1f2328; }
+[data-muestra='anime'] { --m-bg: #fff7fb; --m-accent: #c81e6e; --m-text: #2a1b3d; }
+[data-muestra='anime-noche'] { --m-bg: #170f24; --m-accent: #ff5fa2; --m-text: #fdf2ff; }
+[data-muestra='manga'] { --m-bg: #fbfaf7; --m-accent: #111111; --m-text: #111111; }
+[data-muestra='manga-noir'] { --m-bg: #0c0c0c; --m-accent: #f5f3ee; --m-text: #f5f3ee; }
+[data-muestra='glass'] { --m-bg: #0f172a; --m-accent: #7aa2ff; --m-text: #f1f5ff; }
+[data-muestra='glass-claro'] { --m-bg: #e9eef8; --m-accent: #3355e0; --m-text: #0f172a; }
+[data-muestra='retro'] { --m-bg: #1a1c2c; --m-accent: #73eff7; --m-text: #f4f4f4; }
+[data-muestra='brutalista'] { --m-bg: #f2f0e9; --m-accent: #ff4f00; --m-text: #000000; }
