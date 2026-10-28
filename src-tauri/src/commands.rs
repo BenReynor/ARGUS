@@ -8,7 +8,7 @@ use crate::state::{
     AppState, BotConfig, BotStatus, Channel, Config, Guild, Member, Role, ServerMap,
 };
 
-fn require_active_guild(state: &AppState) -> Result<String, String> {
+pub fn require_active_guild(state: &AppState) -> Result<String, String> {
     state
         .get_active_guild()
         .ok_or_else(|| "No hay servidor seleccionado".to_string())
@@ -166,7 +166,7 @@ pub async fn list_guilds(app: AppHandle, state: State<'_, AppState>) -> Result<V
 
 /// Pide los servidores del bot activo (`GET /users/@me/guilds`), actualiza la
 /// tabla `guilds` y devuelve id, nombre e icono.
-async fn sincronizar_guilds(
+pub async fn sincronizar_guilds(
     pool: &sqlx::SqlitePool,
     state: &AppState,
     base_url: Option<&str>,
@@ -218,7 +218,7 @@ const PERMISO_GESTIONAR_CANALES: &str = "Gestionar canales";
 
 /// Comprueba (sin tocar nada) que el bot activo tiene `permiso` en el servidor;
 /// si no, devuelve el error en español sin haber llamado a la acción.
-async fn exigir_permiso(
+pub async fn exigir_permiso(
     state: &AppState,
     guild_id: &str,
     permiso: &str,
@@ -234,7 +234,7 @@ async fn exigir_permiso(
 
 /// Tras cambiar canales, vuelve a leerlos y actualiza el mapa guardado (si hay
 /// uno) para que la UI lo vea sin esperar al Gateway. Devuelve `true` si cambió.
-async fn refrescar_canales_del_mapa(
+pub async fn refrescar_canales_del_mapa(
     state: &AppState,
     guild_id: &str,
     base_url: Option<&str>,
@@ -271,7 +271,7 @@ pub async fn create_channel(
     Ok(canal)
 }
 
-pub(crate) async fn crear_canal(
+pub async fn crear_canal(
     state: &AppState,
     guild_id: &str,
     datos: &DatosCanal,
@@ -297,7 +297,7 @@ pub async fn update_channel(
     Ok(canal)
 }
 
-pub(crate) async fn editar_canal(
+pub async fn editar_canal(
     state: &AppState,
     guild_id: &str,
     channel_id: &str,
@@ -323,7 +323,7 @@ pub async fn delete_channel(
     Ok(mensaje)
 }
 
-pub(crate) async fn borrar_canal(
+pub async fn borrar_canal(
     state: &AppState,
     guild_id: &str,
     channel_id: &str,
@@ -349,7 +349,7 @@ pub async fn reorder_channels(
     Ok(mensaje)
 }
 
-pub(crate) async fn reordenar_canales(
+pub async fn reordenar_canales(
     state: &AppState,
     guild_id: &str,
     posiciones: &[(String, u64)],
@@ -370,7 +370,7 @@ const ERROR_JERARQUIA: &str =
 /// su rol más alto. Cada objetivo es (id del rol, posición de destino si se
 /// reordena); el destino también debe quedar por debajo. El dueño del servidor
 /// no cuenta: quien actúa es el bot.
-pub(crate) async fn exigir_jerarquia(
+pub async fn exigir_jerarquia(
     state: &AppState,
     guild_id: &str,
     objetivos: &[(&str, Option<u64>)],
@@ -404,7 +404,7 @@ const ERROR_JERARQUIA_MIEMBRO: &str =
 /// Comprueba que el bot puede moderar a `user_id`: no es el dueño y su rol más
 /// alto queda por debajo del del bot. Con `permitir_ausente`, un usuario que no
 /// está en el servidor (p. ej. banear por id) solo pasa la comprobación del dueño.
-async fn exigir_jerarquia_miembro(
+pub async fn exigir_jerarquia_miembro(
     state: &AppState,
     guild_id: &str,
     user_id: &str,
@@ -480,7 +480,7 @@ pub async fn kick_member(
     expulsar_miembro(&state, &guild_id, &user_id, reason.as_deref(), None).await
 }
 
-pub(crate) async fn expulsar_miembro(
+pub async fn expulsar_miembro(
     state: &AppState,
     guild_id: &str,
     user_id: &str,
@@ -513,7 +513,7 @@ pub async fn ban_member(
     .await
 }
 
-pub(crate) async fn banear_miembro(
+pub async fn banear_miembro(
     state: &AppState,
     guild_id: &str,
     user_id: &str,
@@ -541,7 +541,7 @@ pub async fn unban_member(
     quitar_ban(&state, &guild_id, &user_id, reason.as_deref(), None).await
 }
 
-pub(crate) async fn quitar_ban(
+pub async fn quitar_ban(
     state: &AppState,
     guild_id: &str,
     user_id: &str,
@@ -562,7 +562,7 @@ pub async fn list_bans(
     listar_bans(&state, &guild_id, None).await
 }
 
-pub(crate) async fn listar_bans(
+pub async fn listar_bans(
     state: &AppState,
     guild_id: &str,
     base_url: Option<&str>,
@@ -591,7 +591,7 @@ pub async fn set_nickname(
     .await
 }
 
-pub(crate) async fn cambiar_apodo(
+pub async fn cambiar_apodo(
     state: &AppState,
     guild_id: &str,
     user_id: &str,
@@ -617,7 +617,7 @@ pub async fn get_guild_settings_discord(
     leer_ajustes_servidor(&state, &guild_id, None).await
 }
 
-pub(crate) async fn leer_ajustes_servidor(
+pub async fn leer_ajustes_servidor(
     state: &AppState,
     guild_id: &str,
     base_url: Option<&str>,
@@ -636,7 +636,7 @@ pub async fn update_guild_discord(
     guardar_ajustes_servidor(&state, &guild_id, &settings, None).await
 }
 
-pub(crate) async fn guardar_ajustes_servidor(
+pub async fn guardar_ajustes_servidor(
     state: &AppState,
     guild_id: &str,
     ajustes: &crate::discord::AjustesServidor,
@@ -655,7 +655,7 @@ pub async fn audit_log(
     leer_auditoria(&state, &guild_id, None).await
 }
 
-pub(crate) async fn leer_auditoria(
+pub async fn leer_auditoria(
     state: &AppState,
     guild_id: &str,
     base_url: Option<&str>,
@@ -681,7 +681,7 @@ pub async fn channel_messages(
     leer_mensajes(&state, &guild_id, &channel_id, None).await
 }
 
-pub(crate) async fn leer_mensajes(
+pub async fn leer_mensajes(
     state: &AppState,
     guild_id: &str,
     channel_id: &str,
@@ -702,7 +702,7 @@ pub async fn delete_message(
     borrar_mensaje(&state, &guild_id, &channel_id, &message_id, None).await
 }
 
-pub(crate) async fn borrar_mensaje(
+pub async fn borrar_mensaje(
     state: &AppState,
     guild_id: &str,
     channel_id: &str,
@@ -725,7 +725,7 @@ pub async fn bulk_delete_messages(
     borrar_mensajes_en_masa(&state, &guild_id, &channel_id, &message_ids, None).await
 }
 
-pub(crate) async fn borrar_mensajes_en_masa(
+pub async fn borrar_mensajes_en_masa(
     state: &AppState,
     guild_id: &str,
     channel_id: &str,
@@ -761,7 +761,7 @@ pub async fn unpin_message(
     fijar_mensaje(&state, &guild_id, &channel_id, &message_id, false, None).await
 }
 
-pub(crate) async fn fijar_mensaje(
+pub async fn fijar_mensaje(
     state: &AppState,
     guild_id: &str,
     channel_id: &str,
@@ -790,7 +790,7 @@ pub async fn create_invite(
     crear_invitacion(&state, &guild_id, &channel_id, max_age, max_uses, None).await
 }
 
-pub(crate) async fn crear_invitacion(
+pub async fn crear_invitacion(
     state: &AppState,
     guild_id: &str,
     channel_id: &str,
@@ -811,7 +811,7 @@ pub async fn list_invites(
     leer_invitaciones(&state, &guild_id, None).await
 }
 
-pub(crate) async fn leer_invitaciones(
+pub async fn leer_invitaciones(
     state: &AppState,
     guild_id: &str,
     base_url: Option<&str>,
@@ -830,7 +830,7 @@ pub async fn delete_invite(
     borrar_invitacion(&state, &guild_id, &code, None).await
 }
 
-pub(crate) async fn borrar_invitacion(
+pub async fn borrar_invitacion(
     state: &AppState,
     guild_id: &str,
     code: &str,
@@ -850,7 +850,7 @@ pub async fn list_webhooks(
     leer_webhooks(&state, &guild_id, None).await
 }
 
-pub(crate) async fn leer_webhooks(
+pub async fn leer_webhooks(
     state: &AppState,
     guild_id: &str,
     base_url: Option<&str>,
@@ -870,7 +870,7 @@ pub async fn create_webhook(
     crear_webhook(&state, &guild_id, &channel_id, &name, None).await
 }
 
-pub(crate) async fn crear_webhook(
+pub async fn crear_webhook(
     state: &AppState,
     guild_id: &str,
     channel_id: &str,
@@ -891,7 +891,7 @@ pub async fn delete_webhook(
     borrar_webhook(&state, &guild_id, &webhook_id, None).await
 }
 
-pub(crate) async fn borrar_webhook(
+pub async fn borrar_webhook(
     state: &AppState,
     guild_id: &str,
     webhook_id: &str,
@@ -904,7 +904,7 @@ pub(crate) async fn borrar_webhook(
 }
 
 /// Tras cambiar roles, vuelve a leerlos y actualiza el mapa guardado (si hay uno).
-async fn refrescar_roles_del_mapa(
+pub async fn refrescar_roles_del_mapa(
     state: &AppState,
     guild_id: &str,
     base_url: Option<&str>,
@@ -932,7 +932,7 @@ pub async fn create_role(
     Ok(rol)
 }
 
-pub(crate) async fn crear_rol(
+pub async fn crear_rol(
     state: &AppState,
     guild_id: &str,
     datos: &DatosRol,
@@ -958,7 +958,7 @@ pub async fn update_role(
     Ok(rol)
 }
 
-pub(crate) async fn editar_rol(
+pub async fn editar_rol(
     state: &AppState,
     guild_id: &str,
     role_id: &str,
@@ -985,7 +985,7 @@ pub async fn delete_role(
     Ok(mensaje)
 }
 
-pub(crate) async fn borrar_rol(
+pub async fn borrar_rol(
     state: &AppState,
     guild_id: &str,
     role_id: &str,
@@ -1012,7 +1012,7 @@ pub async fn reorder_roles(
     Ok(mensaje)
 }
 
-pub(crate) async fn reordenar_roles(
+pub async fn reordenar_roles(
     state: &AppState,
     guild_id: &str,
     posiciones: &[(String, u64)],
@@ -1058,7 +1058,7 @@ pub async fn set_channel_permission(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn fijar_permiso_canal(
+pub async fn fijar_permiso_canal(
     state: &AppState,
     guild_id: &str,
     channel_id: &str,
@@ -1107,7 +1107,7 @@ pub async fn delete_channel_permission(
     Ok(mensaje)
 }
 
-pub(crate) async fn quitar_permiso_canal(
+pub async fn quitar_permiso_canal(
     state: &AppState,
     guild_id: &str,
     channel_id: &str,
@@ -1132,13 +1132,13 @@ pub(crate) async fn quitar_permiso_canal(
 }
 
 /// Descifra el token del bot activo.
-fn token_del_bot_activo(state: &AppState) -> Result<String, String> {
+pub fn token_del_bot_activo(state: &AppState) -> Result<String, String> {
     let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
     crypto::decrypt(&bot.token_ciphertext).map_err(|e| format!("Error descifrando token: {}", e))
 }
 
 /// `GET /guilds/{id}/channels` convertido a `Channel` (con overwrites).
-async fn leer_canales(
+pub async fn leer_canales(
     state: &AppState,
     guild_id: &str,
     base_url: Option<&str>,
@@ -1148,7 +1148,7 @@ async fn leer_canales(
 }
 
 /// `GET /guilds/{id}/roles` convertido a `Role`.
-async fn leer_roles(
+pub async fn leer_roles(
     state: &AppState,
     guild_id: &str,
     base_url: Option<&str>,
@@ -1167,7 +1167,7 @@ pub async fn list_members(
 }
 
 /// `GET /guilds/{id}/members` paginado, convertido a `Member`.
-async fn leer_miembros(
+pub async fn leer_miembros(
     state: &AppState,
     guild_id: &str,
     base_url: Option<&str>,
@@ -1177,7 +1177,7 @@ async fn leer_miembros(
 }
 
 /// `GET /guilds/{id}/members/{user_id}` convertido a `Member`.
-async fn leer_miembro(
+pub async fn leer_miembro(
     state: &AppState,
     guild_id: &str,
     user_id: &str,
@@ -1202,7 +1202,7 @@ pub async fn guild_info(state: State<'_, AppState>, guild_id: String) -> Result<
     informacion_del_servidor(&state, &guild_id, None).await
 }
 
-async fn informacion_del_servidor(
+pub async fn informacion_del_servidor(
     state: &AppState,
     guild_id: &str,
     base_url: Option<&str>,
@@ -1211,7 +1211,7 @@ async fn informacion_del_servidor(
     crate::discord::fetch_guild_info(&token, base_url, guild_id).await
 }
 
-async fn permisos_del_bot(
+pub async fn permisos_del_bot(
     state: &AppState,
     guild_id: &str,
     base_url: Option<&str>,
@@ -1238,7 +1238,7 @@ pub async fn send_message(
 }
 
 /// Valida la longitud y envía a `POST /channels/{id}/messages`.
-async fn enviar_a_canal(
+pub async fn enviar_a_canal(
     state: &AppState,
     channel_id: &str,
     content: &str,
@@ -1260,7 +1260,7 @@ pub async fn send_dm(
 }
 
 /// Valida la longitud, abre el DM (`POST /users/@me/channels`) y envía.
-async fn enviar_dm(
+pub async fn enviar_dm(
     state: &AppState,
     user_id: &str,
     content: &str,
@@ -1302,7 +1302,7 @@ pub async fn remove_role(
 }
 
 /// `PUT`/`DELETE /guilds/{id}/members/{user_id}/roles/{role_id}`.
-async fn cambiar_rol(
+pub async fn cambiar_rol(
     state: &AppState,
     guild_id: &str,
     user_id: &str,
@@ -1330,7 +1330,7 @@ pub async fn timeout_member(
 }
 
 /// `PATCH /guilds/{id}/members/{user_id}`; 0 minutos quita el timeout.
-async fn silenciar_miembro(
+pub async fn silenciar_miembro(
     state: &AppState,
     guild_id: &str,
     user_id: &str,
@@ -1498,7 +1498,7 @@ pub struct BotRegistrado {
 
 /// Valida el token con `GET /users/@me` y guarda el bot (token cifrado) con
 /// los datos oficiales de Discord. Un token rechazado no guarda nada.
-async fn registrar_bot(
+pub async fn registrar_bot(
     pool: &sqlx::SqlitePool,
     token: &str,
     base_url: Option<&str>,
@@ -1536,7 +1536,7 @@ pub async fn invite_url(app: AppHandle, state: State<'_, AppState>) -> Result<St
     enlace_de_invitacion(&pool, &state, None).await
 }
 
-async fn enlace_de_invitacion(
+pub async fn enlace_de_invitacion(
     pool: &sqlx::SqlitePool,
     state: &AppState,
     base_url: Option<&str>,

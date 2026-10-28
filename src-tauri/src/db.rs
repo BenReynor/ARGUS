@@ -19,6 +19,37 @@ pub fn ruta_bd(app: &AppHandle) -> Result<std::path::PathBuf> {
     Ok(app.path().config_dir()?.join("argus").join(DB_NAME))
 }
 
+/// Variable de entorno que fuerza la ruta de la base de datos.
+pub const VAR_RUTA_BD: &str = "ARGUS_DB";
+
+/// Ruta efectiva: `ARGUS_DB` si está definida y no vacía; si no, `por_defecto`.
+pub fn ruta_efectiva(por_defecto: &std::path::Path) -> std::path::PathBuf {
+    match std::env::var_os(VAR_RUTA_BD) {
+        Some(v) if !v.is_empty() => std::path::PathBuf::from(v),
+        _ => por_defecto.to_path_buf(),
+    }
+}
+
+/// Ruta por defecto sin Tauri: `<config del sistema>/argus/argus.db`.
+pub fn ruta_por_defecto() -> Result<std::path::PathBuf> {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|v| !v.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .filter(|v| !v.is_empty())
+                .map(|h| std::path::PathBuf::from(h).join(".config"))
+        })
+        .ok_or_else(|| anyhow::anyhow!("No se encontró la carpeta de configuración"))?;
+    Ok(base.join("argus").join(DB_NAME))
+}
+
+/// Abre la base de datos en `ruta` (o en `ARGUS_DB` si está definida) y aplica
+/// las migraciones.
+pub async fn abrir_bd_por_ruta(ruta: &std::path::Path) -> Result<SqlitePool> {
+    abrir_bd(&ruta_efectiva(ruta)).await
+}
+
 /// Abre (o crea) la base de datos en `ruta` y aplica las migraciones.
 /// La carpeta queda con permisos 0700 y el archivo con 0600 en Unix.
 pub async fn abrir_bd(ruta: &std::path::Path) -> Result<SqlitePool> {
@@ -774,6 +805,26 @@ mod abrir_bd_tests {
 
         // Reabrir una BD existente no falla (migraciones ya aplicadas)
         let pool = abrir_bd(&ruta).await.expect("segunda apertura");
+        pool.close().await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn abrir_bd_por_ruta_respeta_argus_db() {
+        let dir = std::env::temp_dir().join(format!("argus_envdb_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let por_defecto = dir.join("defecto").join(DB_NAME);
+        let forzada = dir.join("forzada").join(DB_NAME);
+
+        std::env::remove_var(VAR_RUTA_BD);
+        assert_eq!(ruta_efectiva(&por_defecto), por_defecto);
+
+        std::env::set_var(VAR_RUTA_BD, &forzada);
+        assert_eq!(ruta_efectiva(&por_defecto), forzada);
+        let pool = abrir_bd_por_ruta(&por_defecto).await.expect("abrir");
+        std::env::remove_var(VAR_RUTA_BD);
+        assert!(forzada.exists());
+        assert!(!por_defecto.exists());
         pool.close().await;
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -359,11 +359,16 @@ impl AppState {
         // Read everything first: a std MutexGuard must not live across an
         // .await (the future would not be Send) nor be taken twice (deadlock).
         let pool = crate::db::get_pool(app).await?;
-        let stored = crate::db::get_config(&pool, "config").await?;
-        let bots = crate::db::list_bots(&pool).await?;
-        let guilds = crate::db::list_guilds_cached(&pool).await?;
-        let vigilance = crate::db::get_vigilance(&pool).await?;
-        let lang = crate::db::get_setting(&pool, "language").await?;
+        self.load_config_from_pool(&pool).await
+    }
+
+    /// Carga la configuración desde una base ya abierta (sin Tauri).
+    pub async fn load_config_from_pool(&self, pool: &sqlx::SqlitePool) -> Result<(), DynError> {
+        let stored = crate::db::get_config(pool, "config").await?;
+        let bots = crate::db::list_bots(pool).await?;
+        let guilds = crate::db::list_guilds_cached(pool).await?;
+        let vigilance = crate::db::get_vigilance(pool).await?;
+        let lang = crate::db::get_setting(pool, "language").await?;
 
         let mut config = self.config.lock().unwrap();
         if let Some(parsed) = stored.and_then(|json| serde_json::from_str(&json).ok()) {
@@ -386,11 +391,16 @@ impl AppState {
 
     pub async fn save_config_to_db(&self, app: &AppHandle) -> Result<(), DynError> {
         let pool = crate::db::get_pool(app).await?;
+        self.save_config_to_pool(&pool).await
+    }
+
+    /// Guarda la configuración en una base ya abierta (sin Tauri).
+    pub async fn save_config_to_pool(&self, pool: &sqlx::SqlitePool) -> Result<(), DynError> {
         let config = self.config.lock().unwrap().clone();
 
-        crate::db::set_config(&pool, "config", &serde_json::to_string(&config)?).await?;
-        crate::db::set_setting(&pool, "language", &config.language).await?;
-        crate::db::save_vigilance(&pool, &config.vigilance).await?;
+        crate::db::set_config(pool, "config", &serde_json::to_string(&config)?).await?;
+        crate::db::set_setting(pool, "language", &config.language).await?;
+        crate::db::save_vigilance(pool, &config.vigilance).await?;
         Ok(())
     }
 

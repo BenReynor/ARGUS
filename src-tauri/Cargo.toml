@@ -3,6 +3,10 @@ name = "argus"
 version = "1.0.0"
 edition = "2021"
 
+[lib]
+name = "argus_lib"
+path = "src/lib.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
