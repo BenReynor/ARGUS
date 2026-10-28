@@ -97,11 +97,13 @@ export const ChannelsView: React.FC = () => {
                       {g.canales.map((c) => {
                         const Icon = iconoDe(c);
                         return (
-                          <div key={c.id} className={`arbol__canal${selectedChannel?.id === c.id ? ' arbol__canal--activo' : ''}`} onClick={() => setSelectedChannel(c)}>
-                            <Icon size={14} aria-hidden="true" />
-                            <span className="arbol__canal-nombre">{c.name}</span>
-                            <Badge>{CHANNEL_TYPE_LABELS[c.channel_type] ?? `Tipo ${c.channel_type}`}</Badge>
-                            <Button variante="ghost" tamano="sm" title="Copiar ID" aria-label={`Copiar ID de ${c.name}`} onClick={(e) => { e.stopPropagation(); copyId(c.id); }}>
+                          <div key={c.id} className={`arbol__canal${selectedChannel?.id === c.id ? ' arbol__canal--activo' : ''}`}>
+                            <button className="arbol__canal-sel" aria-pressed={selectedChannel?.id === c.id} onClick={() => setSelectedChannel(c)}>
+                              <Icon size={14} aria-hidden="true" />
+                              <span className="arbol__canal-nombre">{c.name}</span>
+                              <Badge>{CHANNEL_TYPE_LABELS[c.channel_type] ?? `Tipo ${c.channel_type}`}</Badge>
+                            </button>
+                            <Button variante="ghost" tamano="sm" title="Copiar ID" aria-label={`Copiar ID de ${c.name}`} onClick={() => copyId(c.id)}>
                               <Copy size={12} />
                             </Button>
                           </div>

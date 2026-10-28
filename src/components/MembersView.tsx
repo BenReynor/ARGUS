@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useServerMap, useAddLog, useShowNotification, useConfig, useGuildPanel, motivoPermisoAusente } from '../store/useStore';
 import { sendDM, addRole, removeRole, timeoutMember } from '../api/tauri';
 import { Avatar, Badge, Button, EstadoVacio } from './ui';
@@ -16,10 +16,44 @@ interface AccionMenu {
 /** Menú de acciones; una acción sin permiso queda desactivada y muestra por qué. */
 const MenuAcciones: React.FC<{ nombre: string; acciones: AccionMenu[] }> = ({ nombre, acciones }) => {
   const [abierto, setAbierto] = useState(false);
+  const raiz = useRef<HTMLDivElement>(null);
+
+  const cerrar = (devolverFoco: boolean) => {
+    setAbierto(false);
+    if (devolverFoco) raiz.current?.querySelector<HTMLElement>('[aria-haspopup="menu"]')?.focus();
+  };
+
+  // Al abrir, el foco pasa al primer ítem activo; un clic fuera cierra el menú.
+  useEffect(() => {
+    if (!abierto) return;
+    raiz.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus();
+    const fuera = (e: MouseEvent) => {
+      if (raiz.current && !raiz.current.contains(e.target as Node)) setAbierto(false);
+    };
+    document.addEventListener('mousedown', fuera);
+    return () => document.removeEventListener('mousedown', fuera);
+  }, [abierto]);
+
+  const teclas = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape' && abierto) {
+      e.stopPropagation();
+      cerrar(true);
+    } else if (abierto && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault();
+      const items = Array.from(raiz.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? []);
+      if (items.length === 0) return;
+      const i = items.indexOf(document.activeElement as HTMLElement);
+      const paso = e.key === 'ArrowDown' ? 1 : -1;
+      items[(i + paso + items.length) % items.length].focus();
+    } else if (abierto && e.key === 'Tab') {
+      setAbierto(false);
+    }
+  };
+
   return (
-    <div className="menu" onKeyDown={(e) => { if (e.key === 'Escape') setAbierto(false); }}>
+    <div className="menu" ref={raiz} onKeyDown={teclas}>
       <Button variante="ghost" tamano="sm" aria-haspopup="menu" aria-expanded={abierto} aria-label={`Acciones de ${nombre}`} onClick={() => setAbierto((v) => !v)}>
-        <MoreVertical size={14} />
+        <MoreVertical size={14} aria-hidden="true" />
       </Button>
       {abierto && (
         <div className="menu__lista" role="menu">
@@ -29,7 +63,7 @@ const MenuAcciones: React.FC<{ nombre: string; acciones: AccionMenu[] }> = ({ no
               role="menuitem"
               className="menu__item"
               disabled={!!a.motivo}
-              onClick={() => { setAbierto(false); a.ejecutar(); }}
+              onClick={() => { cerrar(true); a.ejecutar(); }}
             >
               {a.etiqueta}
               {a.motivo && <span className="menu__motivo">{a.motivo}</span>}

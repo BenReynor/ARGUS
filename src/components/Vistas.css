@@ -51,6 +51,7 @@
 .arbol__cabecera--abierta svg:first-child { transform: rotate(90deg); }
 .arbol__canales { display: flex; flex-direction: column; gap: 2px; margin-left: var(--sp-4); }
 .arbol__canal { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1) var(--sp-2); border-radius: var(--radius-sm); color: var(--text-2); cursor: pointer; background: transparent; border: 0; text-align: left; width: 100%; }
+.arbol__canal-sel { display: flex; align-items: center; gap: var(--sp-2); flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: var(--radius-sm); }
 .arbol__canal:hover { background: var(--surface-hover); color: var(--text); }
 .arbol__canal--activo { background: var(--accent-soft); color: var(--text); }
 .arbol__canal-nombre { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
