@@ -11,6 +11,7 @@ pub mod db;
 pub mod discord;
 pub mod gateway;
 pub mod mapa;
+pub mod mcp;
 pub mod mensajes;
 pub mod persistencia;
 pub mod state;

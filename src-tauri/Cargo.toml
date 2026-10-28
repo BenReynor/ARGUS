@@ -48,6 +48,7 @@ hkdf = "0.12"
 sha2 = "0.10"
 getrandom = "0.2"
 base64 = "0.21"
+rmcp = { version = "3.8.0", features = ["server", "transport-io", "macros"] }
 
 [dev-dependencies]
 wiremock = "0.6"
