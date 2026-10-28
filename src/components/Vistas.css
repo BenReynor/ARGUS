@@ -47,6 +47,7 @@
 
 /* Árbol de canales */
 .arbol__categoria { display: flex; flex-direction: column; gap: var(--sp-1); }
+.arbol__fila { display: flex; align-items: center; gap: var(--sp-1); }
 .arbol__cabecera {
   display: flex; align-items: center; gap: var(--sp-2); width: 100%;
   padding: var(--sp-2) var(--sp-2); background: transparent; border: 0;

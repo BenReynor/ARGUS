@@ -23,6 +23,20 @@ export const listChannels =(guildId: string) => invoke<Channel[]>('list_channels
 export const listMembers = (guildId: string) => invoke<Member[]>('list_members', { guild_id: guildId });
 export const listRoles = (guildId: string) => invoke<Role[]>('list_roles', { guild_id: guildId });
 export const sendMessage = (channelId: string, content: string) => invoke<string>('send_message', { channel_id: channelId, content });
+
+/** Campos editables de un canal; solo se envían los definidos. `parent_id` vacío saca el canal de su categoría. */
+export interface DatosCanal {
+  name?: string;
+  channel_type?: number;
+  parent_id?: string;
+  topic?: string;
+  nsfw?: boolean;
+  rate_limit_per_user?: number;
+}
+export const createChannel = (guildId: string, datos: DatosCanal) => invoke<Channel>('create_channel', { guildId, datos });
+export const updateChannel = (guildId: string, channelId: string, datos: DatosCanal) =>
+  invoke<Channel>('update_channel', { guildId, channelId, datos });
+export const deleteChannel = (guildId: string, channelId: string) => invoke<string>('delete_channel', { guildId, channelId });
 export const sendDM = (userId: string, content: string) => invoke<string>('send_dm', { user_id: userId, content });
 export const getMemberInfo = (guildId: string, userId: string) => invoke<Member>('get_member_info', { guild_id: guildId, user_id: userId });
 export const addRole = (guildId: string, userId: string, roleId: string) => invoke<string>('add_role', { guild_id: guildId, user_id: userId, role_id: roleId });
