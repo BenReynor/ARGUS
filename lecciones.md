@@ -36,3 +36,8 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
   Causa: nadie abría ni registraba el pool de SQLite (`app.manage`) y `get_pool` lo pedía igual; ningún test arranca la app completa.
   Prevención: todo estado que se pida con `app.state::<T>()` se registra con `.manage()`/`app.manage()` antes de usarlo; usa `try_state` y devuelve un error en vez de panic; no crees runtimes de tokio propios en `setup` (usa `tauri::async_runtime`).
   Prueba: `db::abrir_bd` tiene test; tras tocar main.rs, arrancar la app (`npm run tauri dev`) y comprobar que no se cierra.
+
+## 2026-10-28 10:22 — Tarea bloqueada: Backend: ajustes del servidor y registro de auditoría
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: agente_fallo en la iteración 5: claude salió con rc=1 sin cambios
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
