@@ -95,7 +95,7 @@ function App() {
   };
 
   return (
-    <div className="app scanlines">
+    <div className="app">
       <GuildRail />
       <Sidebar tabs={tabs} />
       <div className="main-layout">
