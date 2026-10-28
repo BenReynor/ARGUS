@@ -82,25 +82,65 @@ if [ "${1:-}" = "--compilar" ]; then
     exit $?
 fi
 
-# Un solo arranque a la vez: los clics extra mientras compila no abren
-# ventanas duplicadas. La app hereda este cerrojo (fd 8) mientras está abierta.
+hay_pantalla() {
+    command -v zenity >/dev/null && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]
+}
+
+# Aviso visible que se cierra solo (la notificación del sistema puede pasar
+# desapercibida y el usuario vuelve a hacer clic).
+aviso_visible() {
+    if hay_pantalla; then
+        zenity --info --title=ARGUS --width=360 --timeout=6 --text="$1" 2>/dev/null
+    else
+        aviso "$1"
+    fi
+}
+
+# Ejecuta "$@" mostrando una ventana de espera con el paso actual de la
+# compilación (sale del log). Devuelve el código de "$@".
+con_ventana_espera() {
+    if ! hay_pantalla; then
+        aviso "Actualizando a la última versión… (unos minutos)"
+        "$@"
+        return $?
+    fi
+    "$@" &
+    local pid=$! paso inicio=$SECONDS
+    {
+        while kill -0 "$pid" 2>/dev/null; do
+            paso="$(grep -aE '^== |Compiling |Finished|added [0-9]+ packages|vite v|built in' "$LOG" 2>/dev/null \
+                | tail -n 1 | sed 's/^ *//; s/^== [0-9: -]*//; s/^Compiling/Compilando/; s/^Finished/Terminado/' \
+                | tr -d '<>&\\' | cut -c1-70)"
+            # Una sola línea por mensaje: zenity convierte los \n escritos en saltos.
+            printf '# Actualizando ARGUS a la última versión…\\nNo cierres esta ventana: ARGUS se abrirá solo al terminar.\\n\\n%s  (%ss)\n' \
+                "${paso:-Preparando…}" "$((SECONDS - inicio))"
+            sleep 1
+        done
+        echo 100
+    } | zenity --progress --pulsate --auto-close --no-cancel --title="ARGUS" \
+          --width=480 --text="Actualizando ARGUS…" 2>/dev/null
+    wait "$pid"
+}
+
+# Un solo arranque a la vez: los clics extra mientras se actualiza o mientras
+# la app está abierta no abren ventanas duplicadas (la app hereda el fd 8).
 exec 8>"$DATOS/abrir.lock"
 if ! flock -n 8; then
-    aviso "ARGUS ya está abierto o abriéndose."
+    aviso_visible "ARGUS ya está abierto o se está actualizando.\n\nNo hace falta volver a hacer clic."
     exit 0
 fi
 
 if ! al_dia; then
-    aviso "Actualizando a la última versión… (unos minutos)"
-    if ! actualizar; then
+    if ! con_ventana_espera actualizar; then
         msg="No se pudo compilar la versión nueva. Detalle en $LOG"
         if [ -x "$BIN" ]; then
-            command -v zenity >/dev/null && zenity --warning --title=ARGUS \
+            hay_pantalla && zenity --warning --title=ARGUS \
                 --text="$msg\n\nSe abre la versión anterior." 2>/dev/null
         else
-            command -v zenity >/dev/null && zenity --error --title=ARGUS --text="$msg" 2>/dev/null
+            hay_pantalla && zenity --error --title=ARGUS --text="$msg" 2>/dev/null
             exit 1
         fi
     fi
 fi
+exec 9>&- 2>/dev/null   # por si algún día se abre aquí: la app no hereda el cerrojo de compilación
 exec "$BIN" "$@"
