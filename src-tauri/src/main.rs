@@ -13,6 +13,7 @@ mod db;
 mod discord;
 mod gateway;
 mod mapa;
+mod mensajes;
 mod persistencia;
 mod state;
 mod sync;
@@ -20,6 +21,8 @@ mod sync;
 mod tests_ajustes;
 #[cfg(test)]
 mod tests_canales;
+#[cfg(test)]
+mod tests_mensajes;
 #[cfg(test)]
 mod tests_moderacion;
 #[cfg(test)]
@@ -77,6 +80,17 @@ pub fn run() {
             get_guild_settings_discord,
             update_guild_discord,
             audit_log,
+            channel_messages,
+            delete_message,
+            bulk_delete_messages,
+            pin_message,
+            unpin_message,
+            create_invite,
+            list_invites,
+            delete_invite,
+            list_webhooks,
+            create_webhook,
+            delete_webhook,
             kick_member,
             ban_member,
             unban_member,

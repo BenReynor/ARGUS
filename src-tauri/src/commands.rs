@@ -633,6 +633,244 @@ pub(crate) async fn leer_auditoria(
     crate::discord::fetch_audit_log(&token, base_url, guild_id).await
 }
 
+// Mensajes, invitaciones y webhooks: cada uno exige su permiso antes de llamar.
+const PERMISO_HISTORIAL: &str = "Leer el historial de mensajes";
+const PERMISO_MENSAJES: &str = "Gestionar mensajes";
+const PERMISO_CREAR_INVITACION: &str = "Crear invitaciones";
+const PERMISO_SERVIDOR: &str = "Gestionar servidor";
+const PERMISO_WEBHOOKS: &str = "Gestionar webhooks";
+
+#[tauri::command]
+pub async fn channel_messages(
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+) -> Result<Vec<crate::mensajes::MensajeCanal>, String> {
+    leer_mensajes(&state, &guild_id, &channel_id, None).await
+}
+
+pub(crate) async fn leer_mensajes(
+    state: &AppState,
+    guild_id: &str,
+    channel_id: &str,
+    base_url: Option<&str>,
+) -> Result<Vec<crate::mensajes::MensajeCanal>, String> {
+    exigir_permiso(state, guild_id, PERMISO_HISTORIAL, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::mensajes::fetch_channel_messages(&token, base_url, channel_id).await
+}
+
+#[tauri::command]
+pub async fn delete_message(
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    message_id: String,
+) -> Result<String, String> {
+    borrar_mensaje(&state, &guild_id, &channel_id, &message_id, None).await
+}
+
+pub(crate) async fn borrar_mensaje(
+    state: &AppState,
+    guild_id: &str,
+    channel_id: &str,
+    message_id: &str,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso(state, guild_id, PERMISO_MENSAJES, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::mensajes::delete_message(&token, base_url, channel_id, message_id).await?;
+    Ok(format!("Mensaje {message_id} borrado"))
+}
+
+#[tauri::command]
+pub async fn bulk_delete_messages(
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    message_ids: Vec<String>,
+) -> Result<String, String> {
+    borrar_mensajes_en_masa(&state, &guild_id, &channel_id, &message_ids, None).await
+}
+
+pub(crate) async fn borrar_mensajes_en_masa(
+    state: &AppState,
+    guild_id: &str,
+    channel_id: &str,
+    message_ids: &[String],
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    // Valida antes de gastar llamadas de permisos.
+    crate::mensajes::validar_borrado_masivo(message_ids, Utc::now().timestamp_millis())?;
+    exigir_permiso(state, guild_id, PERMISO_MENSAJES, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    let n =
+        crate::mensajes::bulk_delete_messages(&token, base_url, channel_id, message_ids).await?;
+    Ok(format!("{n} mensajes borrados"))
+}
+
+#[tauri::command]
+pub async fn pin_message(
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    message_id: String,
+) -> Result<String, String> {
+    fijar_mensaje(&state, &guild_id, &channel_id, &message_id, true, None).await
+}
+
+#[tauri::command]
+pub async fn unpin_message(
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    message_id: String,
+) -> Result<String, String> {
+    fijar_mensaje(&state, &guild_id, &channel_id, &message_id, false, None).await
+}
+
+pub(crate) async fn fijar_mensaje(
+    state: &AppState,
+    guild_id: &str,
+    channel_id: &str,
+    message_id: &str,
+    fijar: bool,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso(state, guild_id, PERMISO_MENSAJES, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::mensajes::set_pin(&token, base_url, channel_id, message_id, fijar).await?;
+    Ok(if fijar {
+        format!("Mensaje {message_id} fijado")
+    } else {
+        format!("Mensaje {message_id} desfijado")
+    })
+}
+
+#[tauri::command]
+pub async fn create_invite(
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    max_age: u32,
+    max_uses: u32,
+) -> Result<crate::mensajes::Invitacion, String> {
+    crear_invitacion(&state, &guild_id, &channel_id, max_age, max_uses, None).await
+}
+
+pub(crate) async fn crear_invitacion(
+    state: &AppState,
+    guild_id: &str,
+    channel_id: &str,
+    max_age: u32,
+    max_uses: u32,
+    base_url: Option<&str>,
+) -> Result<crate::mensajes::Invitacion, String> {
+    exigir_permiso(state, guild_id, PERMISO_CREAR_INVITACION, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::mensajes::create_invite(&token, base_url, channel_id, max_age, max_uses).await
+}
+
+#[tauri::command]
+pub async fn list_invites(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<Vec<crate::mensajes::Invitacion>, String> {
+    leer_invitaciones(&state, &guild_id, None).await
+}
+
+pub(crate) async fn leer_invitaciones(
+    state: &AppState,
+    guild_id: &str,
+    base_url: Option<&str>,
+) -> Result<Vec<crate::mensajes::Invitacion>, String> {
+    exigir_permiso(state, guild_id, PERMISO_SERVIDOR, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::mensajes::fetch_invites(&token, base_url, guild_id).await
+}
+
+#[tauri::command]
+pub async fn delete_invite(
+    state: State<'_, AppState>,
+    guild_id: String,
+    code: String,
+) -> Result<String, String> {
+    borrar_invitacion(&state, &guild_id, &code, None).await
+}
+
+pub(crate) async fn borrar_invitacion(
+    state: &AppState,
+    guild_id: &str,
+    code: &str,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso(state, guild_id, PERMISO_SERVIDOR, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::mensajes::delete_invite(&token, base_url, code).await?;
+    Ok(format!("Invitación {code} eliminada"))
+}
+
+#[tauri::command]
+pub async fn list_webhooks(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<Vec<crate::mensajes::Webhook>, String> {
+    leer_webhooks(&state, &guild_id, None).await
+}
+
+pub(crate) async fn leer_webhooks(
+    state: &AppState,
+    guild_id: &str,
+    base_url: Option<&str>,
+) -> Result<Vec<crate::mensajes::Webhook>, String> {
+    exigir_permiso(state, guild_id, PERMISO_WEBHOOKS, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::mensajes::fetch_webhooks(&token, base_url, guild_id).await
+}
+
+#[tauri::command]
+pub async fn create_webhook(
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    name: String,
+) -> Result<crate::mensajes::Webhook, String> {
+    crear_webhook(&state, &guild_id, &channel_id, &name, None).await
+}
+
+pub(crate) async fn crear_webhook(
+    state: &AppState,
+    guild_id: &str,
+    channel_id: &str,
+    name: &str,
+    base_url: Option<&str>,
+) -> Result<crate::mensajes::Webhook, String> {
+    exigir_permiso(state, guild_id, PERMISO_WEBHOOKS, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::mensajes::create_webhook(&token, base_url, channel_id, name).await
+}
+
+#[tauri::command]
+pub async fn delete_webhook(
+    state: State<'_, AppState>,
+    guild_id: String,
+    webhook_id: String,
+) -> Result<String, String> {
+    borrar_webhook(&state, &guild_id, &webhook_id, None).await
+}
+
+pub(crate) async fn borrar_webhook(
+    state: &AppState,
+    guild_id: &str,
+    webhook_id: &str,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso(state, guild_id, PERMISO_WEBHOOKS, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::mensajes::delete_webhook(&token, base_url, webhook_id).await?;
+    Ok(format!("Webhook {webhook_id} eliminado"))
+}
+
 /// Tras cambiar roles, vuelve a leerlos y actualiza el mapa guardado (si hay uno).
 async fn refrescar_roles_del_mapa(
     state: &AppState,
