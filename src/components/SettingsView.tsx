@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useStore, useConfig, useUiSettings, useSetActiveTab, useShowNotification, useActiveGuildId, useGuildSettings } from '../store/useStore';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { getConfig, saveConfig, saveGuildSettings, addBot, deleteBot, startBot, getBotStatus, inviteUrl } from '../api/tauri';
-import { Button, Input, Card } from './ui';
+import { Button, Input, Card, Cargando, EstadoVacio } from './ui';
 import './Vistas.css';
 import { Save, Trash2, Plus, Server, CheckCircle, AlertCircle, Eye, EyeOff, Copy } from 'lucide-react';
 import { TEMAS, aplicarTema } from '../temas';
@@ -288,9 +288,9 @@ export const SettingsView: React.FC = () => {
 
       <Seccion titulo="Este servidor" descripcion="Ajustes propios de ARGUS para el servidor activo.">
         {!activeGuildId ? (
-          <p className="ajustes__ayuda">Elige un servidor en la cabecera para configurarlo.</p>
+          <EstadoVacio titulo="Ningún servidor seleccionado" descripcion="Elige un servidor en la cabecera para configurarlo." />
         ) : !guildSettings ? (
-          <p className="ajustes__ayuda">Cargando ajustes del servidor…</p>
+          <Cargando lineas={3} />
         ) : (
           <>
             <Input
