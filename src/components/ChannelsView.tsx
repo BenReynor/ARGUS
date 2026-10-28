@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useServerMap, useSetSelectedChannel, useSelectedChannel, useAddLog, useShowNotification, useGuildPanel, motivoPermisoAusente, useActiveGuildId, useStore } from '../store/useStore';
-import { sendMessage, createChannel, updateChannel, deleteChannel } from '../api/tauri';
+import { sendMessage, createChannel, updateChannel, deleteChannel, setChannelPermission, deleteChannelPermission } from '../api/tauri';
+import { PermisosCanal } from './PermisosCanal';
+import type { CambiosPermisos } from './PermisosCanal';
 import type { DatosCanal } from '../api/tauri';
 import { Button, Badge, EstadoVacio, Dialogo, Input, Select, ConfirmarPeligroso } from './ui';
 import { EstadoVista, BuscadorVista, CabeceraVista } from './EstadoVista';
@@ -141,6 +143,7 @@ export const ChannelsView: React.FC = () => {
   const [newMessage, setNewMessage] = useState('');
   const guildId = useActiveGuildId();
   const motivoGestionar = motivoPermisoAusente(useGuildPanel().permissions, 'Gestionar canales');
+  const motivoRoles = motivoPermisoAusente(useGuildPanel().permissions, 'Gestionar roles');
   const [formulario, setFormulario] = useState<Formulario | null>(null);
   const [aBorrar, setABorrar] = useState<Channel | null>(null);
   const categorias = useMemo(
@@ -179,6 +182,20 @@ export const ChannelsView: React.FC = () => {
     setABorrar(null);
     if (selectedChannel?.id === c.id) setSelectedChannel(null);
     await tras((c.channel_type === TIPO_CATEGORIA ? 'Categoría' : 'Canal') + ' «' + c.name + '» borrad' + (c.channel_type === TIPO_CATEGORIA ? 'a' : 'o'));
+  };
+
+  const guardarPermisos = async ({ fijar, quitar }: CambiosPermisos) => {
+    const canal = selectedChannel;
+    if (!guildId || !canal) throw 'No hay un servidor activo';
+    try {
+      for (const e of fijar) await setChannelPermission(guildId, canal.id, e.id, e.tipo, e.allow.toString(), e.deny.toString());
+      for (const e of quitar) await deleteChannelPermission(guildId, canal.id, e.id, e.tipo);
+    } finally {
+      await useStore.getState().refreshServerMap();
+    }
+    const mensaje = 'Permisos de «' + canal.name + '» guardados';
+    showNotification(mensaje, 'success');
+    addLog('[CANALES] ' + mensaje);
   };
 
   const grupos = useMemo(() => {
@@ -325,6 +342,13 @@ export const ChannelsView: React.FC = () => {
             ) : (
               <span className="vista__nota">Solo se pueden enviar mensajes a canales de texto.</span>
             )}
+            <PermisosCanal
+              canal={serverMap?.channels.find((c) => c.id === selectedChannel.id) ?? selectedChannel}
+              roles={serverMap?.roles ?? []}
+              miembros={serverMap?.members ?? []}
+              motivoBloqueo={motivoRoles}
+              onGuardar={guardarPermisos}
+            />
           </div>
         )}
       </EstadoVista>

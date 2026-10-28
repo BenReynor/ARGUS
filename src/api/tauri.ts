@@ -49,6 +49,11 @@ export const createRole = (guildId: string, datos: DatosRol) => invoke<Role>('cr
 export const updateRole = (guildId: string, roleId: string, datos: DatosRol) => invoke<Role>('update_role', { guildId, roleId, datos });
 export const deleteRole = (guildId: string, roleId: string) => invoke<string>('delete_role', { guildId, roleId });
 export const reorderRoles = (guildId: string, positions: [string, number][]) => invoke<string>('reorder_roles', { guildId, positions });
+/** Overwrites de canal: `kind` 0 = rol, 1 = miembro; `allow`/`deny` son campos de bits como texto. */
+export const setChannelPermission = (guildId: string, channelId: string, targetId: string, kind: number, allow: string, deny: string) =>
+  invoke<string>('set_channel_permission', { guildId, channelId, targetId, kind, allow, deny });
+export const deleteChannelPermission = (guildId: string, channelId: string, targetId: string, kind: number) =>
+  invoke<string>('delete_channel_permission', { guildId, channelId, targetId, kind });
 export const sendDM = (userId: string, content: string) => invoke<string>('send_dm', { user_id: userId, content });
 export const getMemberInfo = (guildId: string, userId: string) => invoke<Member>('get_member_info', { guild_id: guildId, user_id: userId });
 export const addRole = (guildId: string, userId: string, roleId: string) => invoke<string>('add_role', { guild_id: guildId, user_id: userId, role_id: roleId });

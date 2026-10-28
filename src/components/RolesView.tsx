@@ -7,7 +7,7 @@ import { createRole, updateRole, deleteRole, reorderRoles } from '../api/tauri';
 import type { Role } from '../types';
 
 /** Permisos agrupados para el editor: [bit de Discord, nombre]. */
-const GRUPOS_PERMISOS: { grupo: string; permisos: [number, string][] }[] = [
+export const GRUPOS_PERMISOS: { grupo: string; permisos: [number, string][] }[] = [
   { grupo: 'General', permisos: [[10, 'Ver canales'], [4, 'Gestionar canales'], [28, 'Gestionar roles'], [5, 'Gestionar servidor'], [29, 'Gestionar webhooks'], [7, 'Ver el registro de auditoría']] },
   { grupo: 'Miembros', permisos: [[0, 'Crear invitaciones'], [26, 'Cambiar apodo'], [27, 'Gestionar apodos'], [1, 'Expulsar miembros'], [2, 'Banear miembros'], [40, 'Moderar miembros (timeout)']] },
   { grupo: 'Texto', permisos: [[11, 'Enviar mensajes'], [38, 'Enviar mensajes en hilos'], [35, 'Crear hilos públicos'], [14, 'Insertar enlaces'], [15, 'Adjuntar archivos'], [6, 'Añadir reacciones'], [16, 'Leer el historial'], [17, 'Mencionar @everyone'], [13, 'Gestionar mensajes'], [34, 'Gestionar hilos'], [31, 'Usar comandos de aplicación']] },
