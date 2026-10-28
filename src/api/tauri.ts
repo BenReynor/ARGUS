@@ -120,3 +120,32 @@ export const updateGuildDiscord = (guildId: string, settings: import('../types')
   invoke<import('../types').AjustesServidor>('update_guild_discord', { guildId, settings });
 export const auditLog = (guildId: string) =>
   invoke<import('../types').EntradaAuditoria[]>('audit_log', { guildId });
+
+// Mensajes, invitaciones y webhooks de un canal
+export interface MensajeCanal {
+  id: string; content: string; author_id: string; author_name: string; author_bot: boolean;
+  timestamp: string; pinned: boolean; attachments: { filename: string; url: string }[];
+}
+export interface Invitacion {
+  code: string; url: string; channel_id: string | null; channel_name: string | null; inviter: string | null;
+  uses: number; max_uses: number; max_age: number; expires_at: string | null;
+}
+export interface Webhook { id: string; name: string; channel_id: string | null; url: string | null }
+export const channelMessages = (guildId: string, channelId: string) =>
+  invoke<MensajeCanal[]>('channel_messages', { guildId, channelId });
+export const deleteMessage = (guildId: string, channelId: string, messageId: string) =>
+  invoke<string>('delete_message', { guildId, channelId, messageId });
+export const bulkDeleteMessages = (guildId: string, channelId: string, messageIds: string[]) =>
+  invoke<string>('bulk_delete_messages', { guildId, channelId, messageIds });
+export const pinMessage = (guildId: string, channelId: string, messageId: string) =>
+  invoke<string>('pin_message', { guildId, channelId, messageId });
+export const unpinMessage = (guildId: string, channelId: string, messageId: string) =>
+  invoke<string>('unpin_message', { guildId, channelId, messageId });
+export const createInvite = (guildId: string, channelId: string, maxAge: number, maxUses: number) =>
+  invoke<Invitacion>('create_invite', { guildId, channelId, maxAge, maxUses });
+export const listInvites = (guildId: string) => invoke<Invitacion[]>('list_invites', { guildId });
+export const deleteInvite = (guildId: string, code: string) => invoke<string>('delete_invite', { guildId, code });
+export const listWebhooks = (guildId: string) => invoke<Webhook[]>('list_webhooks', { guildId });
+export const createWebhook = (guildId: string, channelId: string, name: string) =>
+  invoke<Webhook>('create_webhook', { guildId, channelId, name });
+export const deleteWebhook = (guildId: string, webhookId: string) => invoke<string>('delete_webhook', { guildId, webhookId });

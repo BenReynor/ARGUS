@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useServerMap, useSetSelectedChannel, useSelectedChannel, useAddLog, useShowNotification, useGuildPanel, motivoPermisoAusente, useActiveGuildId, useStore } from '../store/useStore';
 import { sendMessage, createChannel, updateChannel, deleteChannel, setChannelPermission, deleteChannelPermission } from '../api/tauri';
 import { PermisosCanal } from './PermisosCanal';
+import { ActividadCanal } from './ActividadCanal';
 import type { CambiosPermisos } from './PermisosCanal';
 import type { DatosCanal } from '../api/tauri';
 import { Button, Badge, EstadoVacio, Dialogo, Input, Select, ConfirmarPeligroso } from './ui';
@@ -341,6 +342,9 @@ export const ChannelsView: React.FC = () => {
               </>
             ) : (
               <span className="vista__nota">Solo se pueden enviar mensajes a canales de texto.</span>
+            )}
+            {(selectedChannel.channel_type === 0 || selectedChannel.channel_type === 5) && (
+              <ActividadCanal canalId={selectedChannel.id} />
             )}
             <PermisosCanal
               canal={serverMap?.channels.find((c) => c.id === selectedChannel.id) ?? selectedChannel}

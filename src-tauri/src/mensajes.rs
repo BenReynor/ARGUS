@@ -70,6 +70,14 @@ pub struct MensajeCanal {
     /// ISO 8601 UTC, tal como lo envía Discord.
     pub timestamp: String,
     pub pinned: bool,
+    #[serde(default)]
+    pub attachments: Vec<Adjunto>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Adjunto {
+    pub filename: String,
+    pub url: String,
 }
 
 /// Últimos 50 mensajes de un canal (`GET /channels/{id}/messages`).
@@ -109,6 +117,22 @@ pub async fn fetch_channel_messages(
                         author_bot: autor.get("bot").and_then(|b| b.as_bool()).unwrap_or(false),
                         timestamp: texto(m, "timestamp").unwrap_or_default(),
                         pinned: m.get("pinned").and_then(|b| b.as_bool()).unwrap_or(false),
+                        attachments: m
+                            .get("attachments")
+                            .and_then(|a| a.as_array())
+                            .map(|a| {
+                                a.iter()
+                                    .filter_map(|x| {
+                                        let url = texto(x, "url")?;
+                                        Some(Adjunto {
+                                            filename: texto(x, "filename")
+                                                .unwrap_or_else(|| url.clone()),
+                                            url,
+                                        })
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
                     }
                 })
                 .collect()

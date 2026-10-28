@@ -211,3 +211,23 @@
 .auditoria__tabla tbody tr:hover { background: var(--surface-hover); }
 .auditoria__fecha { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text-3); }
 @media (max-width: 720px) { .servidor__form { grid-template-columns: 1fr; } }
+
+/* Mensajes, invitaciones y webhooks de un canal */
+.actividad { display: flex; flex-direction: column; gap: var(--sp-3); }
+.actividad__pestanas { display: flex; gap: var(--sp-1); border-bottom: var(--border-w) solid var(--border); }
+.actividad__pestana { background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--text-2); padding: var(--sp-2) var(--sp-3); font: inherit; font-weight: var(--fw-medium); cursor: pointer; }
+.actividad__pestana:hover { color: var(--text); background: var(--surface-hover); }
+.actividad__pestana--activa { color: var(--text); border-bottom-color: var(--accent); }
+.actividad__seccion { display: flex; flex-direction: column; gap: var(--sp-2); }
+.actividad__form { display: flex; align-items: flex-end; gap: var(--sp-2); flex-wrap: wrap; }
+.actividad__lista, .mensajes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.mensajes { max-height: 24rem; overflow-y: auto; }
+.actividad__fila, .mensaje { display: flex; align-items: flex-start; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius); }
+.actividad__fila:hover, .mensaje:hover { background: var(--surface-hover); }
+.actividad__datos, .mensaje__cuerpo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1); overflow-wrap: anywhere; }
+.mensaje--sel { background: var(--accent-soft); }
+.mensaje__meta { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.mensaje__meta time { color: var(--text-3); font-size: var(--fs-xs); }
+.mensaje__texto { margin: 0; color: var(--text); white-space: pre-wrap; }
+.mensaje__adjunto { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--accent); font-size: var(--fs-sm); }
+.mensaje__acciones { display: flex; gap: var(--sp-1); }
