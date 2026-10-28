@@ -91,6 +91,7 @@ pub fn run() {
             list_webhooks,
             create_webhook,
             delete_webhook,
+            moderation_context,
             kick_member,
             ban_member,
             unban_member,

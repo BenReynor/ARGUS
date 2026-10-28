@@ -438,6 +438,38 @@ async fn exigir_jerarquia_miembro(
     Ok(())
 }
 
+/// Datos para que la UI deshabilite la moderación imposible: dueño del servidor
+/// y posición del rol más alto del bot.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ContextoModeracion {
+    pub owner_id: Option<String>,
+    pub bot_id: String,
+    pub bot_top_position: i64,
+}
+
+#[tauri::command]
+pub async fn moderation_context(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<ContextoModeracion, String> {
+    let token = token_del_bot_activo(&state)?;
+    let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
+    let owner_id = crate::discord::fetch_guild_owner_id(&token, None, &guild_id).await?;
+    let roles = leer_roles(&state, &guild_id, None).await?;
+    let del_bot = leer_miembro(&state, &guild_id, &bot.id, None).await?;
+    let bot_top_position = roles
+        .iter()
+        .filter(|r| del_bot.roles.contains(&r.id))
+        .map(|r| r.position as i64)
+        .max()
+        .unwrap_or(0);
+    Ok(ContextoModeracion {
+        owner_id,
+        bot_id: bot.id.clone(),
+        bot_top_position,
+    })
+}
+
 #[tauri::command]
 pub async fn kick_member(
     state: State<'_, AppState>,

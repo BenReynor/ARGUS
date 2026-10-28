@@ -99,3 +99,16 @@ export const onSyncProgress = (callback: (progress: SyncProgress) => void) =>
 
 export const onLog = (callback: (log: string) => void) =>
   listen<string>('bot-log', (event: Event<string>) => callback(event.payload));
+// Moderación de miembros
+export interface ContextoModeracion { owner_id: string | null; bot_id: string; bot_top_position: number }
+export interface Baneo { user_id: string; username: string; reason: string | null }
+export const moderationContext = (guildId: string) => invoke<ContextoModeracion>('moderation_context', { guildId });
+export const kickMember = (guildId: string, userId: string, reason: string | null) =>
+  invoke<string>('kick_member', { guildId, userId, reason });
+export const banMember = (guildId: string, userId: string, reason: string | null, deleteMessageDays: number) =>
+  invoke<string>('ban_member', { guildId, userId, reason, deleteMessageDays });
+export const unbanMember = (guildId: string, userId: string, reason: string | null) =>
+  invoke<string>('unban_member', { guildId, userId, reason });
+export const listBans = (guildId: string) => invoke<Baneo[]>('list_bans', { guildId });
+export const setNickname = (guildId: string, userId: string, nickname: string | null, reason: string | null) =>
+  invoke<string>('set_nickname', { guildId, userId, nickname, reason });

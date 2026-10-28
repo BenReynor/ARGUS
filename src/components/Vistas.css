@@ -69,6 +69,16 @@
 /* Rol */
 .rol__color { width: 14px; height: 14px; border-radius: 50%; flex: none; border: var(--border-w) solid var(--border-strong); }
 
+/* Pestañas de sección */
+.pestanas { display: flex; gap: var(--sp-1); border-bottom: var(--border-w) solid var(--border); margin-bottom: var(--sp-3); }
+.pestanas__tab {
+  padding: var(--sp-2) var(--sp-3); background: transparent; border: 0; border-bottom: 2px solid transparent;
+  color: var(--text-2); font-size: var(--fs-md); font-weight: var(--fw-medium); cursor: pointer;
+}
+.pestanas__tab:hover { color: var(--text); }
+.pestanas__tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.mod__form { display: flex; flex-direction: column; gap: var(--sp-3); }
+
 /* Menú de acciones */
 .menu { position: relative; }
 .menu__lista {
