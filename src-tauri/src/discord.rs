@@ -624,6 +624,81 @@ pub async fn delete_channel(
     Ok(())
 }
 
+fn parse_bits_permisos(
+    texto: &str,
+    que: &str,
+) -> Result<twilight_model::guild::Permissions, String> {
+    texto
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .and_then(twilight_model::guild::Permissions::from_bits)
+        .ok_or_else(|| format!("Los permisos {que} no son válidos"))
+}
+
+/// Crea o cambia un overwrite de canal (`PUT /channels/{id}/permissions/{target}`).
+/// `es_miembro` distingue miembro (`true`) de rol (`false`); `allow` y `deny`
+/// son bits como texto.
+pub async fn set_channel_overwrite(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+    target_id: &str,
+    es_miembro: bool,
+    allow: &str,
+    deny: &str,
+) -> Result<(), String> {
+    use twilight_model::http::permission_overwrite::{
+        PermissionOverwrite, PermissionOverwriteType,
+    };
+    let cid = parse_id(channel_id, "canal")?;
+    let permitidos = parse_bits_permisos(allow, "permitidos")?;
+    let denegados = parse_bits_permisos(deny, "denegados")?;
+    if permitidos.intersects(denegados) {
+        return Err("Un mismo permiso no puede estar permitido y denegado a la vez".to_string());
+    }
+    let overwrite = PermissionOverwrite {
+        allow: Some(permitidos),
+        deny: Some(denegados),
+        id: parse_id(target_id, if es_miembro { "miembro" } else { "rol" })?,
+        kind: if es_miembro {
+            PermissionOverwriteType::Member
+        } else {
+            PermissionOverwriteType::Role
+        },
+    };
+    build_client(token, base_url)
+        .update_channel_permission(cid, &overwrite)
+        .await
+        .map_err(traducir_error)?;
+    Ok(())
+}
+
+/// Quita un overwrite de canal (`DELETE /channels/{id}/permissions/{target}`).
+pub async fn delete_channel_overwrite(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+    target_id: &str,
+    es_miembro: bool,
+) -> Result<(), String> {
+    let cid = parse_id(channel_id, "canal")?;
+    let client = build_client(token, base_url);
+    let peticion = client.delete_channel_permission(cid);
+    if es_miembro {
+        peticion
+            .member(parse_id(target_id, "miembro")?)
+            .await
+            .map_err(traducir_error)?;
+    } else {
+        peticion
+            .role(parse_id(target_id, "rol")?)
+            .await
+            .map_err(traducir_error)?;
+    }
+    Ok(())
+}
+
 /// Cambia las posiciones de varios canales
 /// (`PATCH /guilds/{id}/channels`). Cada par es (id del canal, posición).
 pub async fn reorder_guild_channels(

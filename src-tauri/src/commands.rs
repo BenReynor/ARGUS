@@ -524,6 +524,107 @@ pub(crate) async fn reordenar_roles(
     Ok(format!("{} roles reordenados", posiciones.len()))
 }
 
+/// `kind`: 0 = rol, 1 = miembro (igual que `Overwrite::type_`).
+#[tauri::command]
+pub async fn set_channel_permission(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    target_id: String,
+    kind: u8,
+    allow: String,
+    deny: String,
+) -> Result<String, String> {
+    let mensaje = fijar_permiso_canal(
+        &state,
+        &guild_id,
+        &channel_id,
+        &target_id,
+        kind,
+        &allow,
+        &deny,
+        None,
+    )
+    .await?;
+    avisar_mapa_actualizado(&app);
+    Ok(mensaje)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn fijar_permiso_canal(
+    state: &AppState,
+    guild_id: &str,
+    channel_id: &str,
+    target_id: &str,
+    kind: u8,
+    allow: &str,
+    deny: &str,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    if kind > 1 {
+        return Err("El tipo de overwrite debe ser 0 (rol) o 1 (miembro)".to_string());
+    }
+    exigir_permiso(state, guild_id, PERMISO_GESTIONAR_ROLES, base_url).await?;
+    if kind == 0 {
+        exigir_jerarquia(state, guild_id, &[(target_id, None)], base_url).await?;
+    }
+    let token = token_del_bot_activo(state)?;
+    crate::discord::set_channel_overwrite(
+        &token,
+        base_url,
+        channel_id,
+        target_id,
+        kind == 1,
+        allow,
+        deny,
+    )
+    .await?;
+    refrescar_canales_del_mapa(state, guild_id, base_url).await?;
+    Ok(format!(
+        "Permisos de {target_id} actualizados en el canal {channel_id}"
+    ))
+}
+
+#[tauri::command]
+pub async fn delete_channel_permission(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    target_id: String,
+    kind: u8,
+) -> Result<String, String> {
+    let mensaje =
+        quitar_permiso_canal(&state, &guild_id, &channel_id, &target_id, kind, None).await?;
+    avisar_mapa_actualizado(&app);
+    Ok(mensaje)
+}
+
+pub(crate) async fn quitar_permiso_canal(
+    state: &AppState,
+    guild_id: &str,
+    channel_id: &str,
+    target_id: &str,
+    kind: u8,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    if kind > 1 {
+        return Err("El tipo de overwrite debe ser 0 (rol) o 1 (miembro)".to_string());
+    }
+    exigir_permiso(state, guild_id, PERMISO_GESTIONAR_ROLES, base_url).await?;
+    if kind == 0 {
+        exigir_jerarquia(state, guild_id, &[(target_id, None)], base_url).await?;
+    }
+    let token = token_del_bot_activo(state)?;
+    crate::discord::delete_channel_overwrite(&token, base_url, channel_id, target_id, kind == 1)
+        .await?;
+    refrescar_canales_del_mapa(state, guild_id, base_url).await?;
+    Ok(format!(
+        "Permisos de {target_id} quitados del canal {channel_id}"
+    ))
+}
+
 /// Descifra el token del bot activo.
 fn token_del_bot_activo(state: &AppState) -> Result<String, String> {
     let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;

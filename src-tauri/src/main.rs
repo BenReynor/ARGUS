@@ -19,6 +19,8 @@ mod sync;
 #[cfg(test)]
 mod tests_canales;
 #[cfg(test)]
+mod tests_permisos_canal;
+#[cfg(test)]
 mod tests_roles;
 
 use commands::*;
@@ -66,6 +68,8 @@ pub fn run() {
             update_role,
             delete_role,
             reorder_roles,
+            set_channel_permission,
+            delete_channel_permission,
             guild_info,
             send_message,
             send_dm,
