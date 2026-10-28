@@ -118,6 +118,16 @@ pub struct Config {
     pub sync_interval_secs: u64,
     #[serde(default = "default_bot_engine")]
     pub bot_engine: String,
+
+    // Apariencia
+    #[serde(default = "default_ui_theme")]
+    pub ui_theme: String,
+    #[serde(default)]
+    pub ui_mode: String,
+}
+
+fn default_ui_theme() -> String {
+    "discord".to_string()
 }
 
 fn default_auto_sync_map() -> bool {
@@ -206,6 +216,9 @@ impl Default for Config {
             auto_sync_map: default_auto_sync_map(),
             sync_interval_secs: default_sync_interval_secs(),
             bot_engine: default_bot_engine(),
+
+            ui_theme: default_ui_theme(),
+            ui_mode: String::new(),
         }
     }
 }
@@ -444,5 +457,18 @@ mod tests {
         assert!(config.auto_sync_map);
         assert_eq!(config.sync_interval_secs, 300);
         assert_eq!(config.bot_engine, "rust");
+    }
+
+    #[test]
+    fn old_config_without_theme_gets_defaults() {
+        let mut json = serde_json::to_value(Config::default()).unwrap();
+        let obj = json.as_object_mut().unwrap();
+        for key in ["ui_theme", "ui_mode"] {
+            assert!(obj.remove(key).is_some());
+        }
+
+        let config: Config = serde_json::from_value(json).unwrap();
+        assert_eq!(config.ui_theme, "discord");
+        assert_eq!(config.ui_mode, "");
     }
 }

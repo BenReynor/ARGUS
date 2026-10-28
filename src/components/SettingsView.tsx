@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useStore, useConfig, useUiSettings, useSetActiveTab, useShowNotification, useActiveGuildId, useGuildSettings } from '../store/useStore';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { getConfig, saveConfig, saveGuildSettings, addBot, deleteBot, startBot, getBotStatus, inviteUrl } from '../api/tauri';
-import { Save, Key, Trash2, Plus, Server, ToggleLeft, ToggleRight, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Copy } from 'lucide-react';
+import { Save, Key, Trash2, Plus, Server, ToggleLeft, ToggleRight, CheckCircle, AlertCircle, Loader2, Eye, EyeOff, Copy, Palette } from 'lucide-react';
+import { TEMAS, aplicarTema } from '../temas';
 
 export const SettingsView: React.FC = () => {
   const config = useConfig();
@@ -87,6 +88,18 @@ export const SettingsView: React.FC = () => {
       auto_start: formData.auto_start,
       minimize_to_tray: formData.minimize_to_tray,
     });
+  };
+
+  const handleTheme = async (ui_theme: string, ui_mode: string) => {
+    const previo = { ui_theme: config.ui_theme, ui_mode: config.ui_mode };
+    setConfig({ ui_theme, ui_mode });
+    aplicarTema(ui_theme, ui_mode);
+    try {
+      await saveConfig({ ...config, ui_theme, ui_mode });
+    } catch (e) {
+      setConfig(previo);
+      showNotification(typeof e === 'string' ? e : 'No se pudo guardar el tema', 'error');
+    }
   };
 
   const handleSave = async () => {
@@ -299,6 +312,39 @@ export const SettingsView: React.FC = () => {
               <ToggleRight size={20} />
               <span>Minimizar a bandeja del sistema al cerrar ventana</span>
             </label>
+          </div>
+        </section>
+
+        <section className="settings-section">
+          <h3><Palette size={18} /> APARIENCIA</h3>
+          <div className="form-group">
+            {TEMAS.map((t) => {
+              const activo = (config.ui_theme || 'discord') === t.id;
+              const variantes = [{ modo: '', nombre: 'Base', m: t.muestra }];
+              if (t.modo && t.muestraModo) variantes.push({ modo: t.modo, nombre: t.modoNombre ?? t.modo, m: t.muestraModo });
+              return (
+                <div key={t.id} className="input-with-actions">
+                  <strong style={{ minWidth: 100 }}>{t.nombre}{activo ? ' (activo)' : ''}</strong>
+                  {variantes.map((v) => {
+                    const seleccionado = activo && (config.ui_mode || '') === v.modo;
+                    return (
+                      <button
+                        key={v.modo || 'base'}
+                        className="btn-secondary"
+                        aria-pressed={seleccionado}
+                        title={`${t.nombre} · ${v.nombre}`}
+                        onClick={() => handleTheme(t.id, v.modo)}
+                        style={{ background: v.m.bg, color: v.m.text, border: `2px solid ${seleccionado ? v.m.accent : 'transparent'}` }}
+                      >
+                        <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: '50%', background: v.m.accent, marginRight: 6 }} />
+                        {v.nombre}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+            <p className="help-text">El tema se aplica al instante y se guarda en la configuración.</p>
           </div>
         </section>
 

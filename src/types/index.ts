@@ -83,6 +83,9 @@ export interface Config {
   auto_sync_map: boolean;
   sync_interval_secs: number;
   bot_engine: string;
+
+  ui_theme: string;
+  ui_mode: string;
 }
 
 // Ajustes solo de la interfaz: no existen en la Config de Rust.

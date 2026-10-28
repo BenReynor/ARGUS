@@ -138,6 +138,9 @@ const defaultConfig = (): Config => ({
   auto_sync_map: true,
   sync_interval_secs: 300,
   bot_engine: 'rust',
+
+  ui_theme: 'discord',
+  ui_mode: '',
 });
 
 export const useStore = create<AppState>()(

@@ -9,15 +9,29 @@ import { RolesView } from './components/RolesView';
 import { SettingsView } from './components/SettingsView';
 import { LogsView } from './components/LogsView';
 import { Notification } from './components/Notification';
+import { aplicarTema } from './temas';
 import { useBotStatus, useShowNotification } from './store/useStore';
-import { getBotStatus, refreshServerMap, getServerMap, onMapUpdated, onSyncProgress, onBotStatusChange } from './api/tauri';
+import { getConfig, getBotStatus, refreshServerMap, getServerMap, onMapUpdated, onSyncProgress, onBotStatusChange } from './api/tauri';
 
 function App() {
+  const setConfig = useStore((s) => s.setConfig);
   const { botStatus, setBotStatus, serverMap, setServerMap, isLoading, setIsLoading } = useStore();
   const showNotification = useShowNotification();
 
+  const uiTheme = useStore((s) => s.config.ui_theme);
+  const uiMode = useStore((s) => s.config.ui_mode);
+  useEffect(() => {
+    aplicarTema(uiTheme, uiMode);
+  }, [uiTheme, uiMode]);
+
   useEffect(() => {
     const init = async () => {
+      try {
+        // El backend es la fuente de verdad (incluye tema y modo guardados).
+        setConfig(await getConfig());
+      } catch (e) {
+        console.error('Config load error:', e);
+      }
       try {
         const status = await getBotStatus();
         setBotStatus(status);
@@ -49,7 +63,7 @@ function App() {
     return () => {
       desuscribir.forEach((u) => u.then((fn) => fn()).catch(() => {}));
     };
-  }, [setBotStatus, setServerMap]);
+  }, [setBotStatus, setServerMap, setConfig]);
 
   const tabs: { id: string; label: string; icon: string }[] = [
     { id: 'dashboard', label: 'Panel', icon: 'layout-dashboard' },
