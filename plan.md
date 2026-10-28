@@ -115,7 +115,7 @@ Verificación manual en tu servidor de pruebas:
 ## FASE 4 — Prueba real (cierre del MVP)
 Comprobar con Discord de verdad, en tus servidores de prueba y con otro usuario, que todo lo anterior funciona.
 
-- [ ] Tests de integración contra un servidor real, desactivados por defecto
+- [x] Tests de integración contra un servidor real, desactivados por defecto
   criterio: src-tauri/tests/integracion_discord.rs con tests `#[ignore]` que leen ARGUS_TEST_TOKEN, ARGUS_TEST_GUILD, ARGUS_TEST_CHANNEL, ARGUS_TEST_ROLE y ARGUS_TEST_USER del entorno y, si falta alguna, terminan sin hacer nada; usan las mismas funciones que los comandos para: validar el token, comprobar que ARGUS_TEST_GUILD está entre los servidores del bot, leer canales/roles/miembros, calcular los permisos del bot, enviar un mensaje a ARGUS_TEST_CHANNEL, enviar un DM a ARGUS_TEST_USER, dar y quitar ARGUS_TEST_ROLE a ARGUS_TEST_USER y aplicar y retirar un timeout de 1 minuto; ningún valor real queda en el repo; `cargo test` normal no los ejecuta; docs/PRUEBA_REAL.md explica cómo preparar el servidor y correrlos con `cargo test -- --ignored`
 
 Prueba final manual (el dueño, con la app compilada desde el acceso directo):
