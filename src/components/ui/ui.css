@@ -115,3 +115,5 @@
   background: var(--surface-hover);
   animation: pulse 1.4s var(--ease) infinite;
 }
+
+.ui-campo__ayuda { font-size: var(--fs-sm); color: var(--text-3); }

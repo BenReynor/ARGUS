@@ -2,9 +2,30 @@ import React, { useState, useEffect } from 'react';
 import { useStore, useConfig, useUiSettings, useSetActiveTab, useShowNotification, useActiveGuildId, useGuildSettings } from '../store/useStore';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { getConfig, saveConfig, saveGuildSettings, addBot, deleteBot, startBot, getBotStatus, inviteUrl } from '../api/tauri';
-import { Button, Input } from './ui';
-import { Save, Key, Trash2, Plus, Server, ToggleLeft, ToggleRight, CheckCircle, AlertCircle, Eye, EyeOff, Copy, Palette } from 'lucide-react';
+import { Button, Input, Card } from './ui';
+import './Vistas.css';
+import { Save, Trash2, Plus, Server, CheckCircle, AlertCircle, Eye, EyeOff, Copy } from 'lucide-react';
 import { TEMAS, aplicarTema } from '../temas';
+
+const Seccion: React.FC<{ titulo: string; descripcion: string; children: React.ReactNode }> = ({ titulo, descripcion, children }) => (
+  <Card className="ajustes__seccion">
+    <header>
+      <h3>{titulo}</h3>
+      <p>{descripcion}</p>
+    </header>
+    {children}
+  </Card>
+);
+
+const Interruptor: React.FC<{ checked: boolean; onChange: (v: boolean) => void; titulo: string; ayuda: string }> = ({ checked, onChange, titulo, ayuda }) => (
+  <label className="ajustes__interruptor">
+    <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    <span>
+      {titulo}
+      <small>{ayuda}</small>
+    </span>
+  </label>
+);
 
 export const SettingsView: React.FC = () => {
   const config = useConfig();
@@ -31,6 +52,8 @@ export const SettingsView: React.FC = () => {
       setSavingGuild(false);
     }
   };
+  const [tokenError, setTokenError] = useState('');
+  const [serverIdError, setServerIdError] = useState('');
   const [showToken, setShowToken] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -75,7 +98,7 @@ export const SettingsView: React.FC = () => {
   };
 
   const persist = async () => {
-    const next = { ...config, active_guild_id: formData.server_id || null };
+    const next = { ...config, active_guild_id: formData.server_id.trim() || null };
     await saveConfig(next);
     if (token) {
       // El backend valida el token con Discord y guarda id, nombre y avatar oficiales.
@@ -104,6 +127,12 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleSave = async () => {
+    const id = formData.server_id.trim();
+    if (id && !/^\d+$/.test(id)) {
+      setServerIdError('El ID del servidor solo contiene números.');
+      return;
+    }
+    setServerIdError('');
     setSaving(true);
     try {
       await persist();
@@ -144,9 +173,10 @@ export const SettingsView: React.FC = () => {
 
   const handleAddBot = async () => {
     if (!token.trim()) {
-      showNotification('Ingresa un token primero', 'warning');
+      setTokenError('Ingresa el token del bot.');
       return;
     }
+    setTokenError('');
     setAdding(true);
     try {
       // El backend valida el token con Discord y guarda nombre y avatar oficiales.
@@ -157,7 +187,7 @@ export const SettingsView: React.FC = () => {
       showNotification(`Bot añadido: ${bot.name}`, 'success');
       if (bot.warning) showNotification(bot.warning, 'warning');
     } catch (e) {
-      showNotification(typeof e === 'string' ? e : 'No se pudo añadir el bot', 'error');
+      setTokenError(typeof e === 'string' ? e : 'No se pudo añadir el bot. Revisa el token.');
     } finally {
       setAdding(false);
     }
@@ -189,236 +219,159 @@ export const SettingsView: React.FC = () => {
   };
 
   return (
-    <div className="settings-view">
-      <div className="view-header">
-        <h2>CONFIGURACIÓN</h2>
+    <div className="vista ajustes">
+      <div className="vista__cabecera">
+        <h2>Ajustes</h2>
       </div>
 
-      <div className="settings-grid">
-        <section className="settings-section">
-          <h3><Key size={18} /> AUTENTICACIÓN DISCORD</h3>
-          <div className="form-group">
-            <label>Bot Token</label>
-            <div className="input-with-actions">
-              <Input
-                type={showToken ? 'text' : 'password'}
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder="Token del bot a añadir"
-              />
-              <button className="icon-btn" onClick={() => setShowToken(!showToken)}>
-                {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-              <button className="icon-btn" onClick={copyToken} title="Copiar token">
-                <Copy size={16} />
-              </button>
-            </div>
-            <p className="help-text">Token del bot desde Discord Developer Portal → Bot → Reset Token. El nombre y el avatar se leen de Discord.</p>
-            <Button variante="secundario" onClick={handleAddBot} cargando={adding} disabled={!token.trim()}>
-              {!adding && <Plus size={14} />}
-              AÑADIR BOT
-            </Button>
-          </div>
+      <Seccion titulo="Bots" descripcion="Registra los bots propios que ARGUS puede usar y elige con cuál trabajar.">
+        <div className="ajustes__fila">
+          <Input
+            etiqueta="Token del bot"
+            ayuda="Lo encuentras en Discord Developer Portal → Bot → Reset Token. El nombre y el avatar se leen de Discord."
+            error={tokenError}
+            type={showToken ? 'text' : 'password'}
+            value={token}
+            onChange={(e) => { setToken(e.target.value); setTokenError(''); }}
+            placeholder="Token del bot a añadir"
+            autoComplete="off"
+          />
+          <button className="icon-btn" aria-label={showToken ? 'Ocultar token' : 'Mostrar token'} onClick={() => setShowToken(!showToken)}>
+            {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+          <button className="icon-btn" onClick={copyToken} title="Copiar token" aria-label="Copiar token" disabled={!token}>
+            <Copy size={16} />
+          </button>
+        </div>
+        <div>
+          <Button variante="secundario" onClick={handleAddBot} cargando={adding} disabled={!token.trim()}>
+            {!adding && <Plus size={14} />} Añadir bot
+          </Button>
+        </div>
 
-          {config.bots.map((b) => (
-            <div key={b.id} className="form-group">
-              <label>{b.name}{b.id === config.active_bot_id ? ' (activo)' : ''}</label>
-              {avisos[b.id] && (
-                <p className="help-text" style={{ color: 'var(--warning)' }}>
-                  <AlertCircle size={14} /> {avisos[b.id]}
-                </p>
-              )}
-              {confirmRemove === b.id ? (
-                <div className="input-with-actions">
-                  <span>¿Quitar el bot «{b.name}»? Se borrará su token guardado.</span>
-                  <Button variante="peligro" onClick={() => handleRemoveBot(b.id)}>CONFIRMAR</Button>
-                  <Button variante="secundario" onClick={() => setConfirmRemove(null)}>CANCELAR</Button>
-                </div>
-              ) : (
-                <Button variante="secundario" onClick={() => setConfirmRemove(b.id)}>
-                  <Trash2 size={14} /> QUITAR BOT
-                </Button>
-              )}
-            </div>
-          ))}
-
-          <div className="form-group">
-            <Button variante="secundario" onClick={handleInvite} disabled={!config.active_bot_id}>
-              <Server size={14} /> Invitar a un servidor
-            </Button>
-            <p className="help-text">Abre en el navegador el enlace de Discord para añadir el bot activo a uno de tus servidores.</p>
-          </div>
-
-          <div className="form-group">
-            <label>Server ID (Guild ID)</label>
-            <div className="input-with-actions">
-              <input
-                type="text"
-                value={formData.server_id}
-                onChange={(e) => handleChange('server_id', e.target.value)}
-                placeholder="ID del servidor"
-              />
-              <button className="icon-btn" onClick={() => { navigator.clipboard.writeText(formData.server_id); showNotification('Server ID copiado', 'info'); }}>
-                <Copy size={16} />
-              </button>
-            </div>
-            <p className="help-text">ID del servidor donde opera el bot (click derecho → Copy ID en Discord)</p>
-          </div>
-
-          <div className="test-connection">
-            <Button variante="secundario" onClick={handleTestConnection} cargando={testing} disabled={!token && !hasSavedBot}>
-              {testing ? 'PROBANDO...' : (
-                <>
-                  <Server size={14} />
-                  PROBAR CONEXIÓN
-                </>
-              )}
-            </Button>
-            {testResult === 'success' && (
-              <div className="test-success">
-                <CheckCircle size={16} /> Conexión exitosa - Bot online en gateway
-              </div>
+        {config.bots.map((b) => (
+          <div key={b.id} className="ajustes__fila">
+            <strong>{b.name}{b.id === config.active_bot_id ? ' (activo)' : ''}</strong>
+            {avisos[b.id] && (
+              <span className="ajustes__aviso"><AlertCircle size={14} /> {avisos[b.id]}</span>
             )}
-            {testResult === 'error' && (
-              <div className="test-error">
-                <AlertCircle size={16} /> Token inválido o error de gateway
-              </div>
+            {confirmRemove === b.id ? (
+              <>
+                <span>¿Quitar el bot «{b.name}»? Se borrará su token guardado.</span>
+                <Button variante="peligro" onClick={() => handleRemoveBot(b.id)}>Confirmar</Button>
+                <Button variante="secundario" onClick={() => setConfirmRemove(null)}>Cancelar</Button>
+              </>
+            ) : (
+              <Button variante="secundario" onClick={() => setConfirmRemove(b.id)}>
+                <Trash2 size={14} /> Quitar bot
+              </Button>
             )}
           </div>
-        </section>
+        ))}
 
-        <section className="settings-section">
-          <h3><ToggleLeft size={18} /> COMPORTAMIENTO</h3>
-          <div className="toggles">
-            <label className="toggle-label">
-              <input
-                type="checkbox"
-                checked={formData.auto_start}
-                onChange={(e) => handleChange('auto_start', e.target.checked)}
+        <div className="ajustes__fila">
+          <Button variante="secundario" onClick={handleInvite} disabled={!config.active_bot_id}>
+            <Server size={14} /> Invitar a un servidor
+          </Button>
+          <Button variante="secundario" onClick={handleTestConnection} cargando={testing} disabled={!token && !hasSavedBot}>
+            {!testing && <Server size={14} />} {testing ? 'Probando…' : 'Probar conexión'}
+          </Button>
+        </div>
+        <p className="ajustes__ayuda">Invitar abre en el navegador el enlace de Discord para añadir el bot activo a uno de tus servidores.</p>
+        {testResult === 'success' && (
+          <div className="ajustes__ok"><CheckCircle size={16} /> Conexión exitosa: bot online en el gateway.</div>
+        )}
+        {testResult === 'error' && (
+          <div className="ajustes__error"><AlertCircle size={16} /> Token inválido o error de gateway.</div>
+        )}
+      </Seccion>
+
+      <Seccion titulo="Este servidor" descripcion="Ajustes propios de ARGUS para el servidor activo.">
+        {!activeGuildId ? (
+          <p className="ajustes__ayuda">Elige un servidor en la cabecera para configurarlo.</p>
+        ) : !guildSettings ? (
+          <p className="ajustes__ayuda">Cargando ajustes del servidor…</p>
+        ) : (
+          <>
+            <Input
+              etiqueta="Alias"
+              ayuda="Nombre propio para reconocer este servidor en ARGUS."
+              error={(guildSettings.alias ?? '').length > 60 ? 'El alias no puede superar 60 caracteres.' : undefined}
+              type="text"
+              value={guildSettings.alias ?? ''}
+              onChange={(e) => handleGuildChange({ alias: e.target.value || null })}
+            />
+            <div className="ui-campo">
+              <label htmlFor="ajustes-notas">Notas</label>
+              <textarea
+                id="ajustes-notas"
+                className="ui-control"
+                value={guildSettings.notes}
+                rows={3}
+                onChange={(e) => handleGuildChange({ notes: e.target.value })}
               />
-              <ToggleRight size={20} />
-              <span>Auto-iniciar bot al abrir ARGUS</span>
-            </label>
-            <label className="toggle-label">
-              <input
-                type="checkbox"
-                checked={formData.minimize_to_tray}
-                onChange={(e) => handleChange('minimize_to_tray', e.target.checked)}
-              />
-              <ToggleRight size={20} />
-              <span>Minimizar a bandeja del sistema al cerrar ventana</span>
-            </label>
-          </div>
-        </section>
-
-        <section className="settings-section">
-          <h3><Palette size={18} /> APARIENCIA</h3>
-          <div className="form-group">
-            {TEMAS.map((t) => {
-              const activo = (config.ui_theme || 'discord') === t.id;
-              const variantes = [{ modo: '', nombre: 'Base', muestra: t.id }];
-              if (t.modo) variantes.push({ modo: t.modo, nombre: t.modoNombre ?? t.modo, muestra: `${t.id}-${t.modo}` });
-              return (
-                <div key={t.id} className="input-with-actions">
-                  <strong style={{ minWidth: 100 }}>{t.nombre}{activo ? ' (activo)' : ''}</strong>
-                  {variantes.map((v) => {
-                    const seleccionado = activo && (config.ui_mode || '') === v.modo;
-                    return (
-                      <button
-                        key={v.modo || 'base'}
-                        className="btn-secondary muestra-tema"
-                        data-muestra={v.muestra}
-                        aria-pressed={seleccionado}
-                        title={`${t.nombre} · ${v.nombre}`}
-                        onClick={() => handleTheme(t.id, v.modo)}
-                      >
-                        <span className="muestra-punto" />
-                        {v.nombre}
-                      </button>
-                    );
-                  })}
-                </div>
-              );
-            })}
-            <p className="help-text">El tema se aplica al instante y se guarda en la configuración.</p>
-          </div>
-        </section>
-
-        <section className="settings-section">
-          <h3><Server size={18} /> ESTE SERVIDOR</h3>
-          {!activeGuildId ? (
-            <p>Elige un servidor en la cabecera para configurarlo.</p>
-          ) : !guildSettings ? (
-            <p>Cargando ajustes del servidor…</p>
-          ) : (
-            <>
-              <div className="form-group">
-                <label>Alias</label>
-                <input
-                  type="text"
-                  value={guildSettings.alias ?? ''}
-                  placeholder="Nombre propio para este servidor"
-                  onChange={(e) => handleGuildChange({ alias: e.target.value || null })}
-                />
-              </div>
-              <div className="form-group">
-                <label>Notas</label>
-                <textarea
-                  value={guildSettings.notes}
-                  rows={3}
-                  onChange={(e) => handleGuildChange({ notes: e.target.value })}
-                />
-              </div>
-              <div className="toggles">
-                <label className="toggle-label">
-                  <input
-                    type="checkbox"
-                    checked={guildSettings.vigilance_enabled}
-                    onChange={(e) => handleGuildChange({ vigilance_enabled: e.target.checked })}
-                  />
-                  <ToggleRight size={20} />
-                  <span>Vigilancia</span>
-                </label>
-                <label className="toggle-label">
-                  <input
-                    type="checkbox"
-                    checked={guildSettings.personality_enabled}
-                    onChange={(e) => handleGuildChange({ personality_enabled: e.target.checked })}
-                  />
-                  <ToggleRight size={20} />
-                  <span>Personalidad</span>
-                </label>
-                <label className="toggle-label">
-                  <input
-                    type="checkbox"
-                    checked={guildSettings.templates_enabled}
-                    onChange={(e) => handleGuildChange({ templates_enabled: e.target.checked })}
-                  />
-                  <ToggleRight size={20} />
-                  <span>Plantillas</span>
-                </label>
-              </div>
-              <Button onClick={handleSaveGuild} cargando={savingGuild}>
+              <span className="ui-campo__ayuda">Apuntes privados; no se envían a Discord.</span>
+            </div>
+            <Interruptor titulo="Vigilancia" ayuda="Registrar eventos del servidor." checked={guildSettings.vigilance_enabled} onChange={(v) => handleGuildChange({ vigilance_enabled: v })} />
+            <Interruptor titulo="Personalidad" ayuda="Permitir que el bot responda con su personalidad." checked={guildSettings.personality_enabled} onChange={(v) => handleGuildChange({ personality_enabled: v })} />
+            <Interruptor titulo="Plantillas" ayuda="Permitir aplicar plantillas de estructura." checked={guildSettings.templates_enabled} onChange={(v) => handleGuildChange({ templates_enabled: v })} />
+            <div>
+              <Button onClick={handleSaveGuild} cargando={savingGuild} disabled={(guildSettings.alias ?? '').length > 60}>
                 {!savingGuild && <Save size={16} />} Guardar ajustes del servidor
               </Button>
-            </>
-          )}
-        </section>
+            </div>
+          </>
+        )}
+      </Seccion>
 
-        <section className="settings-section">
-          <h3><Save size={18} /> ACCIONES</h3>
-          <div className="settings-actions">
-            <Button onClick={handleSave} cargando={saving}>
-              {saving ? 'GUARDANDO...' : (
-                <>
-                  <Save size={14} />
-                  GUARDAR CONFIGURACIÓN
-                </>
-              )}
-            </Button>
-          </div>
-        </section>
-      </div>
+      <Seccion titulo="Apariencia" descripcion="Elige el tema y el modo de la interfaz. Se aplica al instante y se guarda.">
+        {TEMAS.map((t) => {
+          const activo = (config.ui_theme || 'discord') === t.id;
+          const variantes = [{ modo: '', nombre: 'Base', muestra: t.id }];
+          if (t.modo) variantes.push({ modo: t.modo, nombre: t.modoNombre ?? t.modo, muestra: `${t.id}-${t.modo}` });
+          return (
+            <div key={t.id} className="ajustes__fila">
+              <strong style={{ minWidth: 100 }}>{t.nombre}{activo ? ' (activo)' : ''}</strong>
+              {variantes.map((v) => {
+                const seleccionado = activo && (config.ui_mode || '') === v.modo;
+                return (
+                  <button
+                    key={v.modo || 'base'}
+                    className="btn-secondary muestra-tema"
+                    data-muestra={v.muestra}
+                    aria-pressed={seleccionado}
+                    title={`${t.nombre} · ${v.nombre}`}
+                    onClick={() => handleTheme(t.id, v.modo)}
+                  >
+                    <span className="muestra-punto" />
+                    {v.nombre}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
+      </Seccion>
+
+      <Seccion titulo="General" descripcion="Comportamiento de la aplicación y servidor con el que arranca.">
+        <Input
+          etiqueta="ID del servidor activo"
+          ayuda="Clic derecho en el servidor → Copiar ID (con el modo desarrollador de Discord activo)."
+          error={serverIdError}
+          type="text"
+          value={formData.server_id}
+          onChange={(e) => { handleChange('server_id', e.target.value); setServerIdError(''); }}
+          placeholder="ID del servidor"
+        />
+        <Interruptor titulo="Auto-iniciar el bot al abrir ARGUS" ayuda="Conecta el bot activo en cuanto arranca la aplicación." checked={formData.auto_start} onChange={(v) => handleChange('auto_start', v)} />
+        <Interruptor titulo="Minimizar a la bandeja al cerrar la ventana" ayuda="ARGUS sigue funcionando en segundo plano." checked={formData.minimize_to_tray} onChange={(v) => handleChange('minimize_to_tray', v)} />
+        <div>
+          <Button onClick={handleSave} cargando={saving}>
+            {!saving && <Save size={14} />} {saving ? 'Guardando…' : 'Guardar configuración'}
+          </Button>
+        </div>
+      </Seccion>
     </div>
   );
 };
+

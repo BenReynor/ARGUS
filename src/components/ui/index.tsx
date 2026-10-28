@@ -27,27 +27,29 @@ export const Button: React.FC<ButtonProps> = ({
 
 interface CampoProps {
   etiqueta?: string;
+  ayuda?: string;
   error?: string;
 }
 
-const Campo: React.FC<CampoProps & { id: string; children: React.ReactNode }> = ({ etiqueta, error, id, children }) => {
-  if (!etiqueta && !error) return <>{children}</>;
+const Campo: React.FC<CampoProps & { id: string; children: React.ReactNode }> = ({ etiqueta, ayuda, error, id, children }) => {
+  if (!etiqueta && !error && !ayuda) return <>{children}</>;
   return (
     <div className="ui-campo">
       {etiqueta && <label htmlFor={id}>{etiqueta}</label>}
       {children}
+      {ayuda && <span className="ui-campo__ayuda" id={`${id}-ayuda`}>{ayuda}</span>}
       {error && <span className="ui-campo__error" role="alert">{error}</span>}
     </div>
   );
 };
 
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement> & CampoProps>(
-  ({ etiqueta, error, className, id, ...rest }, ref) => {
+  ({ etiqueta, ayuda, error, className, id, ...rest }, ref) => {
     const auto = React.useId();
     const uid = id ?? auto;
     return (
-      <Campo etiqueta={etiqueta} error={error} id={uid}>
-        <input ref={ref} id={uid} aria-invalid={!!error} className={`ui-control${className ? ` ${className}` : ''}`} {...rest} />
+      <Campo etiqueta={etiqueta} ayuda={ayuda} error={error} id={uid}>
+        <input ref={ref} id={uid} aria-invalid={!!error} aria-describedby={ayuda ? `${uid}-ayuda` : undefined} className={`ui-control${className ? ` ${className}` : ''}`} {...rest} />
       </Campo>
     );
   },
@@ -55,12 +57,12 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
 Input.displayName = 'Input';
 
 export const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement> & CampoProps>(
-  ({ etiqueta, error, className, id, children, ...rest }, ref) => {
+  ({ etiqueta, ayuda, error, className, id, children, ...rest }, ref) => {
     const auto = React.useId();
     const uid = id ?? auto;
     return (
-      <Campo etiqueta={etiqueta} error={error} id={uid}>
-        <select ref={ref} id={uid} aria-invalid={!!error} className={`ui-control${className ? ` ${className}` : ''}`} {...rest}>
+      <Campo etiqueta={etiqueta} ayuda={ayuda} error={error} id={uid}>
+        <select ref={ref} id={uid} aria-invalid={!!error} aria-describedby={ayuda ? `${uid}-ayuda` : undefined} className={`ui-control${className ? ` ${className}` : ''}`} {...rest}>
           {children}
         </select>
       </Campo>

@@ -30,6 +30,13 @@ export const motivoPermisoAusente = (permissions: string[] | null, requerido: st
     ? `El bot no tiene el permiso «${requerido}» en este servidor`
     : null;
 
+export type ToastType = 'info' | 'success' | 'error' | 'warning';
+export interface ToastItem { id: number; message: string; type: ToastType }
+export interface LogEntry { ts: string; texto: string }
+
+let siguienteToast = 1;
+const MAX_TOASTS = 5;
+
 interface AppState {
   // Panel del servidor activo
   guildPanel: GuildPanel;
@@ -72,14 +79,14 @@ interface AppState {
   setSelectedMember: (member: Member | null) => void;
 
   // Logs
-  logs: string[];
+  logs: LogEntry[];
   addLog: (log: string) => void;
   clearLogs: () => void;
 
   // Notifications
-  notification: { message: string; type: 'info' | 'success' | 'error' | 'warning' } | null;
-  showNotification: (message: string, type: 'info' | 'success' | 'error' | 'warning') => void;
-  hideNotification: () => void;
+  notifications: ToastItem[];
+  showNotification: (message: string, type: ToastType) => void;
+  hideNotification: (id: number) => void;
 
   // Loading states
   isLoading: boolean;
@@ -229,13 +236,16 @@ export const useStore = create<AppState>()(
 
       // Logs
       logs: [],
-      addLog: (log) => set((state) => ({ logs: [...state.logs.slice(-999), log] })),
+      addLog: (log) => set((state) => ({ logs: [...state.logs.slice(-999), { ts: new Date().toISOString(), texto: log }] })),
       clearLogs: () => set({ logs: [] }),
 
       // Notifications
-      notification: null,
-      showNotification: (message, type) => set({ notification: { message, type } }),
-      hideNotification: () => set({ notification: null }),
+      notifications: [],
+      showNotification: (message, type) =>
+        set((state) => ({
+          notifications: [...state.notifications, { id: siguienteToast++, message, type }].slice(-MAX_TOASTS),
+        })),
+      hideNotification: (id) => set((state) => ({ notifications: state.notifications.filter((n) => n.id !== id) })),
 
       // Loading
       isLoading: false,
@@ -289,7 +299,7 @@ export const useSetSelectedMember = () => useStore((s) => s.setSelectedMember);
 export const useLogs = () => useStore((s) => s.logs);
 export const useAddLog = () => useStore((s) => s.addLog);
 export const useClearLogs = () => useStore((s) => s.clearLogs);
-export const useNotification = () => useStore((s) => s.notification);
+export const useNotifications = () => useStore((s) => s.notifications);
 export const useShowNotification = () => useStore((s) => s.showNotification);
 export const useHideNotification = () => useStore((s) => s.hideNotification);
 export const useIsLoading = () => useStore((s) => s.isLoading);
