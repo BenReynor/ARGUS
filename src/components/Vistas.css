@@ -1,0 +1,59 @@
+/* Canales, Roles y Miembros. Solo variables del contrato ui-tokens. */
+.vista { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-4); }
+.vista__cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
+.vista__cabecera h2 { font-family: var(--font-display); font-size: var(--fs-lg); font-weight: var(--fw-bold); }
+.vista__buscar { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-3); }
+.vista__buscar .ui-control { min-width: 220px; }
+.vista__cuenta { color: var(--text-3); font-size: var(--fs-sm); }
+.vista__nota { color: var(--text-2); font-size: var(--fs-sm); }
+
+.vista__lista { display: flex; flex-direction: column; gap: var(--sp-1); }
+.vista__fila {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface); border: var(--border-w) solid var(--border); border-radius: var(--radius-md);
+}
+.vista__fila-nombre { font-weight: var(--fw-bold); color: var(--text); }
+.vista__fila-sub { color: var(--text-3); font-size: var(--fs-sm); }
+.vista__fila-cuerpo { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.vista__etiquetas { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.vista__mono { font-family: var(--font-mono); font-size: var(--fs-sm); }
+
+/* Árbol de canales */
+.arbol__categoria { display: flex; flex-direction: column; gap: var(--sp-1); }
+.arbol__cabecera {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%;
+  padding: var(--sp-2) var(--sp-2); background: transparent; border: 0;
+  color: var(--text-2); font-size: var(--fs-sm); font-weight: var(--fw-bold);
+  text-transform: uppercase; cursor: pointer; text-align: left;
+}
+.arbol__cabecera:hover { color: var(--text); }
+.arbol__cabecera svg:first-child { transition: transform 0.15s; }
+.arbol__cabecera--abierta svg:first-child { transform: rotate(90deg); }
+.arbol__canales { display: flex; flex-direction: column; gap: 2px; margin-left: var(--sp-4); }
+.arbol__canal { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1) var(--sp-2); border-radius: var(--radius-sm); color: var(--text-2); cursor: pointer; background: transparent; border: 0; text-align: left; width: 100%; }
+.arbol__canal:hover { background: var(--surface-hover); color: var(--text); }
+.arbol__canal--activo { background: var(--accent-soft); color: var(--text); }
+.arbol__canal-nombre { flex: 1; }
+.vista__panel { display: flex; flex-direction: column; gap: var(--sp-2); }
+.vista__panel textarea { resize: vertical; }
+
+/* Rol */
+.rol__color { width: 14px; height: 14px; border-radius: 50%; flex: none; border: var(--border-w) solid var(--border-strong); }
+
+/* Menú de acciones */
+.menu { position: relative; }
+.menu__lista {
+  position: absolute; right: 0; top: 100%; z-index: 20; min-width: 240px;
+  display: flex; flex-direction: column; padding: var(--sp-1);
+  background: var(--surface-2); border: var(--border-w) solid var(--border-strong); border-radius: var(--radius-md);
+}
+.menu__item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: var(--sp-2) var(--sp-3); background: transparent; border: 0; border-radius: var(--radius-sm);
+  color: var(--text); cursor: pointer; text-align: left; font-size: var(--fs-sm);
+}
+.menu__item:hover:not(:disabled) { background: var(--surface-hover); }
+.menu__item:disabled { color: var(--text-3); cursor: not-allowed; }
+.menu__motivo { color: var(--warning); font-size: var(--fs-sm); }
+.menu__sep { color: var(--text-3); font-size: var(--fs-sm); padding: var(--sp-1) var(--sp-3); }

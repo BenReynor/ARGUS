@@ -1,15 +1,22 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useServerMap, useSetSelectedChannel, useSelectedChannel, useAddLog, useShowNotification, useGuildPanel, motivoPermisoAusente } from '../store/useStore';
 import { sendMessage } from '../api/tauri';
-import { Button, Input } from './ui';
-import { Hash, MessageSquare, Volume2, Folder, Send, Copy, Search, ChevronRight } from 'lucide-react';
+import { Button, Badge, EstadoVacio } from './ui';
+import { EstadoVista, BuscadorVista } from './EstadoVista';
+import { Hash, Volume2, Folder, Megaphone, Radio, MessagesSquare, Send, Copy, Search, ChevronRight } from 'lucide-react';
+import { CHANNEL_TYPE_LABELS } from '../types';
+import type { Channel } from '../types';
 
 const CHANNEL_TYPE_ICONS: Record<number, any> = {
-  0: MessageSquare,
+  0: Hash,
   2: Volume2,
   4: Folder,
-  15: Hash,
+  5: Megaphone,
+  13: Radio,
+  15: MessagesSquare,
 };
+
+const SIN_CATEGORIA = 'none';
 
 export const ChannelsView: React.FC = () => {
   const serverMap = useServerMap();
@@ -19,13 +26,26 @@ export const ChannelsView: React.FC = () => {
   const showNotification = useShowNotification();
   const motivoEnviar = motivoPermisoAusente(useGuildPanel().permissions, 'Enviar mensajes');
   const [search, setSearch] = useState('');
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const [cerradas, setCerradas] = useState<Record<string, boolean>>({});
   const [newMessage, setNewMessage] = useState('');
 
-  const categories = serverMap?.categories || {};
-  const categoryNames: Record<string, string> = {
-    'none': '📁 SIN CATEGORÍA',
-  };
+  const grupos = useMemo(() => {
+    const mapa = serverMap;
+    if (!mapa) return [];
+    const q = search.trim().toLowerCase();
+    const nombreCategoria = (id: string) =>
+      id === SIN_CATEGORIA ? 'Sin categoría' : mapa.channels.find((c) => c.id === id)?.name ?? id;
+    return Object.entries(mapa.categories)
+      .map(([id, canales]) => ({
+        id,
+        nombre: nombreCategoria(id),
+        canales: [...canales]
+          .filter((c) => c.channel_type !== 4 && (!q || c.name.toLowerCase().includes(q) || nombreCategoria(id).toLowerCase().includes(q)))
+          .sort((a, b) => a.position - b.position),
+      }))
+      .filter((g) => g.canales.length > 0 || (!q && mapa.channels.some((c) => c.id === g.id)))
+      .sort((a, b) => (a.id === SIN_CATEGORIA ? -1 : b.id === SIN_CATEGORIA ? 1 : a.nombre.localeCompare(b.nombre)));
+  }, [serverMap, search]);
 
   const handleSend = async (channelId: string) => {
     if (!newMessage.trim()) return;
@@ -34,97 +54,97 @@ export const ChannelsView: React.FC = () => {
       addLog(`[SENT] #${channelId}: ${newMessage.slice(0, 50)}...`);
       showNotification('Mensaje enviado', 'success');
       setNewMessage('');
-    } catch {
-      showNotification('Error al enviar', 'error');
+    } catch (e) {
+      showNotification(typeof e === 'string' ? e : 'Error al enviar el mensaje', 'error');
     }
   };
 
   const copyId = (id: string) => {
-    navigator.clipboard.writeText(id);
+    void navigator.clipboard.writeText(id);
     showNotification('ID copiado', 'info');
   };
 
+  const iconoDe = (c: Channel) => CHANNEL_TYPE_ICONS[c.channel_type] ?? Hash;
+  const total = serverMap?.channels.filter((c) => c.channel_type !== 4).length ?? 0;
+
   return (
-    <div className="channels-view">
-      <div className="view-header">
-        <h2>CANALES DEL SERVIDOR</h2>
-        <div className="search-box">
-          <Search size={16} />
-          <Input
-            type="text"
-            placeholder="Filtrar canales..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
+    <div className="vista channels-view">
+      <div className="vista__cabecera">
+        <h2>Canales del servidor <span className="vista__cuenta">{total}</span></h2>
+        <BuscadorVista valor={search} onCambio={setSearch} placeholder="Buscar canales…" icono={<Search size={16} />} />
       </div>
 
-      <div className="channels-tree">
-        {Object.entries(categories).map(([catId, channels]) => {
-          const filtered = channels.filter(c => 
-            c.name.toLowerCase().includes(search.toLowerCase())
-          );
-          if (filtered.length === 0 && search) return null;
-
-          const isExpanded = expandedCategories[catId] !== false;
-          return (
-            <div key={catId} className="category-group">
-              <button className="category-header" onClick={() => setExpandedCategories(prev => ({ ...prev, [catId]: !isExpanded }))}>
-                <ChevronRight size={14} className={isExpanded ? 'expanded' : ''} />
-                <Folder size={16} />
-                <span>{categoryNames[catId] || catId}</span>
-                <span className="channel-count">{filtered.length}</span>
-              </button>
-              {isExpanded && (
-                <div className="channels-list">
-                  {filtered.map((channel) => {
-                    const Icon = CHANNEL_TYPE_ICONS[channel.channel_type] || Hash;
-                    return (
-                      <div key={channel.id} className="channel-item">
-                        <Icon size={14} className={`type-icon type-${channel.channel_type}`} />
-                        <span className="channel-name">#{channel.name}</span>
-                        <div className="channel-actions">
-                          <button className="icon-btn" onClick={() => copyId(channel.id)} title="Copiar ID">
-                            <Copy size={12} />
-                          </button>
-                          <button className="icon-btn" onClick={() => setSelectedChannel(channel)} title="Seleccionar">
-                            <ChevronRight size={12} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+      <EstadoVista>
+        {total === 0 ? (
+          <EstadoVacio titulo="Este servidor no tiene canales" descripcion="Cuando se creen canales aparecerán aquí." />
+        ) : grupos.length === 0 ? (
+          <EstadoVacio titulo="Sin resultados" descripcion={`Ningún canal coincide con «${search}».`} />
+        ) : (
+          <div className="vista__lista" role="tree" aria-label="Canales por categoría">
+            {grupos.map((g) => {
+              const abierta = !!search || !cerradas[g.id];
+              return (
+                <div key={g.id} className="arbol__categoria" role="treeitem" aria-expanded={abierta}>
+                  <button
+                    className={`arbol__cabecera${abierta ? ' arbol__cabecera--abierta' : ''}`}
+                    onClick={() => setCerradas((p) => ({ ...p, [g.id]: abierta }))}
+                  >
+                    <ChevronRight size={14} />
+                    <span>{g.nombre}</span>
+                    <span className="vista__cuenta">{g.canales.length}</span>
+                  </button>
+                  {abierta && (
+                    <div className="arbol__canales" role="group">
+                      {g.canales.map((c) => {
+                        const Icon = iconoDe(c);
+                        return (
+                          <div key={c.id} className={`arbol__canal${selectedChannel?.id === c.id ? ' arbol__canal--activo' : ''}`} onClick={() => setSelectedChannel(c)}>
+                            <Icon size={14} aria-hidden="true" />
+                            <span className="arbol__canal-nombre">{c.name}</span>
+                            <Badge>{CHANNEL_TYPE_LABELS[c.channel_type] ?? `Tipo ${c.channel_type}`}</Badge>
+                            <Button variante="ghost" tamano="sm" title="Copiar ID" aria-label={`Copiar ID de ${c.name}`} onClick={(e) => { e.stopPropagation(); copyId(c.id); }}>
+                              <Copy size={12} />
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
+        )}
 
-      {selectedChannel && (
-        <div className="channel-detail-panel">
-          <div className="panel-header">
-            <h3>#{selectedChannel.name}</h3>
-            <button className="icon-btn" onClick={() => setSelectedChannel(null)}>
-              <ChevronRight size={16} className="rotate-180" />
-            </button>
+        {selectedChannel && (
+          <div className="vista__panel channel-detail-panel">
+            <div className="vista__cabecera">
+              <h3>#{selectedChannel.name}</h3>
+              <Button variante="ghost" tamano="sm" onClick={() => setSelectedChannel(null)}>Cerrar</Button>
+            </div>
+            {selectedChannel.channel_type === 0 || selectedChannel.channel_type === 5 ? (
+              <>
+                <textarea
+                  className="ui-control"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="Escribe un mensaje…"
+                  rows={3}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend(selectedChannel.id); } }}
+                />
+                <div className="vista__etiquetas">
+                  <Button disabled={!!motivoEnviar} title={motivoEnviar ?? undefined} onClick={() => handleSend(selectedChannel.id)}>
+                    <Send size={16} /> Enviar
+                  </Button>
+                  {motivoEnviar && <span className="vista__nota">{motivoEnviar}</span>}
+                </div>
+              </>
+            ) : (
+              <span className="vista__nota">Solo se pueden enviar mensajes a canales de texto.</span>
+            )}
           </div>
-          <div className="message-send">
-            <textarea
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Escribe un mensaje..."
-              rows={3}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend(selectedChannel.id))}
-            />
-            <Button disabled={!!motivoEnviar} title={motivoEnviar ?? undefined} onClick={() => handleSend(selectedChannel.id)}>
-              <Send size={16} />
-              ENVIAR
-            </Button>
-            {motivoEnviar && <span className="channel-count">{motivoEnviar}</span>}
-          </div>
-        </div>
-      )}
+        )}
+      </EstadoVista>
     </div>
   );
 };

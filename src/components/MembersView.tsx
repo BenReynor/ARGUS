@@ -1,229 +1,150 @@
-import React, { useState } from 'react';
-import { useServerMap, useSetSelectedMember, useSelectedMember, useAddLog, useShowNotification, useConfig, useGuildPanel, motivoPermisoAusente } from '../store/useStore';
-import { listMembers, sendDM, addRole, removeRole, timeoutMember, getMemberInfo } from '../api/tauri';
-import { Button, Input, Select, Avatar, Badge } from './ui';
-import { Users, Mail, Shield, Ban, MoreVertical, Copy, Search, ChevronRight, X } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { useServerMap, useAddLog, useShowNotification, useConfig, useGuildPanel, motivoPermisoAusente } from '../store/useStore';
+import { sendDM, addRole, removeRole, timeoutMember } from '../api/tauri';
+import { Avatar, Badge, Button, EstadoVacio } from './ui';
+import { EstadoVista, BuscadorVista } from './EstadoVista';
+import { MoreVertical, Search } from 'lucide-react';
 import type { Member, Role } from '../types';
+
+interface AccionMenu {
+  clave: string;
+  etiqueta: string;
+  motivo: string | null;
+  ejecutar: () => void;
+}
+
+/** Menú de acciones; una acción sin permiso queda desactivada y muestra por qué. */
+const MenuAcciones: React.FC<{ nombre: string; acciones: AccionMenu[] }> = ({ nombre, acciones }) => {
+  const [abierto, setAbierto] = useState(false);
+  return (
+    <div className="menu" onKeyDown={(e) => { if (e.key === 'Escape') setAbierto(false); }}>
+      <Button variante="ghost" tamano="sm" aria-haspopup="menu" aria-expanded={abierto} aria-label={`Acciones de ${nombre}`} onClick={() => setAbierto((v) => !v)}>
+        <MoreVertical size={14} />
+      </Button>
+      {abierto && (
+        <div className="menu__lista" role="menu">
+          {acciones.map((a) => (
+            <button
+              key={a.clave}
+              role="menuitem"
+              className="menu__item"
+              disabled={!!a.motivo}
+              onClick={() => { setAbierto(false); a.ejecutar(); }}
+            >
+              {a.etiqueta}
+              {a.motivo && <span className="menu__motivo">{a.motivo}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const MembersView: React.FC = () => {
   const serverMap = useServerMap();
-  const setSelectedMember = useSetSelectedMember();
-  const selectedMember = useSelectedMember();
   const addLog = useAddLog();
   const guildId = useConfig().active_guild_id;
   const showNotification = useShowNotification();
-  const motivoTimeout = motivoPermisoAusente(useGuildPanel().permissions, 'Moderar miembros');
+  const permisos = useGuildPanel().permissions;
+  const motivoTimeout = motivoPermisoAusente(permisos, 'Moderar miembros');
+  const motivoRoles = motivoPermisoAusente(permisos, 'Gestionar roles');
   const [search, setSearch] = useState('');
-  const [sortBy, setSortBy] = useState<'name' | 'roles' | 'status'>('name');
 
-  const members = serverMap?.members || [];
-  const roles = serverMap?.roles || [];
-  const filtered = members.filter(m => 
-    m.username.toLowerCase().includes(search.toLowerCase()) ||
-    m.nickname?.toLowerCase().includes(search.toLowerCase())
-  );
+  const roles: Role[] = serverMap?.roles ?? [];
 
-  const sorted = [...filtered].sort((a, b) => {
-    if (sortBy === 'name') return (a.nickname || a.username).localeCompare(b.nickname || b.username);
-    if (sortBy === 'roles') return b.roles.length - a.roles.length;
-    return 0;
-  });
+  const miembros = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return [...(serverMap?.members ?? [])]
+      .filter((m) => !q || m.username.toLowerCase().includes(q) || (m.nickname ?? '').toLowerCase().includes(q))
+      .sort((a, b) => (a.nickname || a.username).localeCompare(b.nickname || b.username));
+  }, [serverMap, search]);
 
-  const handleDM = async (userId: string, username: string) => {
-    const content = prompt(`DM a ${username}:`);
-    if (content) {
-      try {
-        await sendDM(userId, content);
-        showNotification('DM enviado', 'success');
-      } catch { showNotification('Error', 'error'); }
-    }
+  const errorTexto = (e: unknown, defecto: string) => (typeof e === 'string' ? e : defecto);
+
+  const handleDM = async (m: Member) => {
+    const content = prompt(`DM a ${m.username}:`);
+    if (!content) return;
+    try {
+      await sendDM(m.user_id, content);
+      addLog(`[DM] ${m.username}`);
+      showNotification('DM enviado', 'success');
+    } catch (e) { showNotification(errorTexto(e, 'No se pudo enviar el DM'), 'error'); }
   };
 
-  const handleRole = async (member: Member, role: Role, add: boolean) => {
+  const handleRole = async (m: Member, role: Role, add: boolean) => {
     try {
       if (!guildId) throw new Error('No hay servidor seleccionado');
-      if (add) await addRole(guildId, member.user_id, role.id);
-      else await removeRole(guildId, member.user_id, role.id);
-      setSelectedMember({
-        ...member,
-        roles: add ? [...member.roles, role.name] : member.roles.filter(n => n !== role.name),
-      });
+      if (add) await addRole(guildId, m.user_id, role.id);
+      else await removeRole(guildId, m.user_id, role.id);
       showNotification(add ? 'Rol añadido' : 'Rol quitado', 'success');
-    } catch (e) { showNotification(typeof e === 'string' ? e : 'Error al cambiar el rol', 'error'); }
+    } catch (e) { showNotification(errorTexto(e, 'Error al cambiar el rol'), 'error'); }
   };
 
-  const handleTimeout = async (userId: string, username: string) => {
-    const mins = prompt(`Minutos de timeout para ${username}:`, '10');
-    if (mins) {
-      try {
-        if (!guildId) { showNotification('No hay servidor seleccionado', 'error'); return; }
-        await timeoutMember(guildId, userId, parseInt(mins));
-        showNotification(`Timeout ${mins} min`, 'success');
-      } catch { showNotification('Error', 'error'); }
+  const handleTimeout = async (m: Member) => {
+    const mins = prompt(`Minutos de timeout para ${m.username}:`, '10');
+    if (!mins) return;
+    try {
+      if (!guildId) { showNotification('No hay servidor seleccionado', 'error'); return; }
+      await timeoutMember(guildId, m.user_id, parseInt(mins, 10));
+      showNotification(`Timeout de ${mins} min aplicado`, 'success');
+    } catch (e) { showNotification(errorTexto(e, 'No se pudo aplicar el timeout'), 'error'); }
+  };
+
+  const accionesDe = (m: Member): AccionMenu[] => {
+    const acciones: AccionMenu[] = [
+      { clave: 'dm', etiqueta: 'Enviar DM', motivo: m.bot ? 'No se puede enviar DM a un bot' : null, ejecutar: () => { void handleDM(m); } },
+      { clave: 'timeout', etiqueta: 'Aplicar timeout', motivo: m.bot ? 'No se puede aplicar timeout a un bot' : motivoTimeout, ejecutar: () => { void handleTimeout(m); } },
+    ];
+    for (const r of roles.filter((x) => x.name !== '@everyone').slice(0, 10)) {
+      const tiene = m.roles.includes(r.name);
+      acciones.push({
+        clave: `rol-${r.id}`,
+        etiqueta: `${tiene ? 'Quitar' : 'Añadir'} rol ${r.name}`,
+        motivo: motivoRoles,
+        ejecutar: () => { void handleRole(m, r, !tiene); },
+      });
     }
+    return acciones;
   };
 
-  const copyId = (id: string) => {
-    navigator.clipboard.writeText(id);
-    showNotification('ID copiado', 'info');
-  };
-
-  const getRoleColor = (roleName: string) => {
-    const role = roles.find(r => r.name === roleName);
-    return role ? `#${role.color.toString(16).padStart(6, '0')}` : 'var(--text-2)';
-  };
+  const total = serverMap?.members.length ?? 0;
 
   return (
-    <div className="members-view">
-      <div className="view-header">
-        <h2>MIEMBROS</h2>
-        <div className="header-controls">
-          <Select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} aria-label="Ordenar por">
-            <option value="name">Nombre</option>
-            <option value="roles">Roles</option>
-            <option value="status">Estado</option>
-          </Select>
-          <div className="search-box">
-            <Search size={16} />
-            <Input
-              type="text"
-              placeholder="Buscar miembro..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        </div>
+    <div className="vista members-view">
+      <div className="vista__cabecera">
+        <h2>Miembros <span className="vista__cuenta">{total}</span></h2>
+        <BuscadorVista valor={search} onCambio={setSearch} placeholder="Buscar miembros…" icono={<Search size={16} />} />
       </div>
 
-      <div className="members-table-container">
-        <table className="members-table">
-          <thead>
-            <tr>
-              <th>MIEMBRO</th>
-              <th>ID</th>
-              <th>ROLES</th>
-              <th>TIPO</th>
-              <th>ACCIONES</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((member) => (
-              <tr key={member.user_id} onClick={() => setSelectedMember(member)}>
-                <td>
-                  <div className="member-cell">
-                    <Avatar src={member.avatar} nombre={member.nickname || member.username} tamano={28} />
-                    <div>
-                      <span className="member-name">{member.nickname || member.username}</span>
-                      {member.username !== (member.nickname || member.username) && (
-                        <span className="member-username">@{member.username}</span>
-                      )}
-                    </div>
+      <EstadoVista>
+        {total === 0 ? (
+          <EstadoVacio titulo="No hay miembros cargados" descripcion="El bot necesita el permiso de ver miembros para listarlos. Prueba a sincronizar de nuevo." />
+        ) : miembros.length === 0 ? (
+          <EstadoVacio titulo="Sin resultados" descripcion={`Ningún miembro coincide con «${search}».`} />
+        ) : (
+          <ul className="vista__lista" aria-label="Miembros">
+            {miembros.map((m) => {
+              const nombre = m.nickname || m.username;
+              return (
+                <li key={m.user_id} className="vista__fila">
+                  <Avatar src={m.avatar} nombre={nombre} tamano={32} />
+                  <div className="vista__fila-cuerpo">
+                    <span className="vista__fila-nombre">{nombre}</span>
+                    {m.nickname && <span className="vista__fila-sub">@{m.username}</span>}
                   </div>
-                </td>
-                <td className="mono copyable" onClick={(e) => { e.stopPropagation(); copyId(member.user_id); }}>
-                  {member.user_id}
-                </td>
-                <td>
-                  <div className="roles-badges">
-                    {member.roles.slice(0, 3).map((roleName, i) => {
-                      const role = roles.find(r => r.name === roleName);
-                      return (
-                        <span key={i} className="role-badge" style={{ backgroundColor: role ? `#${role.color.toString(16).padStart(6, '0')}33` : 'var(--surface-2)', borderColor: getRoleColor(roleName) }}>
-                          {roleName}
-                        </span>
-                      );
-                    })}
-                    {member.roles.length > 3 && <span className="role-badge more">+{member.roles.length - 3}</span>}
+                  <div className="vista__etiquetas">
+                    {m.bot && <Badge tono="acento">BOT</Badge>}
+                    {m.roles.slice(0, 3).map((r) => <Badge key={r}>{r}</Badge>)}
+                    {m.roles.length > 3 && <Badge>+{m.roles.length - 3}</Badge>}
                   </div>
-                </td>
-                <td>
-                  <Badge tono={member.bot ? 'acento' : 'neutro'}>
-                    {member.bot ? 'BOT' : 'HUMANO'}
-                  </Badge>
-                </td>
-                <td>
-                  <div className="action-buttons">
-                    {!member.bot && (
-                      <>
-                        <button className="icon-btn" onClick={(e) => { e.stopPropagation(); handleDM(member.user_id, member.username); }} title="DM">
-                          <Mail size={12} />
-                        </button>
-                        <button className="icon-btn" disabled={!!motivoTimeout} onClick={(e) => { e.stopPropagation(); handleTimeout(member.user_id, member.username); }} title={motivoTimeout ?? 'Timeout'}>
-                          <Ban size={12} />
-                        </button>
-                      </>
-                    )}
-                    <button className="icon-btn" onClick={(e) => { e.stopPropagation(); copyId(member.user_id); }} title="Copiar ID">
-                      <Copy size={12} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {selectedMember && (
-        <div className="member-detail-panel">
-          <div className="panel-header">
-            <h3>{selectedMember.nickname || selectedMember.username}</h3>
-            <button className="icon-btn" onClick={() => setSelectedMember(null)}>
-              <X size={16} />
-            </button>
-          </div>
-          <div className="detail-content">
-            <div className="detail-section">
-              <h4>INFORMACIÓN</h4>
-              <div className="detail-grid">
-                <div><label>ID</label><span className="mono">{selectedMember.user_id}</span></div>
-                <div><label>Username</label><span>@{selectedMember.username}</span></div>
-                <div><label>Nickname</label><span>{selectedMember.nickname || '—'}</span></div>
-                <div><label>Tipo</label><span>{selectedMember.bot ? 'Bot' : 'Humano'}</span></div>
-              </div>
-            </div>
-            <div className="detail-section">
-              <h4>ROLES</h4>
-              <div className="roles-list">
-                {selectedMember.roles.map((roleName) => {
-                  const role = roles.find(r => r.name === roleName);
-                  return (
-                    <span key={roleName} className="role-badge-detail" style={{ backgroundColor: role ? `#${role.color.toString(16).padStart(6, '0')}33` : 'var(--surface-2)', borderColor: getRoleColor(roleName) }}>
-                      {roleName}
-                    </span>
-                  );
-                })}
-              </div>
-              <div className="roles-list">
-                {roles.filter(r => r.name !== '@everyone').map((role) => {
-                  const tiene = selectedMember.roles.includes(role.name);
-                  return (
-                    <Button key={role.id} variante="ghost" tamano="sm" onClick={() => handleRole(selectedMember, role, !tiene)} title={tiene ? 'Quitar rol' : 'Añadir rol'}>
-                      {tiene ? '− ' : '+ '}{role.name}
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="detail-actions">
-              {!selectedMember.bot && (
-                <>
-                  <Button variante="secundario" onClick={() => handleDM(selectedMember.user_id, selectedMember.username)}>
-                    <Mail size={14} /> ENVIAR DM
-                  </Button>
-                  <Button variante="peligro" disabled={!!motivoTimeout} title={motivoTimeout ?? undefined} onClick={() => handleTimeout(selectedMember.user_id, selectedMember.username)}>
-                    <Ban size={14} /> TIMEOUT
-                  </Button>
-                  {motivoTimeout && <span className="member-username">{motivoTimeout}</span>}
-                </>
-              )}
-              <Button variante="ghost" onClick={() => copyId(selectedMember.user_id)}>
-                <Copy size={14} /> COPIAR ID
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+                  <MenuAcciones nombre={nombre} acciones={accionesDe(m)} />
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </EstadoVista>
     </div>
   );
 };

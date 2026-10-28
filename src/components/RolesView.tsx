@@ -1,151 +1,73 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useServerMap, useShowNotification } from '../store/useStore';
-import { listRoles } from '../api/tauri';
-import { Shield, Users, Hash, Copy, Search, Settings, Trash2, Plus, Edit2, Eye, EyeOff, X } from 'lucide-react';
-import type { Role } from '../types';
-import { Button, Input } from './ui';
+import { Copy, Search } from 'lucide-react';
+import { Badge, Button, EstadoVacio } from './ui';
+import { EstadoVista, BuscadorVista, colorHex } from './EstadoVista';
+
+/** Resumen corto de la lista de permisos que Rust envía separada por comas. */
+const resumenPermisos = (permisos: string): { admin: boolean; texto: string } => {
+  const lista = permisos.split(',').map((p) => p.trim()).filter(Boolean);
+  if (lista.some((p) => p === 'Administrator' || p === 'Administrador')) return { admin: true, texto: 'Todos los permisos' };
+  if (lista.length === 0) return { admin: false, texto: 'Sin permisos especiales' };
+  const mostrados = lista.slice(0, 3).join(', ');
+  return { admin: false, texto: lista.length > 3 ? `${mostrados} y ${lista.length - 3} más` : mostrados };
+};
 
 export const RolesView: React.FC = () => {
   const serverMap = useServerMap();
   const showNotification = useShowNotification();
   const [search, setSearch] = useState('');
-  const [editingRole, setEditingRole] = useState<Role | null>(null);
 
-  const roles = serverMap?.roles || [];
-  const filtered = roles.filter(r => 
-    r.name.toLowerCase().includes(search.toLowerCase())
-  ).sort((a, b) => b.position - a.position);
+  const roles = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return [...(serverMap?.roles ?? [])]
+      .filter((r) => !q || r.name.toLowerCase().includes(q))
+      .sort((a, b) => b.position - a.position);
+  }, [serverMap, search]);
 
   const copyId = (id: string) => {
-    navigator.clipboard.writeText(id);
+    void navigator.clipboard.writeText(id);
     showNotification('ID copiado', 'info');
   };
 
-  const getPermsText = (perms: string) => {
-    if (perms === 'Administrator') return '👑 Administrator';
-    return perms;
-  };
+  const total = serverMap?.roles.length ?? 0;
 
   return (
-    <div className="roles-view">
-      <div className="view-header">
-        <h2>ROLES DEL SERVIDOR</h2>
-        <div className="header-controls">
-          <div className="search-box">
-            <Search size={16} />
-            <Input
-              type="text"
-              placeholder="Filtrar roles..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <Button>
-            <Plus size={14} /> NUEVO ROL
-          </Button>
-        </div>
+    <div className="vista roles-view">
+      <div className="vista__cabecera">
+        <h2>Roles del servidor <span className="vista__cuenta">{total}</span></h2>
+        <BuscadorVista valor={search} onCambio={setSearch} placeholder="Buscar roles…" icono={<Search size={16} />} />
       </div>
 
-      <div className="roles-table-container">
-        <table className="roles-table">
-          <thead>
-            <tr>
-              <th>ROL</th>
-              <th>COLOR</th>
-              <th>POS</th>
-              <th>MIEMBROS</th>
-              <th>PERMISOS</th>
-              <th>MENCIONABLE</th>
-              <th>SEPARADO</th>
-              <th>ACCIONES</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((role) => (
-              <tr key={role.id}>
-                <td>
-                  <div className="role-cell">
-                    <div className="role-color-indicator" style={{ backgroundColor: `#${role.color.toString(16).padStart(6, '0')}` }} />
-                    <span className="role-name">{role.name}</span>
+      <EstadoVista>
+        {total === 0 ? (
+          <EstadoVacio titulo="Este servidor no tiene roles" />
+        ) : roles.length === 0 ? (
+          <EstadoVacio titulo="Sin resultados" descripcion={`Ningún rol coincide con «${search}».`} />
+        ) : (
+          <ul className="vista__lista" aria-label="Roles">
+            {roles.map((role) => {
+              const perms = resumenPermisos(role.permissions);
+              return (
+                <li key={role.id} className="vista__fila">
+                  <span className="rol__color" style={{ backgroundColor: colorHex(role.color) }} title={colorHex(role.color).toUpperCase()} aria-hidden="true" />
+                  <div className="vista__fila-cuerpo">
+                    <span className="vista__fila-nombre">{role.name}</span>
+                    <span className="vista__fila-sub">{perms.texto}</span>
                   </div>
-                </td>
-                <td>
-                  <div className="color-preview" style={{ backgroundColor: `#${role.color.toString(16).padStart(6, '0')}` }} />
-                  <span className="mono">#{role.color.toString(16).padStart(6, '0').toUpperCase()}</span>
-                </td>
-                <td className="mono">{role.position}</td>
-                <td>
-                  <span className="member-count">{role.member_count}</span>
-                  {role.member_count > 0 && (
-                    <Users size={12} className="member-icon" aria-label={`${role.member_count} miembros`} />
-                  )}
-                </td>
-                <td>
-                  <span className="perms-text">{getPermsText(role.permissions)}</span>
-                </td>
-                <td>
-                  <span className={`bool-badge ${role.mentionable ? 'yes' : 'no'}`}>
-                    {role.mentionable ? 'SÍ' : 'NO'}
-                  </span>
-                </td>
-                <td>
-                  <span className={`bool-badge ${role.hoist ? 'yes' : 'no'}`}>
-                    {role.hoist ? 'SÍ' : 'NO'}
-                  </span>
-                </td>
-                <td>
-                  <div className="action-buttons">
-                    <button className="icon-btn" onClick={() => copyId(role.id)} title="Copiar ID">
-                      <Copy size={12} />
-                    </button>
-                    <button className="icon-btn" onClick={() => setEditingRole(role)} title="Editar">
-                      <Edit2 size={12} />
-                    </button>
-                    <button className="icon-btn danger" title="Eliminar">
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {editingRole && (
-        <div className="modal-overlay" onClick={() => setEditingRole(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>EDITAR ROL: {editingRole.name}</h3>
-              <button className="icon-btn" onClick={() => setEditingRole(null)}>
-                <X size={16} />
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label>Nombre</label>
-                <Input defaultValue={editingRole.name} />
-              </div>
-              <div className="form-group">
-                <label>Color (hex)</label>
-                <input type="color" defaultValue={`#${editingRole.color.toString(16).padStart(6, '0')}`} />
-              </div>
-              <div className="form-row">
-                <label className="checkbox-label">
-                  <input type="checkbox" defaultChecked={editingRole.mentionable} /> Mencionable
-                </label>
-                <label className="checkbox-label">
-                  <input type="checkbox" defaultChecked={editingRole.hoist} /> Separado en lista
-                </label>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <Button variante="secundario" onClick={() => setEditingRole(null)}>Cancelar</Button>
-              <Button>Guardar cambios</Button>
-            </div>
-          </div>
-        </div>
-      )}
+                  <span className="vista__mono" title="Posición en la jerarquía">Pos. {role.position}</span>
+                  <span className="vista__mono">{colorHex(role.color).toUpperCase()}</span>
+                  <Badge tono={perms.admin ? 'peligro' : 'neutro'}>{perms.admin ? 'Administrador' : 'Permisos'}</Badge>
+                  <span className="vista__cuenta">{role.member_count} miembros</span>
+                  <Button variante="ghost" tamano="sm" title="Copiar ID" aria-label={`Copiar ID de ${role.name}`} onClick={() => copyId(role.id)}>
+                    <Copy size={12} />
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </EstadoVista>
     </div>
   );
 };
