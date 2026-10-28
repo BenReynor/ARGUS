@@ -3,7 +3,7 @@ import { useStore, useConfig, useBotStatus, useActiveTab, useSetActiveTab, useSh
 import { startBot, stopBot, setActiveBot, botAvatarUrl } from '../api/tauri';
 import {
   LayoutDashboard, Hash, Users, Shield, Terminal, Settings,
-  Power, Circle, Bot
+  Power, Circle, Bot, Server
 } from 'lucide-react';
 import { Avatar } from './ui';
 
@@ -26,6 +26,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
     'hash': Hash,
     'users': Users,
     'shield': Shield,
+    'server': Server,
     'terminal': Terminal,
     'settings': Settings,
   };

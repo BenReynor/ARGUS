@@ -9,8 +9,9 @@ import { MembersView } from './components/MembersView';
 import { RolesView } from './components/RolesView';
 import { SettingsView } from './components/SettingsView';
 import { LogsView } from './components/LogsView';
+import { ServidorView } from './components/ServidorView';
 import { Notification } from './components/Notification';
-import { LayoutDashboard, Hash, Users, Shield, Terminal, Settings } from 'lucide-react';
+import { LayoutDashboard, Hash, Users, Shield, Terminal, Settings, Server } from 'lucide-react';
 import { aplicarTema } from './temas';
 import { useBotStatus, useShowNotification } from './store/useStore';
 import { getConfig, getBotStatus, refreshServerMap, getServerMap, onMapUpdated, onSyncProgress, onBotStatusChange } from './api/tauri';
@@ -72,6 +73,7 @@ function App() {
     { id: 'channels', label: 'Canales', icon: 'hash' },
     { id: 'members', label: 'Miembros', icon: 'users' },
     { id: 'roles', label: 'Roles', icon: 'shield' },
+    { id: 'servidor', label: 'Servidor', icon: 'server' },
     { id: 'logs', label: 'Logs', icon: 'terminal' },
     { id: 'settings', label: 'Config', icon: 'settings' },
   ];
@@ -79,7 +81,7 @@ function App() {
   const activeTab = useStore((s) => s.activeTab);
   const seccion = tabs.find((t) => t.id === activeTab) ?? tabs[0];
   const iconosSeccion: Record<string, any> = {
-    'layout-dashboard': LayoutDashboard, hash: Hash, users: Users, shield: Shield, terminal: Terminal, settings: Settings,
+    'layout-dashboard': LayoutDashboard, hash: Hash, users: Users, shield: Shield, server: Server, terminal: Terminal, settings: Settings,
   };
 
   const renderView = () => {
@@ -88,6 +90,7 @@ function App() {
       case 'channels': return <ChannelsView />;
       case 'members': return <MembersView />;
       case 'roles': return <RolesView />;
+      case 'servidor': return <ServidorView />;
       case 'logs': return <LogsView />;
       case 'settings': return <SettingsView />;
       default: return <Dashboard />;

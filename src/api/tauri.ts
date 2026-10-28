@@ -112,3 +112,11 @@ export const unbanMember = (guildId: string, userId: string, reason: string | nu
 export const listBans = (guildId: string) => invoke<Baneo[]>('list_bans', { guildId });
 export const setNickname = (guildId: string, userId: string, nickname: string | null, reason: string | null) =>
   invoke<string>('set_nickname', { guildId, userId, nickname, reason });
+
+// Ajustes del servidor en Discord y registro de auditoría
+export const getGuildSettingsDiscord = (guildId: string) =>
+  invoke<import('../types').AjustesServidor>('get_guild_settings_discord', { guildId });
+export const updateGuildDiscord = (guildId: string, settings: import('../types').AjustesServidor) =>
+  invoke<import('../types').AjustesServidor>('update_guild_discord', { guildId, settings });
+export const auditLog = (guildId: string) =>
+  invoke<import('../types').EntradaAuditoria[]>('audit_log', { guildId });

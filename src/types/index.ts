@@ -204,3 +204,25 @@ export const CHANNEL_TYPE_LABELS: Record<number, string> = {
   15: 'Foro',
   16: 'Media',
 };
+/** Ajustes del servidor en Discord (sincronizado con `AjustesServidor` de discord.rs). */
+export interface AjustesServidor {
+  name: string;
+  description: string | null;
+  verification_level: number;
+  explicit_content_filter: number;
+  default_message_notifications: number;
+  system_channel_id: string | null;
+  afk_channel_id: string | null;
+  afk_timeout: number;
+}
+
+/** Entrada del registro de auditoría (sincronizado con `EntradaAuditoria` de discord.rs). */
+export interface EntradaAuditoria {
+  id: string;
+  action_type: number;
+  accion: string;
+  autor: string;
+  objetivo: string;
+  reason: string | null;
+  fecha: string;
+}
