@@ -30,16 +30,30 @@ aviso() {
     command -v notify-send >/dev/null && notify-send -i "$REPO/src-tauri/icons/icon.png" "ARGUS" "$1"
 }
 
+# Huella del código de la app en `main`: cambios en el plan o la documentación
+# (Dédalo commitea plan.md en cada tarea) no obligan a recompilar.
+FUENTES_APP=(src src-tauri package.json package-lock.json index.html vite.config.ts tsconfig.json)
+huella() {
+    local p
+    for p in "${FUENTES_APP[@]}"; do
+        git -C "$REPO" rev-parse "main:$p" 2>/dev/null || echo "-"
+    done | sha1sum | cut -d' ' -f1
+}
+
 al_dia() {
-    [ -x "$BIN" ] && [ -f "$VERSION" ] && [ "$(cat "$VERSION")" = "$(git -C "$REPO" rev-parse main)" ]
+    [ -x "$BIN" ] && [ -f "$VERSION" ] && [ "$(cat "$VERSION")" = "$(huella)" ]
 }
 
 actualizar() {
-    exec 9>"$DATOS/lock"
+    al_dia && return 0    # camino rápido: no hace falta ni el cerrojo
+    # El cerrojo vive solo en este subshell: si la app lo heredara al abrirse,
+    # bloquearía todas las recompilaciones mientras estuviera abierta.
+    (
     flock 9    # si el hook ya está compilando, espera a que termine
-    al_dia && return 0
-    local sha
+    al_dia && exit 0
+    local sha marca
     sha="$(git -C "$REPO" rev-parse main)"
+    marca="$(huella)"
     {
         echo "== $(date '+%F %T') compilando $sha"
         if [ ! -d "$FUENTE/.git" ] && [ ! -f "$FUENTE/.git" ]; then
@@ -57,14 +71,23 @@ actualizar() {
         fi
         npm run tauri build -- --no-bundle || return 1
         cp src-tauri/target/release/argus "$BIN.nuevo" && mv -f "$BIN.nuevo" "$BIN" || return 1
-        echo "$sha" > "$VERSION"
+        echo "$marca" > "$VERSION"
         echo "== $(date '+%F %T') listo"
     } >>"$LOG" 2>&1
+    ) 9>"$DATOS/lock"
 }
 
 if [ "${1:-}" = "--compilar" ]; then
     actualizar
     exit $?
+fi
+
+# Un solo arranque a la vez: los clics extra mientras compila no abren
+# ventanas duplicadas. La app hereda este cerrojo (fd 8) mientras está abierta.
+exec 8>"$DATOS/abrir.lock"
+if ! flock -n 8; then
+    aviso "ARGUS ya está abierto o abriéndose."
+    exit 0
 fi
 
 if ! al_dia; then
