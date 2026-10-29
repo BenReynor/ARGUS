@@ -13,7 +13,7 @@ los bots que has registrado en ARGUS.
 ## Cómo funciona
 
 - Es un ejecutable aparte que **funciona con la app cerrada**.
-- Lee la misma base de datos que la app (`~/.config/argus/argus.db`, o la ruta de
+- Lee la misma base de datos que la app (`~/.config/argus/argus.db`; en Windows `%APPDATA%\argus\argus.db`; o la ruta de
   la variable de entorno `ARGUS_DB`) y descifra el token del bot activo igual que
   ARGUS. El token nunca se escribe en stdout, stderr ni en las respuestas.
 - Usa la misma lógica que la app: mismos chequeos de permisos y jerarquía y mismos
@@ -155,7 +155,7 @@ el dueño del servidor ni sobre miembros con un rol igual o superior al del bot.
 
 | Variable | Efecto |
 |---|---|
-| `ARGUS_DB` | Ruta de la base de datos si no es la de por defecto (`~/.config/argus/argus.db`). |
+| `ARGUS_DB` | Ruta de la base de datos si no es la de por defecto (`~/.config/argus/argus.db`; en Windows `%APPDATA%\argus\argus.db`). |
 
 ## Problemas frecuentes
 

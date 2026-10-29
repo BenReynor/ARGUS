@@ -35,6 +35,8 @@ en [`CONTEXTO.md`](CONTEXTO.md) y el orden de trabajo en [`plan.md`](plan.md).
 
 - **Rust** estable (probado con 1.99) y **Node** 22+
 - Linux: `libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev`
+- Windows: WebView2 (viene con Windows 10/11) y, para compilar, las Build Tools
+  de Visual Studio (C++)
 - Un bot de Discord creado en el [Developer Portal](https://discord.com/developers/applications)
   e invitado a tu servidor con los permisos que vayas a usar
   (Gestionar canales, Gestionar roles, Moderar miembros…).
@@ -64,8 +66,19 @@ Los tests no usan la red: el cliente de Discord se apunta a un Discord falso loc
 ```bash
 npm run tauri build
 # binario:  src-tauri/target/release/argus
-# paquetes: src-tauri/target/release/bundle/ (.deb, .rpm, .AppImage)
+# paquetes: src-tauri/target/release/bundle/ (.deb, .rpm, .AppImage; en Windows .msi y .exe)
 ```
+
+Antes de empaquetar, `npm run build:mcp` compila `argus-mcp` para incluirlo.
+
+### Windows (experimental)
+
+El CI pasa los tests en Windows y genera el instalador en cada cambio de `main`
+(GitHub → Actions → CI → artefacto **argus-windows**: `.msi` y `.exe`). Aún no
+se ha probado en un PC real. Como el instalador no está firmado, Windows muestra
+«Windows protegió tu PC»: **Más información → Ejecutar de todas formas**. Los
+datos se guardan en `%APPDATA%\argus\`. El lanzador `scripts/abrir-argus.sh`
+(que recompila desde `main`) es solo para Linux.
 
 ---
 
@@ -80,7 +93,7 @@ npm run tauri build
 ## Seguridad
 
 - Los tokens se guardan **cifrados** (AES-GCM) en la base de datos local
-  (`~/.config/argus/`); nunca en texto plano ni en el almacenamiento del navegador.
+  (`~/.config/argus/`; en Windows `%APPDATA%\argus\`); nunca en texto plano ni en el almacenamiento del navegador.
 - Nada de la app está atado a un servidor, canal o bot concreto.
 - Las acciones destructivas piden confirmación.
 

@@ -30,18 +30,31 @@ pub fn ruta_efectiva(por_defecto: &std::path::Path) -> std::path::PathBuf {
     }
 }
 
-/// Ruta por defecto sin Tauri: `<config del sistema>/argus/argus.db`.
+/// Ruta por defecto sin Tauri: `<config del sistema>/argus/argus.db`, la
+/// misma carpeta que `ruta_bd` (el `config_dir` de Tauri), para que
+/// `argus-mcp` lea los bots que registró la app:
+/// Linux `$XDG_CONFIG_HOME` o `~/.config`; Windows `%APPDATA%`;
+/// macOS `~/Library/Application Support`.
 pub fn ruta_por_defecto() -> Result<std::path::PathBuf> {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .filter(|v| !v.is_empty())
-        .map(std::path::PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME")
-                .filter(|v| !v.is_empty())
-                .map(|h| std::path::PathBuf::from(h).join(".config"))
-        })
-        .ok_or_else(|| anyhow::anyhow!("No se encontró la carpeta de configuración"))?;
-    Ok(base.join("argus").join(DB_NAME))
+    Ok(carpeta_config(|v| std::env::var_os(v))?
+        .join("argus")
+        .join(DB_NAME))
+}
+
+fn carpeta_config(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Result<std::path::PathBuf> {
+    let no_vacia = |v: &str| {
+        var(v)
+            .filter(|x| !x.is_empty())
+            .map(std::path::PathBuf::from)
+    };
+    let base = if cfg!(windows) {
+        no_vacia("APPDATA")
+    } else if cfg!(target_os = "macos") {
+        no_vacia("HOME").map(|h| h.join("Library").join("Application Support"))
+    } else {
+        no_vacia("XDG_CONFIG_HOME").or_else(|| no_vacia("HOME").map(|h| h.join(".config")))
+    };
+    base.ok_or_else(|| anyhow::anyhow!("No se encontró la carpeta de configuración"))
 }
 
 /// Abre la base de datos en `ruta` (o en `ARGUS_DB` si está definida) y aplica
@@ -807,6 +820,40 @@ mod abrir_bd_tests {
         let pool = abrir_bd(&ruta).await.expect("segunda apertura");
         pool.close().await;
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn carpeta_config_coincide_con_la_de_tauri() {
+        use std::path::PathBuf;
+        let entorno = |pares: &'static [(&'static str, &'static str)]| {
+            move |v: &str| {
+                pares
+                    .iter()
+                    .find(|(k, _)| *k == v)
+                    .map(|(_, x)| std::ffi::OsString::from(x))
+            }
+        };
+        let todo = entorno(&[
+            ("APPDATA", "C:/Users/u/AppData/Roaming"),
+            ("HOME", "/home/u"),
+            ("XDG_CONFIG_HOME", "/xdg"),
+        ]);
+        let esperado = if cfg!(windows) {
+            PathBuf::from("C:/Users/u/AppData/Roaming")
+        } else if cfg!(target_os = "macos") {
+            PathBuf::from("/home/u/Library/Application Support")
+        } else {
+            PathBuf::from("/xdg")
+        };
+        assert_eq!(super::carpeta_config(todo).unwrap(), esperado);
+        assert!(super::carpeta_config(entorno(&[])).is_err());
+        if cfg!(all(unix, not(target_os = "macos"))) {
+            let sin_xdg = entorno(&[("HOME", "/home/u"), ("XDG_CONFIG_HOME", "")]);
+            assert_eq!(
+                super::carpeta_config(sin_xdg).unwrap(),
+                PathBuf::from("/home/u/.config")
+            );
+        }
     }
 
     #[tokio::test]
