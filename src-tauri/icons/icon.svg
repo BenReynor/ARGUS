@@ -1,25 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#6c78ff"/><stop offset="1" stop-color="#3a42b0"/>
-    </linearGradient>
-    <radialGradient id="iris" cx="0.5" cy="0.45" r="0.6">
-      <stop offset="0" stop-color="#8b95ff"/><stop offset="1" stop-color="#2b3290"/>
-    </radialGradient>
-  </defs>
-  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <circle cx="256" cy="262" r="196" fill="none" stroke="#fff" stroke-opacity="0.28"
-          stroke-width="6" stroke-dasharray="4 18" stroke-linecap="round"/>
-  <path d="M256 96 L380 142 V250 C380 338 326 398 256 428 C186 398 132 338 132 250 V142 Z"
-        fill="#ffffff" fill-opacity="0.14" stroke="#ffffff" stroke-width="16" stroke-linejoin="round"/>
-  <path d="M170 264 Q256 184 342 264 Q256 344 170 264 Z" fill="#ffffff"/>
-  <circle cx="256" cy="264" r="44" fill="url(#iris)"/>
-  <circle cx="256" cy="264" r="19" fill="#0b0e2a"/>
-  <circle cx="270" cy="250" r="9" fill="#ffffff"/>
-  <g fill="#ffffff">
-    <circle cx="94" cy="148" r="15"/><circle cx="430" cy="160" r="15"/><circle cx="402" cy="410" r="15"/>
-  </g>
-  <g fill="#2b3290">
-    <circle cx="94" cy="148" r="6"/><circle cx="430" cy="160" r="6"/><circle cx="402" cy="410" r="6"/>
-  </g>
+ <defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#312e81"/><stop offset="1" stop-color="#0f172a"/></linearGradient>
+  <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#a78bfa" stop-opacity="0.55"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></radialGradient>
+  <linearGradient id="core" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c084fc"/><stop offset="1" stop-color="#6366f1"/></linearGradient>
+ </defs>
+ <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+ <circle cx="256" cy="256" r="170" fill="url(#glow)"/>
+ <g stroke-width="10" stroke-linecap="round" opacity="0.9">
+  <line x1="256" y1="256" x2="126" y2="150" stroke="#67e8f9"/>
+  <line x1="256" y1="256" x2="386" y2="150" stroke="#f472b6"/>
+  <line x1="256" y1="256" x2="256" y2="408" stroke="#fbbf24"/>
+ </g>
+ <circle cx="256" cy="256" r="74" fill="url(#core)"/>
+ <path d="M256 214 L267 245 L298 256 L267 267 L256 298 L245 267 L214 256 L245 245 Z" fill="#ffffff"/>
+ <g>
+  <rect x="86" y="110" width="80" height="80" rx="24" fill="#67e8f9"/>
+  <rect x="346" y="110" width="80" height="80" rx="24" fill="#f472b6"/>
+  <rect x="216" y="368" width="80" height="80" rx="24" fill="#fbbf24"/>
+ </g>
+ <g fill="#0f172a">
+  <circle cx="113" cy="150" r="8"/><circle cx="139" cy="150" r="8"/>
+  <circle cx="373" cy="150" r="8"/><circle cx="399" cy="150" r="8"/>
+  <circle cx="243" cy="408" r="8"/><circle cx="269" cy="408" r="8"/>
+ </g>
 </svg>
