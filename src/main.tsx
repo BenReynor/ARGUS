@@ -42,8 +42,11 @@ import './styles/temas/retro.css';
 import './styles/temas/brutalista.css';
 import './styles/temas/rasgos.css';
 import App from './App';
+import { pasoCarga } from './carga';
 import './styles.css';
 import './styles/layout.css';
+
+pasoCarga('Abriendo el panel…', 40);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

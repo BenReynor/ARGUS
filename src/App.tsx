@@ -13,6 +13,7 @@ import { ServidorView } from './components/ServidorView';
 import { Notification } from './components/Notification';
 import { LayoutDashboard, Hash, Users, Shield, Terminal, Settings, Server } from 'lucide-react';
 import { aplicarTema } from './temas';
+import { pasoCarga, finCarga } from './carga';
 import { useBotStatus, useShowNotification } from './store/useStore';
 import { getConfig, getBotStatus, refreshServerMap, getServerMap, onMapUpdated, onSyncProgress, onBotStatusChange } from './api/tauri';
 
@@ -30,19 +31,23 @@ function App() {
   useEffect(() => {
     const init = async () => {
       try {
+        pasoCarga('Leyendo tu configuración…', 50);
         // El backend es la fuente de verdad (incluye tema y modo guardados).
         setConfig(await getConfig());
       } catch (e) {
         console.error('Config load error:', e);
       }
       try {
+        pasoCarga('Conectando con el bot…', 65);
         const status = await getBotStatus();
         setBotStatus(status);
+        pasoCarga('Cargando tus servidores…', 80);
         const map = await refreshServerMap();
         setServerMap(map);
       } catch (e) {
         console.error('Init error:', e);
       }
+      finCarga();
     };
     init();
 

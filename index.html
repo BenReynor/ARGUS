@@ -4,11 +4,43 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ARGUS - Discord Bot Controller</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Pantalla de carga: se pinta al instante, antes de cargar React y las
+         fuentes, y src/carga.ts la avanza y la quita. -->
+    <style>
+      #carga { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 14px; background: #0b0a1f;
+        color: #e0e7ff; font-family: system-ui, sans-serif; transition: opacity .35s ease; }
+      #carga.fuera { opacity: 0; pointer-events: none; }
+      #carga svg { width: 112px; height: 112px; }
+      #carga h1 { margin: 0; font-size: 26px; letter-spacing: .12em; font-weight: 700; }
+      #carga-paso { font-size: 13px; color: #a5b4fc; min-height: 1.2em; }
+      #carga-pista { width: min(320px, 70vw); height: 8px; border-radius: 4px; background: #1e1b4b; overflow: hidden; }
+      #carga-barra { height: 100%; width: 5%; border-radius: 4px; transition: width .4s ease;
+        background: linear-gradient(90deg, #22d3ee, #a855f7); }
+      @media (prefers-reduced-motion: reduce) { #carga, #carga-barra { transition: none; } }
+    </style>
   </head>
   <body>
+    <div id="carga" role="progressbar" aria-label="Cargando ARGUS" aria-valuemin="0" aria-valuemax="100" aria-valuenow="5">
+      <svg viewBox="0 0 512 512" aria-hidden="true">
+        <defs>
+          <linearGradient id="carga-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1e1b4b"/><stop offset="1" stop-color="#020617"/></linearGradient>
+          <linearGradient id="carga-anillo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#a855f7"/></linearGradient>
+        </defs>
+        <rect width="512" height="512" rx="112" fill="url(#carga-bg)"/>
+        <circle cx="256" cy="256" r="182" fill="none" stroke="url(#carga-anillo)" stroke-width="22" stroke-linecap="round" stroke-dasharray="230 56"/>
+        <line x1="256" y1="168" x2="256" y2="138" stroke="#fff" stroke-width="12" stroke-linecap="round"/>
+        <circle cx="256" cy="128" r="16" fill="#22d3ee"/>
+        <rect x="160" y="168" width="192" height="168" rx="58" fill="#fff"/>
+        <rect x="186" y="210" width="140" height="74" rx="37" fill="#1e1b4b"/>
+        <circle cx="226" cy="247" r="17" fill="#67e8f9"/>
+        <circle cx="286" cy="247" r="17" fill="#67e8f9"/>
+        <path d="M236 306 Q256 318 276 306" fill="none" stroke="#a855f7" stroke-width="8" stroke-linecap="round"/>
+      </svg>
+      <h1>ARGUS</h1>
+      <div id="carga-pista"><div id="carga-barra"></div></div>
+      <div id="carga-paso">Cargando la interfaz…</div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -14,6 +14,7 @@ DATOS="${XDG_DATA_HOME:-$HOME/.local/share}/argus-app"
 FUENTE="$DATOS/fuente"
 BIN="$DATOS/argus"
 VERSION="$DATOS/version"
+DURACION="$DATOS/duracion"   # segundos de la última compilación (para el %)
 LOG="$DATOS/compilacion.log"
 mkdir -p "$DATOS"
 
@@ -63,7 +64,7 @@ actualizar() {
     (
     flock 9    # si el hook ya está compilando, espera a que termine
     al_dia && exit 0
-    local sha marca
+    local sha marca t0=$SECONDS
     sha="$(git -C "$REPO" rev-parse main)"
     marca="$(huella)"
     {
@@ -85,6 +86,7 @@ actualizar() {
         cp src-tauri/target/release/argus "$BIN.nuevo" && mv -f "$BIN.nuevo" "$BIN" || return 1
         instalar_icono src-tauri/icons
         echo "$marca" > "$VERSION"
+        echo "$((SECONDS - t0))" > "$DURACION"
         echo "== $(date '+%F %T') listo"
     } >>"$LOG" 2>&1
     ) 9>"$DATOS/lock"
@@ -118,19 +120,26 @@ con_ventana_espera() {
         return $?
     fi
     "$@" &
-    local pid=$! paso inicio=$SECONDS
+    local pid=$! paso inicio=$SECONDS estimado pct
+    # El porcentaje se estima con lo que tardó la compilación anterior (la
+    # primera vez, 3 min); nunca llega a 100 hasta que termina de verdad.
+    estimado="$(cat "$DURACION" 2>/dev/null)"
+    [[ "$estimado" =~ ^[0-9]+$ ]] && [ "$estimado" -gt 0 ] || estimado=180
     {
         while kill -0 "$pid" 2>/dev/null; do
             paso="$(grep -aE '^== |Compiling |Finished|added [0-9]+ packages|vite v|built in' "$LOG" 2>/dev/null \
                 | tail -n 1 | sed 's/^ *//; s/^== [0-9: -]*//; s/^Compiling/Compilando/; s/^Finished/Terminado/' \
                 | tr -d '<>&\\' | cut -c1-70)"
+            pct=$(( (SECONDS - inicio) * 100 / estimado ))
+            [ "$pct" -gt 97 ] && pct=97
+            echo "$pct"
             # Una sola línea por mensaje: zenity convierte los \n escritos en saltos.
-            printf '# Actualizando ARGUS a la última versión…\\nNo cierres esta ventana: ARGUS se abrirá solo al terminar.\\n\\n%s  (%ss)\n' \
-                "${paso:-Preparando…}" "$((SECONDS - inicio))"
+            printf '# Actualizando ARGUS a la última versión…\\nNo cierres esta ventana: ARGUS se abrirá solo al terminar.\\n\\n%s  (%ss, ~%s%%)\n' \
+                "${paso:-Preparando…}" "$((SECONDS - inicio))" "$pct"
             sleep 1
         done
         echo 100
-    } | zenity --progress --pulsate --auto-close --no-cancel --title="ARGUS" \
+    } | zenity --progress --auto-close --no-cancel --title="ARGUS" \
           --width=480 --text="Actualizando ARGUS…" 2>/dev/null
     wait "$pid"
 }
