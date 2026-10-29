@@ -7,7 +7,6 @@ build/
 *.pem
 target/
 src-tauri/binaries/
-Cargo.lock
 .DS_Store
 *.swp
 *.swo
