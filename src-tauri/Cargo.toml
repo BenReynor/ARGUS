@@ -2,6 +2,8 @@
 name = "argus"
 version = "1.0.0"
 edition = "2021"
+# Hay dos binarios (la app y argus-mcp): `tauri build` necesita saber cuál es la app.
+default-run = "argus"
 
 [lib]
 name = "argus_lib"
