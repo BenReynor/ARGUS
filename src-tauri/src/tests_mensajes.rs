@@ -225,12 +225,6 @@ async fn mensajes_sin_permiso_no_llaman_a_discord() {
     let addr = server.address().to_string();
     let m = "Al bot le falta el permiso «Gestionar mensajes»";
     assert_eq!(
-        borrar_mensaje(&state, "555", "10", "301", Some(&addr))
-            .await
-            .unwrap_err(),
-        m
-    );
-    assert_eq!(
         fijar_mensaje(&state, "555", "10", "301", true, Some(&addr))
             .await
             .unwrap_err(),
@@ -253,6 +247,46 @@ async fn mensajes_sin_permiso_no_llaman_a_discord() {
             .await
             .unwrap_err(),
         "Al bot le falta el permiso «Leer el historial de mensajes»"
+    );
+}
+
+#[tokio::test]
+async fn sin_gestionar_mensajes_el_bot_borra_los_suyos() {
+    // Discord deja borrar los mensajes propios sin «Gestionar mensajes».
+    let server = MockServer::start().await;
+    mock_permisos(&server, CREAR_INVITACIONES).await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/v10/channels/10/messages/301"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let state = estado("token-propio");
+    let addr = server.address().to_string();
+    borrar_mensaje(&state, "555", "10", "301", Some(&addr))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn sin_gestionar_mensajes_un_mensaje_ajeno_explica_el_permiso() {
+    let server = MockServer::start().await;
+    mock_permisos(&server, CREAR_INVITACIONES).await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/v10/channels/10/messages/302"))
+        .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+            "code": 50013, "message": "Missing Permissions"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let state = estado("token-ajeno");
+    let addr = server.address().to_string();
+    assert_eq!(
+        borrar_mensaje(&state, "555", "10", "302", Some(&addr))
+            .await
+            .unwrap_err(),
+        "Al bot le falta el permiso «Gestionar mensajes»"
     );
 }
 

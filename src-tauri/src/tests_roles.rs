@@ -58,7 +58,9 @@ fn rol_json(id: &str, nombre: &str, posicion: u32, bits: u64) -> serde_json::Val
 }
 
 /// Servidor con: @everyone (0), rol del bot "600" (posición 5, con `bits`),
-/// "700" bajo el bot (2), "800" igual que el bot (5) y "900" por encima (9).
+/// "700" bajo el bot (2), "500" y "800" en la misma posición que el bot (5) y
+/// "900" por encima (9). Con la misma posición Discord pone arriba el ID menor:
+/// "500" está por encima del bot y "800" por debajo.
 async fn mock_servidor(server: &MockServer, bits: u64) {
     Mock::given(method("GET"))
         .and(path("/api/v10/guilds/555"))
@@ -77,7 +79,8 @@ async fn mock_servidor(server: &MockServer, bits: u64) {
             rol_json("555", "@everyone", 0, 0),
             rol_json("600", "Bot", 5, bits),
             rol_json("700", "Bajo", 2, 0),
-            rol_json("800", "Igual", 5, 0),
+            rol_json("500", "IgualAntiguo", 5, 0),
+            rol_json("800", "IgualNuevo", 5, 0),
             rol_json("900", "Alto", 9, 0),
         ])))
         .mount(server)
@@ -131,7 +134,7 @@ async fn crea_rol_con_todos_los_campos_y_actualiza_el_mapa() {
     };
     let rol = crear_rol(&state, "555", &datos, Some(&addr)).await.unwrap();
     assert_eq!((rol.id.as_str(), rol.permissions.as_str()), ("1000", "8"));
-    assert_eq!(state.get_map("555").unwrap().roles.len(), 5);
+    assert_eq!(state.get_map("555").unwrap().roles.len(), 6);
 }
 
 #[tokio::test]
@@ -177,6 +180,22 @@ async fn borra_rol_por_debajo_del_bot() {
 }
 
 #[tokio::test]
+async fn rol_en_la_misma_posicion_pero_mas_nuevo_queda_bajo_el_bot() {
+    // Pasa al crear un rol: Discord le da la misma posición que el del bot.
+    let server = MockServer::start().await;
+    mock_servidor(&server, GESTIONAR_ROLES).await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/v10/guilds/555/roles/800"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let state = estado("token-empate");
+    let addr = server.address().to_string();
+    borrar_rol(&state, "555", "800", Some(&addr)).await.unwrap();
+}
+
+#[tokio::test]
 async fn reordena_roles_bajo_el_bot() {
     let server = MockServer::start().await;
     mock_servidor(&server, GESTIONAR_ROLES).await;
@@ -218,7 +237,7 @@ async fn rol_igual_o_superior_al_del_bot_da_error_de_jerarquia() {
         name: Some("x".into()),
         ..Default::default()
     };
-    for rol in ["600", "800", "900"] {
+    for rol in ["600", "500", "900"] {
         assert_eq!(
             editar_rol(&state, "555", rol, &datos, b).await.unwrap_err(),
             JERARQUIA,

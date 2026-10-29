@@ -366,8 +366,27 @@ const PERMISO_GESTIONAR_ROLES: &str = "Gestionar roles";
 const ERROR_JERARQUIA: &str =
     "Ese rol está por encima del rol del bot: súbelo en Ajustes del servidor → Roles";
 
-/// Comprueba la jerarquía: el bot solo puede tocar roles con posición menor que
-/// su rol más alto. Cada objetivo es (id del rol, posición de destino si se
+/// Orden de un rol en la jerarquía, como lo calcula Discord: gana la posición
+/// mayor y, con la misma posición (pasa al crear roles), el ID menor (el más
+/// antiguo). Comparar solo `position` rechazaba roles que el bot sí puede tocar.
+pub fn rango_rol(r: &Role) -> (i32, std::cmp::Reverse<u64>) {
+    (
+        r.position,
+        std::cmp::Reverse(r.id.parse().unwrap_or(u64::MAX)),
+    )
+}
+
+/// Rango del rol más alto de un miembro (`None` si solo tiene @everyone).
+fn rango_mas_alto(roles: &[Role], m: &Member) -> Option<(i32, std::cmp::Reverse<u64>)> {
+    roles
+        .iter()
+        .filter(|r| m.roles.contains(&r.id))
+        .map(rango_rol)
+        .max()
+}
+
+/// Comprueba la jerarquía: el bot solo puede tocar roles por debajo de su rol
+/// más alto. Cada objetivo es (id del rol, posición de destino si se
 /// reordena); el destino también debe quedar por debajo. El dueño del servidor
 /// no cuenta: quien actúa es el bot.
 pub async fn exigir_jerarquia(
@@ -379,18 +398,15 @@ pub async fn exigir_jerarquia(
     let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
     let roles = leer_roles(state, guild_id, base_url).await?;
     let miembro = leer_miembro(state, guild_id, &bot.id, base_url).await?;
-    let tope = roles
-        .iter()
-        .filter(|r| miembro.roles.contains(&r.id))
-        .map(|r| r.position)
-        .max()
-        .unwrap_or(0);
+    let Some(tope) = rango_mas_alto(&roles, &miembro) else {
+        return Err(ERROR_JERARQUIA.to_string());
+    };
     for (id, nueva) in objetivos {
         let rol = roles
             .iter()
             .find(|r| r.id == *id)
             .ok_or_else(|| format!("El rol {id} no existe en el servidor"))?;
-        if rol.position >= tope || nueva.is_some_and(|n| n >= tope as u64) {
+        if rango_rol(rol) >= tope || nueva.is_some_and(|n| n >= tope.0.max(0) as u64) {
             return Err(ERROR_JERARQUIA.to_string());
         }
     }
@@ -424,15 +440,8 @@ pub async fn exigir_jerarquia_miembro(
     };
     let roles = leer_roles(state, guild_id, base_url).await?;
     let del_bot = leer_miembro(state, guild_id, &bot.id, base_url).await?;
-    let mas_alto = |m: &Member| {
-        roles
-            .iter()
-            .filter(|r| m.roles.contains(&r.id))
-            .map(|r| r.position)
-            .max()
-            .unwrap_or(0)
-    };
-    if mas_alto(&objetivo) >= mas_alto(&del_bot) {
+    // `None` (solo @everyone) queda por debajo de cualquier rol.
+    if rango_mas_alto(&roles, &objetivo) >= rango_mas_alto(&roles, &del_bot) {
         return Err(ERROR_JERARQUIA_MIEMBRO.to_string());
     }
     Ok(())
@@ -709,10 +718,17 @@ pub async fn borrar_mensaje(
     message_id: &str,
     base_url: Option<&str>,
 ) -> Result<String, String> {
-    exigir_permiso(state, guild_id, PERMISO_MENSAJES, base_url).await?;
+    let sin_permiso = exigir_permiso(state, guild_id, PERMISO_MENSAJES, base_url)
+        .await
+        .err();
     let token = token_del_bot_activo(state)?;
-    crate::mensajes::delete_message(&token, base_url, channel_id, message_id).await?;
-    Ok(format!("Mensaje {message_id} borrado"))
+    match crate::mensajes::delete_message(&token, base_url, channel_id, message_id).await {
+        Ok(()) => Ok(format!("Mensaje {message_id} borrado")),
+        // Sin «Gestionar mensajes» el bot aún puede borrar sus propios mensajes:
+        // se intenta igual y, si Discord lo rechaza, se explica el permiso.
+        Err(_) if sin_permiso.is_some() => Err(sin_permiso.unwrap_or_default()),
+        Err(e) => Err(e),
+    }
 }
 
 #[tauri::command]

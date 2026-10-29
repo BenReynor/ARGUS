@@ -103,6 +103,37 @@ fn bits_opcionales(p: &Option<PermisosParam>) -> Result<Option<String>, String> 
     p.as_ref().map(PermisosParam::a_bits).transpose()
 }
 
+/// Color de un rol: número RGB (`5793266`) o texto hexadecimal (`"#5865F2"`),
+/// el mismo formato que devuelve `listar_roles`.
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+#[serde(untagged)]
+pub enum ColorParam {
+    Numero(u32),
+    Hex(String),
+}
+
+impl ColorParam {
+    pub fn a_u32(&self) -> Result<u32, String> {
+        let valor = match self {
+            ColorParam::Numero(n) => *n,
+            ColorParam::Hex(t) => {
+                let hex = t.trim().trim_start_matches('#');
+                u32::from_str_radix(hex, 16)
+                    .map_err(|_| format!("Color no válido: «{t}» (usa #RRGGBB o un número RGB)"))?
+            }
+        };
+        if valor > 0xFF_FFFF {
+            return Err(format!("Color fuera de rango: {valor} (máximo #FFFFFF)"));
+        }
+        Ok(valor)
+    }
+}
+
+fn color_opcional(c: &Option<ColorParam>) -> Result<Option<u32>, String> {
+    c.as_ref().map(ColorParam::a_u32).transpose()
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 pub struct EnviarMensajeParams {
@@ -215,8 +246,8 @@ pub struct CrearRolParams {
     pub guild_id: Option<String>,
     /// Nombre del rol (1–100 caracteres).
     pub nombre: String,
-    /// Color como número RGB (p. ej. 255 = azul).
-    pub color: Option<u32>,
+    /// Color: "#RRGGBB" o número RGB (p. ej. 255 = azul).
+    pub color: Option<ColorParam>,
     /// Mostrar a los miembros del rol por separado.
     pub separado: Option<bool>,
     /// Permitir que cualquiera mencione el rol.
@@ -234,8 +265,8 @@ pub struct EditarRolParams {
     pub role_id: String,
     /// Nombre nuevo.
     pub nombre: Option<String>,
-    /// Color nuevo como número RGB.
-    pub color: Option<u32>,
+    /// Color nuevo: "#RRGGBB" o número RGB.
+    pub color: Option<ColorParam>,
     /// Mostrar por separado.
     pub separado: Option<bool>,
     /// Mencionable.
@@ -1012,7 +1043,7 @@ impl ArgusMcp {
         let gid = self.servidor_de(p.guild_id.as_deref()).await?;
         let datos = DatosRol {
             name: Some(p.nombre.clone()),
-            color: p.color,
+            color: color_opcional(&p.color)?,
             hoist: p.separado,
             mentionable: p.mencionable,
             permissions: bits_opcionales(&p.permisos)?,
@@ -1027,7 +1058,7 @@ impl ArgusMcp {
         let gid = self.servidor_de(p.guild_id.as_deref()).await?;
         let datos = DatosRol {
             name: p.nombre.clone(),
-            color: p.color,
+            color: color_opcional(&p.color)?,
             hoist: p.separado,
             mentionable: p.mencionable,
             permissions: bits_opcionales(&p.permisos)?,
@@ -1875,6 +1906,16 @@ mod tests {
 
     const TOKEN: &str = "token-secreto-de-prueba.XYZ";
 
+    #[test]
+    fn color_acepta_hex_como_lo_devuelve_listar_roles_y_numero() {
+        let de = |v: serde_json::Value| serde_json::from_value::<ColorParam>(v).unwrap();
+        assert_eq!(de(json!("#5865F2")).a_u32().unwrap(), 0x5865F2);
+        assert_eq!(de(json!("5865f2")).a_u32().unwrap(), 0x5865F2);
+        assert_eq!(de(json!(255)).a_u32().unwrap(), 255);
+        assert!(de(json!("azul")).a_u32().is_err());
+        assert!(de(json!(0x0100_0000)).a_u32().is_err());
+    }
+
     async fn bd_temporal() -> (tempfile_dir::Dir, SqlitePool) {
         let dir = tempfile_dir::Dir::nuevo();
         let pool = db::abrir_bd(&dir.0.join("argus.db")).await.unwrap();
@@ -2650,9 +2691,9 @@ mod tests {
     async fn mensajes_sin_permiso_no_llegan_a_discord() {
         let (_d, mcp, s) = mcp_con_servidor(1 << 10, true).await;
         prohibir_cambios(&s).await;
+        // `borrar_mensaje` sí llama a Discord sin el permiso: el bot puede borrar
+        // los suyos (ver tests_mensajes.rs).
         let falta = "Al bot le falta el permiso «Gestionar mensajes»";
-        let e = mcp.borrar_mensaje_json(None, "11", "301").await;
-        assert_eq!(e.unwrap_err(), falta);
         let e = mcp.fijar_mensaje_json(None, "11", "301", true).await;
         assert_eq!(e.unwrap_err(), falta);
         let ids = [snowflake_hace_dias(1), snowflake_hace_dias(2)];
@@ -2797,7 +2838,7 @@ mod tests {
             .await;
 
         let mut p = rol_nuevo("Mods");
-        p.color = Some(255);
+        p.color = Some(ColorParam::Numero(255));
         p.separado = Some(true);
         p.permisos = Some(PermisosParam::Nombres(vec![
             "ManageMessages".into(),
