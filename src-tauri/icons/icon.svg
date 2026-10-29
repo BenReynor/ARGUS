@@ -1,26 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
  <defs>
-  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#312e81"/><stop offset="1" stop-color="#0f172a"/></linearGradient>
-  <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#a78bfa" stop-opacity="0.55"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></radialGradient>
-  <linearGradient id="core" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c084fc"/><stop offset="1" stop-color="#6366f1"/></linearGradient>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1e1b4b"/><stop offset="1" stop-color="#020617"/></linearGradient>
+  <linearGradient id="anillo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#a855f7"/></linearGradient>
+  <radialGradient id="ojo" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#ecfeff"/><stop offset="1" stop-color="#22d3ee"/></radialGradient>
  </defs>
  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
- <circle cx="256" cy="256" r="170" fill="url(#glow)"/>
- <g stroke-width="10" stroke-linecap="round" opacity="0.9">
-  <line x1="256" y1="256" x2="126" y2="150" stroke="#67e8f9"/>
-  <line x1="256" y1="256" x2="386" y2="150" stroke="#f472b6"/>
-  <line x1="256" y1="256" x2="256" y2="408" stroke="#fbbf24"/>
- </g>
- <circle cx="256" cy="256" r="74" fill="url(#core)"/>
- <path d="M256 214 L267 245 L298 256 L267 267 L256 298 L245 267 L214 256 L245 245 Z" fill="#ffffff"/>
- <g>
-  <rect x="86" y="110" width="80" height="80" rx="24" fill="#67e8f9"/>
-  <rect x="346" y="110" width="80" height="80" rx="24" fill="#f472b6"/>
-  <rect x="216" y="368" width="80" height="80" rx="24" fill="#fbbf24"/>
- </g>
- <g fill="#0f172a">
-  <circle cx="113" cy="150" r="8"/><circle cx="139" cy="150" r="8"/>
-  <circle cx="373" cy="150" r="8"/><circle cx="399" cy="150" r="8"/>
-  <circle cx="243" cy="408" r="8"/><circle cx="269" cy="408" r="8"/>
- </g>
+ <circle cx="256" cy="256" r="182" fill="none" stroke="url(#anillo)" stroke-width="22" stroke-linecap="round" stroke-dasharray="230 56"/>
+ <circle cx="256" cy="256" r="150" fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-width="4"/>
+ <line x1="256" y1="168" x2="256" y2="138" stroke="#ffffff" stroke-width="12" stroke-linecap="round"/>
+ <circle cx="256" cy="128" r="16" fill="#22d3ee"/>
+ <rect x="160" y="168" width="192" height="168" rx="58" fill="#ffffff"/>
+ <rect x="186" y="210" width="140" height="74" rx="37" fill="#1e1b4b"/>
+ <circle cx="226" cy="247" r="17" fill="url(#ojo)"/>
+ <circle cx="286" cy="247" r="17" fill="url(#ojo)"/>
+ <path d="M236 306 Q256 318 276 306" fill="none" stroke="#a855f7" stroke-width="8" stroke-linecap="round"/>
 </svg>

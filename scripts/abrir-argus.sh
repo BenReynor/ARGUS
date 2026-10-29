@@ -40,6 +40,18 @@ huella() {
     done | sha1sum | cut -d' ' -f1
 }
 
+# Icono con nombre en el tema del usuario (los accesos directos usan
+# `Icon=argus`): el escritorio cachea los iconos por ruta, así que apuntar a un
+# PNG del repo no refrescaba nunca la imagen al cambiarla.
+instalar_icono() {
+    local tam dir
+    for tam in 48 128 256; do
+        dir="$HOME/.local/share/icons/hicolor/${tam}x${tam}/apps"
+        mkdir -p "$dir" && cp "$1/${tam}x${tam}.png" "$dir/argus.png"
+    done
+    gtk-update-icon-cache -q -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
+}
+
 al_dia() {
     [ -x "$BIN" ] && [ -f "$VERSION" ] && [ "$(cat "$VERSION")" = "$(huella)" ]
 }
@@ -71,6 +83,7 @@ actualizar() {
         fi
         npm run tauri build -- --no-bundle || return 1
         cp src-tauri/target/release/argus "$BIN.nuevo" && mv -f "$BIN.nuevo" "$BIN" || return 1
+        instalar_icono src-tauri/icons
         echo "$marca" > "$VERSION"
         echo "== $(date '+%F %T') listo"
     } >>"$LOG" 2>&1
