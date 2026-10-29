@@ -5,7 +5,6 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:mcp": "node scripts/empaquetar-mcp.mjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },

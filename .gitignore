@@ -6,7 +6,6 @@ build/
 .env.local
 *.pem
 target/
-src-tauri/binaries/
 .DS_Store
 *.swp
 *.swo

@@ -69,10 +69,8 @@ jobs:
 
       - run: npm ci
 
-      # argus-mcp viaja dentro del instalador (bundle.externalBin).
-      - name: argus-mcp
-        run: npm run build:mcp
-
+      # Tauri mete en el instalador todos los binarios del crate: la app y
+      # argus-mcp (queda junto a argus.exe).
       - name: Empaquetar (.msi y .exe)
         run: npm run tauri build
 

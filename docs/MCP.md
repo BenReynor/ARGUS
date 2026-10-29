@@ -50,9 +50,8 @@ claude mcp add argus -- /ruta/a/argus-mcp
 
 Si ejecutas ARGUS desde el código fuente, compila el binario con
 `cargo build --release --bin argus-mcp --manifest-path src-tauri/Cargo.toml`
-(queda en `src-tauri/target/release/`). Para empaquetar la app con el MCP incluido,
-ejecuta antes `npm run build:mcp`, que lo copia a `src-tauri/binaries/` (la
-configuración `bundle.externalBin` de Tauri lo añade al paquete).
+(queda en `src-tauri/target/release/`). `npm run tauri build` lo incluye en los
+paquetes junto al ejecutable de la app (Tauri empaqueta todos los binarios del crate).
 
 ## Servidor activo
 

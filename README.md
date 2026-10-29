@@ -69,7 +69,7 @@ npm run tauri build
 # paquetes: src-tauri/target/release/bundle/ (.deb, .rpm, .AppImage; en Windows .msi y .exe)
 ```
 
-Antes de empaquetar, `npm run build:mcp` compila `argus-mcp` para incluirlo.
+El paquete incluye `argus-mcp` junto al ejecutable de la app.
 
 ### Windows (experimental)
 
