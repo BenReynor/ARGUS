@@ -233,7 +233,7 @@ ARGUS se publica para cualquiera: la interfaz arranca en **inglés** y el usuari
 - [x] Base de idiomas y selector
   criterio: existe `src/i18n.ts` con `t(texto, vars?)` (texto fuente en inglés, placeholders `{nombre}`) y el catálogo español en `src/i18n/es.ts` (objeto inglés → español); `Config` (state.rs, `src/types`) tiene `ui_language` con valor por defecto `"en"` (con `#[serde(default)]`, una config guardada sin el campo carga como `"en"`, test de Rust que lo comprueba); el store expone el idioma y al cambiarlo la UI se vuelve a pintar al instante y se guarda con `save_config`; `document.documentElement.lang` sigue al idioma; Ajustes → Apariencia tiene un selector «Language / Idioma» con English y Español; existe `scripts/comprobar-i18n.mjs` y el script `"i18n:check"` en package.json, que falla si algún literal pasado a `t('…')`/`t("…")` en `src/` no está en el catálogo español; `npm run i18n:check` pasa
 
-- [ ] Traducir la estructura de la ventana
+- [x] Traducir la estructura de la ventana
   criterio: usando `t()`, quedan en inglés por defecto y traducidos al español los textos de App.tsx (secciones), Sidebar, GuildRail, Header, Notification, EstadoVista, `src/components/ui/` (incluidos Dialogo y ConfirmarPeligroso), `src/carga.ts` y la pantalla de carga de index.html (en index.html el texto inicial pasa a inglés, «Loading…», y carga.ts lo traduce); `npm run i18n:check` y `npm run build` pasan
 
 - [ ] Traducir el Panel y los Logs
