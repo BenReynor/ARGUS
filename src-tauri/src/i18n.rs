@@ -13,6 +13,16 @@ pub const IDIOMA_DEFECTO: &str = "en";
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
     // <CATALOGO>
+    ("No active bot in ARGUS: add or choose one in the app", "No hay bot activo en ARGUS: añade o elige uno en la app"),
+    ("No active server in ARGUS: pass `guild_id` or choose one with `elegir_servidor`", "No hay servidor activo en ARGUS: indica `guild_id` o elige uno con `elegir_servidor`"),
+    ("Permissions must be a bits number or a list of names", "Los permisos deben ser un número de bits o una lista de nombres"),
+    ("Invalid color: «{t}» (use #RRGGBB or an RGB number)", "Color no válido: «{t}» (usa #RRGGBB o un número RGB)"),
+    ("Color out of range: {valor} (maximum #FFFFFF)", "Color fuera de rango: {valor} (máximo #FFFFFF)"),
+    ("Could not read the ARGUS configuration: {e}", "No se pudo leer la configuración de ARGUS: {e}"),
+    ("The active bot is not in server {guild_id}: use `listar_servidores`", "El bot activo no está en el servidor {guild_id}: usa `listar_servidores`"),
+    ("Could not save the active server: {e}", "No se pudo guardar el servidor activo: {e}"),
+    ("Unsupported channel type: use texto, voz, categoria, anuncios or foro", "Tipo de canal no admitido: usa texto, voz, categoria, anuncios o foro"),
+    ("The type must be «rol» or «miembro»", "El tipo debe ser «rol» o «miembro»"),
     ("Invalid response from Discord: {e}", "Respuesta de Discord inválida: {e}"),
     ("Enable «Server Members Intent» in the Developer Portal → Bot", "Activa «Server Members Intent» en el Developer Portal → Bot"),
     ("Invalid token", "Token inválido"),
