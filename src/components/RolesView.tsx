@@ -4,18 +4,11 @@ import { ArrowDown, ArrowUp, Copy, Lock, Pencil, Plus, Search, Trash2 } from 'lu
 import { Badge, Button, ConfirmarPeligroso, Dialogo, EstadoVacio, Input } from './ui';
 import { EstadoVista, BuscadorVista, CabeceraVista, colorHex } from './EstadoVista';
 import { t } from '../i18n';
-import { nombreOficialPermiso } from '../permisos';
+import { nombreOficialPermiso, GRUPOS_PERMISOS } from '../i18n/permisos';
 import { createRole, updateRole, deleteRole, reorderRoles } from '../api/tauri';
 import type { Role } from '../types';
 
-/** Permisos agrupados para el editor: [bit de Discord, nombre]. */
-export const GRUPOS_PERMISOS: { grupo: string; permisos: [number, string][] }[] = [
-  { grupo: 'General', permisos: [[10, 'Ver canales'], [4, 'Gestionar canales'], [28, 'Gestionar roles'], [5, 'Gestionar servidor'], [29, 'Gestionar webhooks'], [7, 'Ver el registro de auditoría']] },
-  { grupo: 'Miembros', permisos: [[0, 'Crear invitaciones'], [26, 'Cambiar apodo'], [27, 'Gestionar apodos'], [1, 'Expulsar miembros'], [2, 'Banear miembros'], [40, 'Moderar miembros (timeout)']] },
-  { grupo: 'Texto', permisos: [[11, 'Enviar mensajes'], [38, 'Enviar mensajes en hilos'], [35, 'Crear hilos públicos'], [14, 'Insertar enlaces'], [15, 'Adjuntar archivos'], [6, 'Añadir reacciones'], [16, 'Leer el historial'], [17, 'Mencionar @everyone'], [13, 'Gestionar mensajes'], [34, 'Gestionar hilos'], [31, 'Usar comandos de aplicación']] },
-  { grupo: 'Voz', permisos: [[20, 'Conectar'], [21, 'Hablar'], [9, 'Vídeo y pantalla'], [25, 'Usar detección de voz'], [22, 'Silenciar miembros'], [23, 'Ensordecer miembros'], [24, 'Mover miembros']] },
-  { grupo: 'Avanzado', permisos: [[30, 'Gestionar emojis y stickers'], [33, 'Gestionar eventos'], [18, 'Usar emojis externos'], [8, 'Prioridad de palabra']] },
-];
+export { GRUPOS_PERMISOS };
 const COLOR_POR_DEFECTO = 0x99aab5;
 
 const explicacionJerarquia = () =>

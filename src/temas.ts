@@ -10,7 +10,7 @@ export const TEMAS: TemaInfo[] = [
   { id: 'minimal', nombre: 'Minimal', modo: 'claro', modoNombre: 'Claro' },
   { id: 'discord', nombre: 'Discord' },
   { id: 'cyberpunk', nombre: 'Cyberpunk' },
-  { id: 'calido', nombre: 'Cálido' },
+  { id: 'calido', nombre: 'Warm' },
   { id: 'datos', nombre: 'Datos', modo: 'claro', modoNombre: 'Claro' },
   { id: 'anime', nombre: 'Anime', modo: 'noche', modoNombre: 'Noche' },
   { id: 'manga', nombre: 'Manga', modo: 'noir', modoNombre: 'Noir' },

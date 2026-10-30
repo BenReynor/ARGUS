@@ -1,4 +1,7 @@
 /** Catálogo español: texto fuente en inglés → traducción. */
+/** Nombre del idioma en su propio idioma (selector de idioma). */
+export const NOMBRE_ES = 'Español';
+
 export const es: Record<string, string> = {
   'Language / Idioma': 'Language / Idioma',
   'Choose the language of the interface. It applies instantly and is saved.':

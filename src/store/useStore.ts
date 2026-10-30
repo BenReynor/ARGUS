@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { setIdioma, t } from '../i18n';
-import { nombreOficialPermiso } from '../permisos';
+import { nombreOficialPermiso } from '../i18n/permisos';
 import { guildInfo, saveConfig as guardarConfigBackend, botPermissions, getGuildSettings, refreshServerMap as cargarMapaRest, setActiveGuild as fijarGuildBackend } from '../api/tauri';
 import type { GuildSettings, Config, UiSettings, BotStatus, ServerMap, Channel, Member, Role, Guild } from '../types';
 

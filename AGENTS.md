@@ -12,7 +12,7 @@ existen: ARCHITECTURE_MAP.md. Errores ya corregidos: lecciones.md.
   local (ver plan.md).
 - No uses `sudo` ni instales paquetes del sistema.
 - Tokens y claves: siempre cifrados (crypto.rs). Nunca en `localStorage` ni en logs.
-- UI y mensajes de error en **inglés por defecto, español con i18n**: el texto
+- UI en inglés por defecto, español con i18n (`t()` y catálogo); mensajes de error igual: el texto
   fuente va en inglés dentro de `t()` (frontend `src/i18n.ts`, backend
   `src-tauri/src/i18n.rs`) y su traducción en el catálogo español. Documentación
   y commits del proyecto siguen en español.

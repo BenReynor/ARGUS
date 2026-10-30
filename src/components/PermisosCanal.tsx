@@ -3,7 +3,7 @@ import { Check, Minus, X, Plus, Trash2, Users, User } from 'lucide-react';
 import { Button, Badge, Select } from './ui';
 import { GRUPOS_PERMISOS } from './RolesView';
 import { t } from '../i18n';
-import { nombreOficialPermiso } from '../permisos';
+import { nombreOficialPermiso } from '../i18n/permisos';
 import type { Channel, Member, Role } from '../types';
 
 type Estado = 'permitir' | 'heredar' | 'denegar';
