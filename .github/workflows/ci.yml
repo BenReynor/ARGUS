@@ -136,14 +136,19 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Sumas SHA-256
-        run: cd dist && sha256sum * > SHA256SUMS
+      # Los artefactos llegan en subcarpetas (msi/, nsis/, deb/, appimage/):
+      # se juntan en una sola para publicarlos sueltos.
+      - name: Juntar archivos y sumas SHA-256
+        run: |
+          mkdir publicar
+          find dist -type f -exec mv {} publicar/ \;
+          cd publicar && sha256sum * > SHA256SUMS && ls -la
 
       - name: Publicar
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* \
+          gh release create "$GITHUB_REF_NAME" publicar/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "ARGUS $GITHUB_REF_NAME" \
             --generate-notes
