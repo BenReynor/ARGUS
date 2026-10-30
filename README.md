@@ -57,18 +57,22 @@ mismo que tú desde la app.
 | Sistema | Estado |
 |---|---|
 | **Linux** | ✅ Se desarrolla y se usa aquí. |
-| **Windows** | 🧪 Experimental: los tests pasan y el instalador se genera en cada cambio, pero aún no se ha probado en un PC real. |
+| **Windows** | 🧪 Experimental: los tests pasan y el instalador se genera en el CI, pero aún no se ha probado en un PC real. |
 
-### Windows
+### Descargar
 
-1. Abre [Actions → CI](https://github.com/BenReynor/ARGUS/actions/workflows/ci.yml),
-   entra en la última ejecución correcta de `main` y descarga el artefacto
-   **argus-windows** (hace falta iniciar sesión en GitHub). Trae un `.msi` y un
-   instalador `.exe`; usa cualquiera de los dos.
-2. Como el instalador no está firmado, Windows muestra «Windows protegió tu PC»:
-   **Más información → Ejecutar de todas formas**.
+Baja la última versión de **[Releases](https://github.com/BenReynor/ARGUS/releases/latest)**:
 
-ARGUS usa WebView2, que ya viene con Windows 10 y 11. Si algo falla,
+| Sistema | Archivo |
+|---|---|
+| **Windows** | `ARGUS_x.y.z_x64-setup.exe` (instalador) o `ARGUS_x.y.z_x64_en-US.msi` |
+| **Linux** (Debian, Ubuntu, Mint…) | `ARGUS_x.y.z_amd64.deb`: `sudo apt install ./ARGUS_*.deb` |
+| **Linux** (cualquier distro) | `ARGUS_x.y.z_amd64.AppImage`: `chmod +x ARGUS_*.AppImage` y ábrelo |
+
+Todos incluyen `argus-mcp`. En Windows, como el instalador no está firmado,
+aparece «Windows protegió tu PC»: **Más información → Ejecutar de todas formas**.
+ARGUS usa WebView2, que ya viene con Windows 10 y 11. La suma SHA-256 de cada
+archivo está en `SHA256SUMS`. Si algo falla,
 [abre un issue](https://github.com/BenReynor/ARGUS/issues).
 
 ### Linux (desde el código)
@@ -180,3 +184,17 @@ El proyecto se desarrolla con [Dédalo](https://github.com/BenReynor/dedalo):
 - [`ARCHITECTURE_MAP.md`](ARCHITECTURE_MAP.md): qué hay en cada archivo
 - [`docs/FICHA_TECNICA.md`](docs/FICHA_TECNICA.md): stack, datos y comandos
 - [`AGENTS.md`](AGENTS.md): reglas para agentes de IA que trabajen en el código
+
+## Contribuir
+
+Las contribuciones son bienvenidas: abre un
+[issue](https://github.com/BenReynor/ARGUS/issues) para contar un fallo o
+proponer una idea, o un pull request con el cambio. Antes de enviarlo, pasa las
+comprobaciones de [Desarrollo](#desarrollo) (el CI las corre en Linux y Windows)
+y, si tocas algo de Discord, añade un test contra el Discord falso. La interfaz y
+los mensajes van en español.
+
+## Licencia
+
+[MIT](LICENSE): puedes usar, copiar, modificar y distribuir ARGUS libremente,
+también en proyectos propios, manteniendo el aviso de copyright.
