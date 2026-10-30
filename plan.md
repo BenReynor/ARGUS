@@ -228,7 +228,7 @@ Verificación manual en tu servidor de pruebas:
 - Con la app abierta, ver que los cambios hechos por el MCP aparecen en el mapa en vivo.
 
 ## FASE 9 — Idiomas: inglés por defecto, español opcional
-ARGUS se publica para cualquiera: la interfaz arranca en **inglés** y el usuario puede cambiarla a **español** en Ajustes. Mismo enfoque que Dédalo: el texto fuente del código está en inglés y una función `t()` lo traduce con un catálogo español; si falta una entrada se muestra el inglés. No se traducen datos de Discord (nombres de canales, roles, miembros) ni los identificadores guardados.
+ARGUS se publica para cualquiera: la interfaz arranca en **inglés** y el usuario puede cambiarla a **español** en Ajustes. Mismo enfoque que Dédalo: el texto fuente del código está en inglés y una función `t()` lo traduce con un catálogo español; si falta una entrada se muestra el inglés. Solo se traduce la interfaz de ARGUS. **No se traduce nada que venga de Discord**: nombres de servidores, canales, categorías, roles y miembros, ni los términos propios de Discord (nombres de los permisos como «Manage Channels» y tipos de acción del registro de auditoría), que se muestran siempre con su nombre oficial en inglés en los dos idiomas (una sola fuente, p. ej. `src/permisos.ts`); sí se traducen las ayudas y explicaciones que ARGUS da sobre ellos. Tampoco los identificadores guardados.
 
 - [x] Base de idiomas y selector
   criterio: existe `src/i18n.ts` con `t(texto, vars?)` (texto fuente en inglés, placeholders `{nombre}`) y el catálogo español en `src/i18n/es.ts` (objeto inglés → español); `Config` (state.rs, `src/types`) tiene `ui_language` con valor por defecto `"en"` (con `#[serde(default)]`, una config guardada sin el campo carga como `"en"`, test de Rust que lo comprueba); el store expone el idioma y al cambiarlo la UI se vuelve a pintar al instante y se guarda con `save_config`; `document.documentElement.lang` sigue al idioma; Ajustes → Apariencia tiene un selector «Language / Idioma» con English y Español; existe `scripts/comprobar-i18n.mjs` y el script `"i18n:check"` en package.json, que falla si algún literal pasado a `t('…')`/`t("…")` en `src/` no está en el catálogo español; `npm run i18n:check` pasa
@@ -239,14 +239,14 @@ ARGUS se publica para cualquiera: la interfaz arranca en **inglés** y el usuari
 - [x] Traducir el Panel y los Logs
   criterio: Dashboard.tsx (incluidas las explicaciones de cada permiso del bot) y LogsView.tsx usan `t()` en todos sus textos visibles, tooltips y mensajes; en inglés por defecto y en español con el selector; `npm run i18n:check` y `npm run build` pasan
 
-- [B] Traducir Canales
-  criterio: ChannelsView.tsx, PermisosCanal.tsx y ActividadCanal.tsx usan `t()` en textos visibles, placeholders, tooltips, diálogos de confirmación y notificaciones (los nombres de los permisos de Discord también, con sus nombres oficiales en inglés como fuente); `npm run i18n:check` y `npm run build` pasan
+- [ ] Traducir Canales
+  criterio: ChannelsView.tsx, PermisosCanal.tsx y ActividadCanal.tsx usan `t()` en textos visibles, placeholders, tooltips, diálogos de confirmación, notificaciones y en lo que escriben en Logs (los prefijos como `[CANALES]` pasan a inglés, p. ej. `[CHANNELS]`); los nombres de los permisos se muestran con su nombre oficial de Discord en inglés sin traducir; `npm run i18n:check` y `npm run build` pasan
 
 - [ ] Traducir Roles y Miembros
-  criterio: RolesView.tsx y MembersView.tsx usan `t()` en textos visibles, la lista de permisos agrupados, placeholders, tooltips (incluido el motivo de una acción desactivada), diálogos y notificaciones; `npm run i18n:check` y `npm run build` pasan
+  criterio: RolesView.tsx y MembersView.tsx usan `t()` en textos visibles, los títulos de los grupos de permisos (los permisos en sí con su nombre oficial de Discord, sin traducir), placeholders, tooltips (incluido el motivo de una acción desactivada), diálogos y notificaciones; `npm run i18n:check` y `npm run build` pasan
 
 - [ ] Traducir Servidor y Ajustes
-  criterio: ServidorView.tsx (ajustes del servidor y registro de auditoría, incluidos los nombres de tipos de acción) y SettingsView.tsx (bots, este servidor, MCP, apariencia, general, nombres de los temas) usan `t()`; `npm run i18n:check` y `npm run build` pasan
+  criterio: ServidorView.tsx (ajustes del servidor y registro de auditoría; los tipos de acción con su nombre oficial de Discord, sin traducir) y SettingsView.tsx (bots, este servidor, MCP, apariencia, general, nombres de los temas) usan `t()`; `npm run i18n:check` y `npm run build` pasan
 
 - [ ] Mensajes del backend en el idioma elegido
   criterio: los mensajes de error y de estado que Rust devuelve a la UI (commands.rs, discord.rs, mensajes.rs, sync.rs, gateway.rs, db.rs) tienen el texto fuente en inglés y un módulo `src-tauri/src/i18n.rs` con el catálogo español y una función que traduce según `ui_language`; los comandos devuelven el mensaje en el idioma de la config; tests de Rust: el mismo error (p. ej. token inválido y falta de permiso contra el Discord falso) sale en inglés por defecto y en español con `ui_language = "es"`; un texto sin entrada en el catálogo sale en inglés; `cargo test` pasa
