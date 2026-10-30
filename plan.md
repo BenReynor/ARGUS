@@ -239,7 +239,7 @@ ARGUS se publica para cualquiera: la interfaz arranca en **inglés** y el usuari
 - [x] Traducir el Panel y los Logs
   criterio: Dashboard.tsx (incluidas las explicaciones de cada permiso del bot) y LogsView.tsx usan `t()` en todos sus textos visibles, tooltips y mensajes; en inglés por defecto y en español con el selector; `npm run i18n:check` y `npm run build` pasan
 
-- [ ] Traducir Canales
+- [x] Traducir Canales
   criterio: ChannelsView.tsx, PermisosCanal.tsx y ActividadCanal.tsx usan `t()` en textos visibles, placeholders, tooltips, diálogos de confirmación, notificaciones y en lo que escriben en Logs (los prefijos como `[CANALES]` pasan a inglés, p. ej. `[CHANNELS]`); los nombres de los permisos se muestran con su nombre oficial de Discord en inglés sin traducir; `npm run i18n:check` y `npm run build` pasan
 
 - [ ] Traducir Roles y Miembros
