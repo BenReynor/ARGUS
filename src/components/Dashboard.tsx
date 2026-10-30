@@ -4,6 +4,7 @@ import { resyncMap, onSyncProgress } from '../api/tauri';
 import type { SyncProgress } from '../api/tauri';
 import { Avatar, Badge, Button, Card, Cargando, EstadoVacio, ErrorPanel } from './ui';
 import { CabeceraVista } from './EstadoVista';
+import { t } from '../i18n';
 import './Dashboard.css';
 
 interface Actividad {
@@ -13,16 +14,34 @@ interface Actividad {
 
 const MAX_ACTIVIDAD = 8;
 
+/** Nombre visible de cada permiso (la clave es el nombre que devuelve el backend). */
+const nombrePermiso = (permiso: string): string => {
+  switch (permiso) {
+    case 'Ver canales': return t('View channels');
+    case 'Enviar mensajes': return t('Send messages');
+    case 'Leer el historial de mensajes': return t('Read message history');
+    case 'Gestionar canales': return t('Manage channels');
+    case 'Gestionar roles': return t('Manage roles');
+    case 'Moderar miembros': return t('Moderate members');
+    case 'Expulsar miembros': return t('Kick members');
+    case 'Banear miembros': return t('Ban members');
+    default: return permiso;
+  }
+};
+
 /** Por qué importa cada permiso del bot; se muestra solo cuando falta. */
-const EXPLICACION_PERMISO: Record<string, string> = {
-  'Ver canales': 'Sin él el bot no ve los canales ni puede sincronizar el mapa.',
-  'Enviar mensajes': 'No podrá enviar mensajes ni respuestas.',
-  'Leer el historial de mensajes': 'No podrá leer mensajes anteriores de los canales.',
-  'Gestionar canales': 'No podrá crear, editar ni borrar canales.',
-  'Gestionar roles': 'No podrá crear, editar ni asignar roles.',
-  'Moderar miembros': 'No podrá aplicar timeouts a miembros.',
-  'Expulsar miembros': 'No podrá expulsar miembros.',
-  'Banear miembros': 'No podrá banear miembros.',
+const explicacionPermiso = (permiso: string): string => {
+  switch (permiso) {
+    case 'Ver canales': return t('Without it the bot cannot see the channels or sync the map.');
+    case 'Enviar mensajes': return t('It will not be able to send messages or replies.');
+    case 'Leer el historial de mensajes': return t('It will not be able to read earlier messages in channels.');
+    case 'Gestionar canales': return t('It will not be able to create, edit or delete channels.');
+    case 'Gestionar roles': return t('It will not be able to create, edit or assign roles.');
+    case 'Moderar miembros': return t('It will not be able to time out members.');
+    case 'Expulsar miembros': return t('It will not be able to kick members.');
+    case 'Banear miembros': return t('It will not be able to ban members.');
+    default: return t('Some actions will be disabled.');
+  }
 };
 
 const ahora = () => new Date().toLocaleTimeString();
@@ -68,10 +87,10 @@ export const Dashboard: React.FC = () => {
     const registra = (nombre: string, antes: number, despues: number) => {
       if (antes !== despues) cambios.push({ hora: ahora(), texto: `${nombre}: ${antes} → ${despues}` });
     };
-    registra('Canales', previo.canales, canales);
-    registra('Roles', previo.roles, roles);
-    registra('Miembros', previo.miembros, miembros);
-    if (cambios.length === 0) cambios.push({ hora: ahora(), texto: 'Mapa actualizado sin cambios de estructura' });
+    registra(t('Channels'), previo.canales, canales);
+    registra(t('Roles'), previo.roles, roles);
+    registra(t('Members'), previo.miembros, miembros);
+    if (cambios.length === 0) cambios.push({ hora: ahora(), texto: t('Map updated with no structural changes') });
     setActividad((a) => [...cambios, ...a].slice(0, MAX_ACTIVIDAD));
   }, [serverMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -80,10 +99,10 @@ export const Dashboard: React.FC = () => {
     setProgress(null);
     try {
       await resyncMap();
-      addLog('[SYSTEM] Mapa resincronizado');
-      showNotification('Mapa resincronizado', 'success');
+      addLog('[SYSTEM] ' + t('Map resynced'));
+      showNotification(t('Map resynced'), 'success');
     } catch (e) {
-      showNotification('Error al resincronizar: ' + String(e), 'error');
+      showNotification(t('Resync failed: {error}', { error: String(e) }), 'error');
     } finally {
       setResyncing(false);
     }
@@ -93,8 +112,8 @@ export const Dashboard: React.FC = () => {
   if (!config.active_bot_id) {
     return (
       <div className="vista dash">
-        <EstadoVacio titulo="No hay ningún bot activo" descripcion="Registra un bot con su token y elígelo como activo para ver sus servidores.">
-          <Button onClick={() => setActiveTab('settings')}>Ir a Ajustes</Button>
+        <EstadoVacio titulo={t('No active bot')} descripcion={t('Register a bot with its token and set it as active to see its servers.')}>
+          <Button onClick={() => setActiveTab('settings')}>{t('Go to Settings')}</Button>
         </EstadoVacio>
       </div>
     );
@@ -102,8 +121,8 @@ export const Dashboard: React.FC = () => {
   if (!activeGuildId) {
     return (
       <div className="vista dash">
-        <EstadoVacio titulo="Ningún servidor seleccionado" descripcion="Elige un servidor en la columna de la izquierda. Si no aparece ninguno, invita al bot desde Ajustes.">
-          <Button variante="secundario" onClick={() => setActiveTab('settings')}>Invitar al bot</Button>
+        <EstadoVacio titulo={t('No server selected')} descripcion={t('Pick a server in the left column. If none appears, invite the bot from Settings.')}>
+          <Button variante="secundario" onClick={() => setActiveTab('settings')}>{t('Invite the bot')}</Button>
         </EstadoVacio>
       </div>
     );
@@ -130,20 +149,20 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="vista dash">
-      <CabeceraVista titulo="Panel del servidor">
-        <Badge tono={enVivo ? 'exito' : 'peligro'}>{enVivo ? '● Gateway en vivo' : '○ Gateway desconectado'}</Badge>
+      <CabeceraVista titulo={t('Server dashboard')}>
+        <Badge tono={enVivo ? 'exito' : 'peligro'}>{enVivo ? t('● Gateway live') : t('○ Gateway disconnected')}</Badge>
         <Button variante="secundario" cargando={resyncing} onClick={handleResync}>
-          {resyncing ? 'Resincronizando…' : 'Resincronizar'}
+          {resyncing ? t('Resyncing…') : t('Resync')}
         </Button>
       </CabeceraVista>
 
       <Card>
         <div className="dash__cabecera">
-          <Avatar src={icono} nombre={guild?.name ?? 'Servidor'} tamano={56} />
+          <Avatar src={icono} nombre={guild?.name ?? t('Server')} tamano={56} />
           <div className="dash__nombre">
-            <h3>{guild?.name ?? 'Servidor'}</h3>
+            <h3>{guild?.name ?? t('Server')}</h3>
             {guild?.member_count != null && (
-              <span className="dash__kpi-etiqueta">~{guild.member_count.toLocaleString()} miembros (aproximado)</span>
+              <span className="dash__kpi-etiqueta">{t('~{count} members (approximate)', { count: guild.member_count.toLocaleString() })}</span>
             )}
           </div>
         </div>
@@ -151,9 +170,9 @@ export const Dashboard: React.FC = () => {
 
       <div className="dash__kpis">
         {[
-          { etiqueta: 'Miembros', valor: miembros },
-          { etiqueta: 'Canales', valor: canales },
-          { etiqueta: 'Roles', valor: roles },
+          { etiqueta: t('Members'), valor: miembros },
+          { etiqueta: t('Channels'), valor: canales },
+          { etiqueta: t('Roles'), valor: roles },
         ].map((k) => (
           <Card key={k.etiqueta}>
             <div className="dash__kpi">
@@ -164,7 +183,7 @@ export const Dashboard: React.FC = () => {
         ))}
       </div>
 
-      <Card titulo="Permisos del bot">
+      <Card titulo={t('Bot permissions')}>
         {guildPanel.permissions === null ? (
           <Cargando lineas={3} />
         ) : (
@@ -174,35 +193,35 @@ export const Dashboard: React.FC = () => {
               return (
                 <li key={permiso} className="dash__permiso">
                   <Badge tono={tiene ? 'exito' : 'aviso'}>{tiene ? '✓' : '✗'}</Badge>
-                  <span>{permiso}</span>
-                  {!tiene && <span className="dash__permiso-nota">{EXPLICACION_PERMISO[permiso] ?? 'Algunas acciones estarán desactivadas.'}</span>}
+                  <span>{nombrePermiso(permiso)}</span>
+                  {!tiene && <span className="dash__permiso-nota">{explicacionPermiso(permiso)}</span>}
                 </li>
               );
             })}
           </ul>
         )}
         {faltan.length > 0 && (
-          <p className="dash__permiso-nota">Faltan {faltan.length} permisos: concédelos al rol del bot en Discord para activar esas acciones.</p>
+          <p className="dash__permiso-nota">{t('{count} permissions missing: grant them to the bot role in Discord to enable those actions.', { count: faltan.length })}</p>
         )}
       </Card>
 
-      <Card titulo="Sincronización">
+      <Card titulo={t('Synchronization')}>
         <div className="dash__progreso" aria-live="polite">
           {resyncing && progress ? (
             <>
               <progress max={progress.total} value={progress.step} />
-              <span className="num">Paso {progress.step}/{progress.total}: {progress.message}</span>
+              <span className="num">{t('Step {step}/{total}: {message}', { step: progress.step, total: progress.total, message: progress.message })}</span>
             </>
           ) : (
-            <span className="dash__kpi-etiqueta">Pulsa «Resincronizar» (arriba a la derecha) para repetir la sincronización completa del servidor.</span>
+            <span className="dash__kpi-etiqueta">{t('Press “Resync” (top right) to repeat the full server synchronization.')}</span>
           )}
         </div>
       </Card>
 
-      <Card titulo="Actividad reciente">
+      <Card titulo={t('Recent activity')}>
         {botStatus.last_error && <Badge tono="peligro">{botStatus.last_error}</Badge>}
         {actividad.length === 0 ? (
-          <span className="dash__kpi-etiqueta">Aún no hay cambios en el mapa. Pulsa «Resincronizar» para comprobar si el servidor ha cambiado.</span>
+          <span className="dash__kpi-etiqueta">{t('No map changes yet. Press “Resync” to check whether the server has changed.')}</span>
         ) : (
           <ul className="dash__actividad">
             {actividad.map((a, i) => (

@@ -3,16 +3,17 @@ import { useLogs, useClearLogs, useShowNotification } from '../store/useStore';
 import type { LogEntry } from '../store/useStore';
 import { Trash2, Copy, Download, Search } from 'lucide-react';
 import { Button, Input, Select, Badge, EstadoVacio } from './ui';
+import { t } from '../i18n';
 import './Vistas.css';
 
 type Nivel = 'error' | 'aviso' | 'info' | 'sistema';
 type Tono = 'peligro' | 'aviso' | 'info' | 'neutro';
 
-const NIVELES: Record<Nivel, { etiqueta: string; tono: Tono }> = {
-  error: { etiqueta: 'ERROR', tono: 'peligro' },
-  aviso: { etiqueta: 'AVISO', tono: 'aviso' },
-  info: { etiqueta: 'INFO', tono: 'info' },
-  sistema: { etiqueta: 'SISTEMA', tono: 'neutro' },
+const NIVELES: Record<Nivel, { etiqueta: () => string; tono: Tono }> = {
+  error: { etiqueta: () => t('ERROR'), tono: 'peligro' },
+  aviso: { etiqueta: () => t('WARNING'), tono: 'aviso' },
+  info: { etiqueta: () => t('INFO'), tono: 'info' },
+  sistema: { etiqueta: () => t('SYSTEM'), tono: 'neutro' },
 };
 
 const nivelDe = (texto: string): Nivel => {
@@ -51,7 +52,7 @@ export const LogsView: React.FC = () => {
 
   const copyAll = () => {
     navigator.clipboard.writeText(visibles.map(linea).join('\n'));
-    showNotification('Logs copiados', 'info');
+    showNotification(t('Logs copied'), 'info');
   };
 
   const downloadLogs = () => {
@@ -62,54 +63,54 @@ export const LogsView: React.FC = () => {
     a.download = `argus-logs-${new Date().toISOString().slice(0, 10)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
-    showNotification('Logs descargados', 'info');
+    showNotification(t('Logs downloaded'), 'info');
   };
 
   return (
     <div className="vista vista--llena">
       <div className="vista__cabecera">
-        <h2 className="vista__solo-lector">Logs</h2>
+        <h2 className="vista__solo-lector">{t('Logs')}</h2>
         <div className="logs__filtros">
           <Select
-            aria-label="Filtrar por nivel"
+            aria-label={t('Filter by level')}
             value={nivel}
             onChange={(e) => setNivel(e.target.value as 'todos' | Nivel)}
           >
-            <option value="todos">Todos los niveles</option>
+            <option value="todos">{t('All levels')}</option>
             {(Object.keys(NIVELES) as Nivel[]).map((n) => (
-              <option key={n} value={n}>{NIVELES[n].etiqueta}</option>
+              <option key={n} value={n}>{NIVELES[n].etiqueta()}</option>
             ))}
           </Select>
           <label className="vista__buscar">
             <Search size={16} />
             <Input
               type="search"
-              aria-label="Buscar en los logs"
-              placeholder="Buscar en los logs…"
+              aria-label={t('Search the logs')}
+              placeholder={t('Search the logs…')}
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
             />
           </label>
           <label className="ajustes__interruptor">
             <input type="checkbox" checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} />
-            <span>Auto-scroll</span>
+            <span>{t('Auto-scroll')}</span>
           </label>
-          <Button variante="ghost" className="logs__accion" title="Copiar" aria-label="Copiar" onClick={copyAll} disabled={visibles.length === 0}>
-            <Copy size={14} aria-hidden="true" /> <span className="logs__accion-texto">Copiar</span>
+          <Button variante="ghost" className="logs__accion" title={t('Copy')} aria-label={t('Copy')} onClick={copyAll} disabled={visibles.length === 0}>
+            <Copy size={14} aria-hidden="true" /> <span className="logs__accion-texto">{t('Copy')}</span>
           </Button>
-          <Button variante="ghost" className="logs__accion" title="Descargar" aria-label="Descargar" onClick={downloadLogs} disabled={visibles.length === 0}>
-            <Download size={14} aria-hidden="true" /> <span className="logs__accion-texto">Descargar</span>
+          <Button variante="ghost" className="logs__accion" title={t('Download')} aria-label={t('Download')} onClick={downloadLogs} disabled={visibles.length === 0}>
+            <Download size={14} aria-hidden="true" /> <span className="logs__accion-texto">{t('Download')}</span>
           </Button>
-          <Button variante="peligro" className="logs__accion" title="Limpiar" aria-label="Limpiar" onClick={clearLogs} disabled={logs.length === 0}>
-            <Trash2 size={14} aria-hidden="true" /> <span className="logs__accion-texto">Limpiar</span>
+          <Button variante="peligro" className="logs__accion" title={t('Clear')} aria-label={t('Clear')} onClick={clearLogs} disabled={logs.length === 0}>
+            <Trash2 size={14} aria-hidden="true" /> <span className="logs__accion-texto">{t('Clear')}</span>
           </Button>
         </div>
       </div>
 
       {visibles.length === 0 ? (
         <EstadoVacio
-          titulo={logs.length === 0 ? 'Aún no hay logs' : 'Ningún log coincide'}
-          descripcion={logs.length === 0 ? 'Las acciones de ARGUS irán apareciendo aquí.' : 'Prueba con otro nivel o con otra búsqueda.'}
+          titulo={logs.length === 0 ? t('No logs yet') : t('No logs match')}
+          descripcion={logs.length === 0 ? t('ARGUS actions will show up here.') : t('Try another level or another search.')}
         />
       ) : (
         <div className="logs__lista" ref={contenedor}>
@@ -120,7 +121,7 @@ export const LogsView: React.FC = () => {
                 <time className="logs__hora" dateTime={l.ts} style={{ color: 'var(--text-3)' }}>
                   {new Date(l.ts).toLocaleTimeString()}
                 </time>
-                <Badge tono={n.tono}>{n.etiqueta}</Badge>
+                <Badge tono={n.tono}>{n.etiqueta()}</Badge>
                 <span className="logs__texto">{sinEtiqueta(l.texto)}</span>
               </div>
             );
@@ -128,7 +129,7 @@ export const LogsView: React.FC = () => {
         </div>
       )}
 
-      <span className="vista__cuenta">{visibles.length} de {logs.length} entradas</span>
+      <span className="vista__cuenta">{t('{shown} of {total} entries', { shown: visibles.length, total: logs.length })}</span>
     </div>
   );
 };
