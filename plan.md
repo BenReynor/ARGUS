@@ -230,7 +230,7 @@ Verificación manual en tu servidor de pruebas:
 ## FASE 9 — Idiomas: inglés por defecto, español opcional
 ARGUS se publica para cualquiera: la interfaz arranca en **inglés** y el usuario puede cambiarla a **español** en Ajustes. Mismo enfoque que Dédalo: el texto fuente del código está en inglés y una función `t()` lo traduce con un catálogo español; si falta una entrada se muestra el inglés. No se traducen datos de Discord (nombres de canales, roles, miembros) ni los identificadores guardados.
 
-- [ ] Base de idiomas y selector
+- [x] Base de idiomas y selector
   criterio: existe `src/i18n.ts` con `t(texto, vars?)` (texto fuente en inglés, placeholders `{nombre}`) y el catálogo español en `src/i18n/es.ts` (objeto inglés → español); `Config` (state.rs, `src/types`) tiene `ui_language` con valor por defecto `"en"` (con `#[serde(default)]`, una config guardada sin el campo carga como `"en"`, test de Rust que lo comprueba); el store expone el idioma y al cambiarlo la UI se vuelve a pintar al instante y se guarda con `save_config`; `document.documentElement.lang` sigue al idioma; Ajustes → Apariencia tiene un selector «Language / Idioma» con English y Español; existe `scripts/comprobar-i18n.mjs` y el script `"i18n:check"` en package.json, que falla si algún literal pasado a `t('…')`/`t("…")` en `src/` no está en el catálogo español; `npm run i18n:check` pasa
 
 - [ ] Traducir la estructura de la ventana
