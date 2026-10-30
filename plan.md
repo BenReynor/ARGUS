@@ -254,7 +254,7 @@ ARGUS se publica para cualquiera: la interfaz arranca en **inglés** y el usuari
 - [x] MCP en el idioma elegido
   criterio: las descripciones de las herramientas de `argus-mcp` quedan en inglés; los mensajes de sus respuestas y errores (incluido «No hay bot activo en ARGUS…») usan el mismo `i18n.rs` y salen en el idioma guardado en la config de la BD (inglés por defecto); un test de `mcp.rs` lo comprueba en los dos idiomas; tests/mcp_humo.rs sigue pasando; docs/MCP.md en inglés con los mensajes de ejemplo en inglés
 
-- [ ] Sin textos sueltos y documentación
+- [x] Sin textos sueltos y documentación
   criterio: `scripts/comprobar-i18n.mjs` también falla si queda en `src/**/*.tsx`/`*.ts` (fuera de `src/i18n/`) un literal visible en español (con á, é, í, ó, ú, ñ, ¿ o ¡) y pasa sin excepciones; README.md queda en inglés (mismo contenido y capturas) con un enlace «Español» a un README.es.md nuevo con la traducción, y README.es.md enlaza de vuelta «English»; AGENTS.md y CONTEXTO.md dicen «UI en inglés por defecto, español con i18n (`t()` y catálogo)» en lugar de «Español en la UI»; `npm run i18n:check`, `npm run build` y `cargo test` pasan
 
 Verificación manual:
