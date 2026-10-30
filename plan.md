@@ -236,7 +236,7 @@ ARGUS se publica para cualquiera: la interfaz arranca en **inglés** y el usuari
 - [x] Traducir la estructura de la ventana
   criterio: usando `t()`, quedan en inglés por defecto y traducidos al español los textos de App.tsx (secciones), Sidebar, GuildRail, Header, Notification, EstadoVista, `src/components/ui/` (incluidos Dialogo y ConfirmarPeligroso), `src/carga.ts` y la pantalla de carga de index.html (en index.html el texto inicial pasa a inglés, «Loading…», y carga.ts lo traduce); `npm run i18n:check` y `npm run build` pasan
 
-- [ ] Traducir el Panel y los Logs
+- [x] Traducir el Panel y los Logs
   criterio: Dashboard.tsx (incluidas las explicaciones de cada permiso del bot) y LogsView.tsx usan `t()` en todos sus textos visibles, tooltips y mensajes; en inglés por defecto y en español con el selector; `npm run i18n:check` y `npm run build` pasan
 
 - [ ] Traducir Canales
