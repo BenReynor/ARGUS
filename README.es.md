@@ -27,7 +27,7 @@ mismo que tú desde la app.
 
 | Ajustes → Apariencia (tema Discord) | El mismo panel con el tema Cyberpunk |
 |---|---|
-| ![Galería de temas](docs/capturas/temas.png) | ![Tema Cyberpunk](docs/capturas/tema_cyberpunk.png) |
+| ![Galería de temas](docs/capturas/es/temas.png) | ![Tema Cyberpunk](docs/capturas/es/tema_cyberpunk.png) |
 
 ## Qué puedes hacer
 

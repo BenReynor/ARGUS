@@ -136,7 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
             )}
           </button>
         </div>
-        <div className="version">v1.0.0</div>
+        <div className="version">v{__APP_VERSION__}</div>
       </div>
     </aside>
   );

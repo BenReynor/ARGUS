@@ -27,7 +27,7 @@ things you do from the app.
 
 | Settings → Appearance (Discord theme) | The same panel with the Cyberpunk theme |
 |---|---|
-| ![Theme gallery](docs/capturas/temas.png) | ![Cyberpunk theme](docs/capturas/tema_cyberpunk.png) |
+| ![Theme gallery](docs/capturas/en/temas.png) | ![Cyberpunk theme](docs/capturas/en/tema_cyberpunk.png) |
 
 ## What you can do
 
