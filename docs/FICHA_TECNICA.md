@@ -15,10 +15,7 @@ Especificación técnica de lo que **existe hoy**. Visión y decisiones:
 | Discord | twilight-http (REST) / twilight-gateway (eventos en vivo) / twilight-model 0.15 |
 | Base de datos | SQLite vía sqlx 0.8 (migraciones en `src-tauri/migrations/`) |
 | Cifrado | aes-gcm 0.10 (AES-256-GCM), clave derivada de `machine-uid` |
-| Plugins Tauri | store, sql, log, shell, fs, dialog, notification, global-shortcut, clipboard-manager, opener |
-
-Pendiente de limpiar: `reqwest` y `tokio-tungstenite` siguen en `Cargo.toml`
-pero el código ya no los usa (twilight los sustituyó).
+| Plugins Tauri | store, log, shell, fs, dialog, notification, global-shortcut, clipboard-manager, opener |
 
 ## Datos (SQLite, `migrations/001–004`)
 
