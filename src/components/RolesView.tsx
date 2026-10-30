@@ -3,21 +3,28 @@ import { useServerMap, useShowNotification, useConfig, useGuildPanel, motivoPerm
 import { ArrowDown, ArrowUp, Copy, Lock, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { Badge, Button, ConfirmarPeligroso, Dialogo, EstadoVacio, Input } from './ui';
 import { EstadoVista, BuscadorVista, CabeceraVista, colorHex } from './EstadoVista';
+import { t } from '../i18n';
+import { nombreOficialPermiso, GRUPOS_PERMISOS } from '../i18n/permisos';
 import { createRole, updateRole, deleteRole, reorderRoles } from '../api/tauri';
 import type { Role } from '../types';
 
-/** Permisos agrupados para el editor: [bit de Discord, nombre]. */
-export const GRUPOS_PERMISOS: { grupo: string; permisos: [number, string][] }[] = [
-  { grupo: 'General', permisos: [[10, 'Ver canales'], [4, 'Gestionar canales'], [28, 'Gestionar roles'], [5, 'Gestionar servidor'], [29, 'Gestionar webhooks'], [7, 'Ver el registro de auditoría']] },
-  { grupo: 'Miembros', permisos: [[0, 'Crear invitaciones'], [26, 'Cambiar apodo'], [27, 'Gestionar apodos'], [1, 'Expulsar miembros'], [2, 'Banear miembros'], [40, 'Moderar miembros (timeout)']] },
-  { grupo: 'Texto', permisos: [[11, 'Enviar mensajes'], [38, 'Enviar mensajes en hilos'], [35, 'Crear hilos públicos'], [14, 'Insertar enlaces'], [15, 'Adjuntar archivos'], [6, 'Añadir reacciones'], [16, 'Leer el historial'], [17, 'Mencionar @everyone'], [13, 'Gestionar mensajes'], [34, 'Gestionar hilos'], [31, 'Usar comandos de aplicación']] },
-  { grupo: 'Voz', permisos: [[20, 'Conectar'], [21, 'Hablar'], [9, 'Vídeo y pantalla'], [25, 'Usar detección de voz'], [22, 'Silenciar miembros'], [23, 'Ensordecer miembros'], [24, 'Mover miembros']] },
-  { grupo: 'Avanzado', permisos: [[30, 'Gestionar emojis y stickers'], [33, 'Gestionar eventos'], [18, 'Usar emojis externos'], [8, 'Prioridad de palabra']] },
-];
+export { GRUPOS_PERMISOS };
 const COLOR_POR_DEFECTO = 0x99aab5;
 
-const EXPLICACION_JERARQUIA =
-  'Discord no deja tocar un rol igual o superior al rol más alto del bot. Para editarlo, sube el rol del bot en Ajustes del servidor → Roles.';
+const explicacionJerarquia = () =>
+  t('Discord does not let you touch a role equal to or above the bot’s highest role. To edit it, raise the bot’s role in Server Settings → Roles.');
+
+/** Título traducido de un grupo de permisos (los permisos mantienen su nombre oficial). */
+export const etiquetaGrupo = (g: string): string => {
+  switch (g) {
+    case 'General': return t('General');
+    case 'Miembros': return t('Members');
+    case 'Texto': return t('Text');
+    case 'Voz': return t('Voice');
+    case 'Avanzado': return t('Advanced');
+    default: return g;
+  }
+};
 
 const Interruptor: React.FC<{
   etiqueta: string; ayuda?: string; valor: boolean; desactivado?: boolean; onCambio: (v: boolean) => void;
@@ -51,7 +58,7 @@ const DialogoRol: React.FC<{
 
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!esEveryone && !form.nombre.trim()) { setError('Escribe un nombre para el rol'); return; }
+    if (!esEveryone && !form.nombre.trim()) { setError(t('Enter a name for the role')); return; }
     setGuardando(true);
     setError('');
     const datos = {
@@ -64,10 +71,10 @@ const DialogoRol: React.FC<{
     try {
       if (rol) await updateRole(guildId, rol.id, datos);
       else await createRole(guildId, datos);
-      showNotification(rol ? 'Rol actualizado' : 'Rol creado', 'success');
+      showNotification(rol ? t('Role updated') : t('Role created'), 'success');
       onCerrar();
     } catch (err) {
-      setError(typeof err === 'string' ? err : 'No se pudo guardar el rol');
+      setError(typeof err === 'string' ? err : t('Could not save the role'));
     } finally {
       setGuardando(false);
     }
@@ -76,39 +83,39 @@ const DialogoRol: React.FC<{
   return (
     <Dialogo
       abierto
-      titulo={rol ? `Editar rol «${rol.name}»` : 'Crear rol'}
+      titulo={rol ? t('Edit role “{name}”', { name: rol.name }) : t('Create role')}
       onCerrar={onCerrar}
       pie={
         <>
-          <Button variante="secundario" onClick={onCerrar}>Cancelar</Button>
-          <Button type="submit" form="form-rol" cargando={guardando}>{rol ? 'Guardar cambios' : 'Crear rol'}</Button>
+          <Button variante="secundario" onClick={onCerrar}>{t('Cancel')}</Button>
+          <Button type="submit" form="form-rol" cargando={guardando}>{rol ? t('Save changes') : t('Create role')}</Button>
         </>
       }
     >
       <form id="form-rol" className="rol-form" onSubmit={(e) => { void guardar(e); }}>
-        <Input data-autofocus etiqueta="Nombre" value={esEveryone ? '@everyone' : form.nombre} disabled={esEveryone}
+        <Input data-autofocus etiqueta={t('Name')} value={esEveryone ? '@everyone' : form.nombre} disabled={esEveryone}
           maxLength={100} onChange={(e) => setForm({ ...form, nombre: e.target.value })} error={error} autoComplete="off" />
         <div className="rol-form__fila">
           <label className="rol-form__color">
-            <span>Color</span>
+            <span>{t('Color')}</span>
             <input type="color" value={colorHex(form.color || COLOR_POR_DEFECTO)}
               onChange={(e) => setForm({ ...form, color: parseInt(e.target.value.slice(1), 16) })} />
           </label>
           <Button variante="ghost" tamano="sm" disabled={form.color === 0} onClick={() => setForm({ ...form, color: 0 })}>
-            Quitar color
+            {t('Remove color')}
           </Button>
         </div>
-        <Interruptor etiqueta="Mostrar por separado" ayuda="Lista a los miembros con este rol en su propio grupo." valor={form.hoist} onCambio={(v) => setForm({ ...form, hoist: v })} />
-        <Interruptor etiqueta="Mencionable" ayuda="Cualquiera puede mencionar el rol con @." valor={form.mentionable} onCambio={(v) => setForm({ ...form, mentionable: v })} />
+        <Interruptor etiqueta={t('Display separately')} ayuda={t('Lists the members with this role in their own group.')} valor={form.hoist} onCambio={(v) => setForm({ ...form, hoist: v })} />
+        <Interruptor etiqueta={t('Mentionable')} ayuda={t('Anyone can mention the role with @.')} valor={form.mentionable} onCambio={(v) => setForm({ ...form, mentionable: v })} />
         <div className="rol-form__admin">
-          <Interruptor etiqueta="Administrador" ayuda="Atajo: concede todos los permisos y salta los de los canales. Úsalo con cuidado." valor={admin} onCambio={(v) => poner(BIT_ADMIN, v)} />
+          <Interruptor etiqueta={t('Administrator')} ayuda={t('Shortcut: grants every permission and bypasses channel overwrites. Use with care.')} valor={admin} onCambio={(v) => poner(BIT_ADMIN, v)} />
         </div>
         <div className="rol-form__permisos">
           {GRUPOS_PERMISOS.map(({ grupo, permisos }) => (
             <fieldset key={grupo} className="rol-form__grupo">
-              <legend>{grupo}</legend>
+              <legend>{etiquetaGrupo(grupo)}</legend>
               {permisos.map(([bit, nombre]) => (
-                <Interruptor key={bit} etiqueta={nombre} valor={admin || tiene(bit)} desactivado={admin} onCambio={(v) => poner(bit, v)} />
+                <Interruptor key={bit} etiqueta={nombreOficialPermiso(nombre)} valor={admin || tiene(bit)} desactivado={admin} onCambio={(v) => poner(bit, v)} />
               ))}
             </fieldset>
           ))}
@@ -134,17 +141,17 @@ const resumenPermisos = (permisos: string): { admin: boolean; texto: string } =>
   try {
     bits = BigInt(permisos || '0');
   } catch {
-    return { admin: false, texto: 'Permisos desconocidos' };
+    return { admin: false, texto: t('Unknown permissions') };
   }
   const tiene = (bit: number) => (bits >> BigInt(bit)) & 1n;
-  if (tiene(BIT_ADMIN)) return { admin: true, texto: 'Todos los permisos (Administrador)' };
-  const nombres = PERMISOS.filter(([bit]) => tiene(bit)).map(([, nombre]) => nombre);
+  if (tiene(BIT_ADMIN)) return { admin: true, texto: t('All permissions (Administrator)') };
+  const nombres = PERMISOS.filter(([bit]) => tiene(bit)).map(([, nombre]) => nombreOficialPermiso(nombre));
   let total = 0;
   for (let b = bits; b > 0n; b >>= 1n) total += Number(b & 1n);
-  if (total === 0) return { admin: false, texto: 'Sin permisos' };
-  const mostrados = nombres.slice(0, 3).join(', ') || `${total} permisos`;
+  if (total === 0) return { admin: false, texto: t('No permissions') };
+  const mostrados = nombres.slice(0, 3).join(', ') || t('{count} permissions', { count: total });
   const resto = total - Math.min(3, nombres.length);
-  return { admin: false, texto: nombres.length && resto > 0 ? `${mostrados} y ${resto} más` : mostrados };
+  return { admin: false, texto: nombres.length && resto > 0 ? t('{shown} and {count} more', { shown: mostrados, count: resto }) : mostrados };
 };
 
 export const RolesView: React.FC = () => {
@@ -155,6 +162,7 @@ export const RolesView: React.FC = () => {
   const guildId = config.active_guild_id;
   const botId = config.active_bot_id;
   const motivoGestion = motivoPermisoAusente(useGuildPanel().permissions, 'Gestionar roles');
+  const jerarquia = explicacionJerarquia();
   const [editando, setEditando] = useState<Role | 'nuevo' | null>(null);
   const [borrando, setBorrando] = useState<Role | null>(null);
   const [moviendo, setMoviendo] = useState(false);
@@ -190,7 +198,7 @@ export const RolesView: React.FC = () => {
 
   const copyId = (id: string) => {
     void navigator.clipboard.writeText(id);
-    showNotification('ID copiado', 'info');
+    showNotification(t('ID copied'), 'info');
   };
 
   const total = serverMap?.roles.length ?? 0;
@@ -205,7 +213,7 @@ export const RolesView: React.FC = () => {
     try {
       await reorderRoles(guildId, [[rol.id, vecino.position], [vecino.id, rol.position]]);
     } catch (e) {
-      showNotification(typeof e === 'string' ? e : 'No se pudo mover el rol', 'error');
+      showNotification(typeof e === 'string' ? e : t('Could not move the role'), 'error');
     } finally {
       setMoviendo(false);
     }
@@ -215,48 +223,48 @@ export const RolesView: React.FC = () => {
     if (!guildId || !borrando) return;
     try {
       await deleteRole(guildId, borrando.id);
-      showNotification(`Rol «${borrando.name}» borrado`, 'success');
+      showNotification(t('Role “{name}” deleted', { name: borrando.name }), 'success');
       setBorrando(null);
     } catch (e) {
-      showNotification(typeof e === 'string' ? e : 'No se pudo borrar el rol', 'error');
+      showNotification(typeof e === 'string' ? e : t('Could not delete the role'), 'error');
     }
   };
 
   return (
     <div className="vista roles-view">
-      <CabeceraVista titulo="Roles" cuenta={total}>
-        <BuscadorVista valor={search} onCambio={setSearch} placeholder="Buscar roles…" icono={<Search size={16} />} />
+      <CabeceraVista titulo={t('Roles')} cuenta={total}>
+        <BuscadorVista valor={search} onCambio={setSearch} placeholder={t('Search roles…')} icono={<Search size={16} />} />
         <Button disabled={!!motivoGestion || !guildId} title={motivoGestion ?? undefined} onClick={() => setEditando('nuevo')}>
-          <Plus size={14} /> Crear rol
+          <Plus size={14} /> {t('Create role')}
         </Button>
       </CabeceraVista>
-      {motivoGestion && <p className="rol-aviso" role="status">{motivoGestion}: no podrás crear ni editar roles.</p>}
+      {motivoGestion && <p className="rol-aviso" role="status">{t('{reason}: you will not be able to create or edit roles.', { reason: motivoGestion })}</p>}
       {roles.some(bloqueado) && (
-        <p className="rol-aviso" role="note"><Lock size={14} aria-hidden="true" /> <span>Los roles con candado están en la posición del rol más alto del bot o por encima. {EXPLICACION_JERARQUIA}</span></p>
+        <p className="rol-aviso" role="note"><Lock size={14} aria-hidden="true" /> <span>{t('Roles with a lock are at or above the bot’s highest role.')} {jerarquia}</span></p>
       )}
 
       <EstadoVista>
         {total === 0 ? (
-          <EstadoVacio titulo="Este servidor no tiene roles" descripcion="Crea un rol en Discord y pulsa Resincronizar en el Panel para verlo aquí." />
+          <EstadoVacio titulo={t('This server has no roles')} descripcion={t('Create a role in Discord and press Resync in the Dashboard to see it here.')} />
         ) : roles.length === 0 ? (
-          <EstadoVacio titulo="Sin resultados" descripcion={`Ningún rol coincide con «${search}». Borra la búsqueda para ver todos.`} />
+          <EstadoVacio titulo={t('No results')} descripcion={t('No role matches “{search}”. Clear the search to see them all.', { search })} />
         ) : (
           <div className="vista__tarjeta vista__tabla-caja">
-            <table className="vista__tabla" aria-label="Roles">
+            <table className="vista__tabla" aria-label={t('Roles')}>
               <thead>
                 <tr>
-                  <th scope="col">Rol</th>
-                  <th scope="col" className="num" title="Posición en la jerarquía">Pos.</th>
-                  <th scope="col">Tipo</th>
-                  <th scope="col" className="num">Miembros</th>
-                  <th scope="col"><span className="vista__solo-lector">Acciones</span></th>
+                  <th scope="col">{t('Role')}</th>
+                  <th scope="col" className="num" title={t('Position in the hierarchy')}>{t('Pos.')}</th>
+                  <th scope="col">{t('Type')}</th>
+                  <th scope="col" className="num">{t('Members')}</th>
+                  <th scope="col"><span className="vista__solo-lector">{t('Actions')}</span></th>
                 </tr>
               </thead>
               <tbody>
                 {roles.map((role) => {
                   const perms = resumenPermisos(role.permissions);
                   const cerrado = bloqueado(role);
-                  const motivo = motivoGestion ?? (cerrado ? EXPLICACION_JERARQUIA : null);
+                  const motivo = motivoGestion ?? (cerrado ? jerarquia : null);
                   const ordenable = !esEveryone(role) && !motivo && !search && !moviendo;
                   const sobre = roles[roles.indexOf(role) - 1];
                   const bajo = roles[roles.indexOf(role) + 1];
@@ -267,27 +275,27 @@ export const RolesView: React.FC = () => {
                           <span className="rol__color" style={{ backgroundColor: role.color ? colorHex(role.color) : 'var(--text-3)' }} aria-hidden="true" />
                           <div className="vista__fila-cuerpo">
                             <span className="vista__fila-nombre vista__recorte">
-                              {cerrado && <Lock size={12} aria-label="Bloqueado por la jerarquía" />} {role.name}
+                              {cerrado && <Lock size={12} aria-label={t('Locked by the hierarchy')} />} {role.name}
                             </span>
                             <span className="vista__fila-sub vista__recorte">
-                              {role.color ? <span className="vista__mono">{colorHex(role.color).toUpperCase()}</span> : 'Sin color'} · {perms.texto}
+                              {role.color ? <span className="vista__mono">{colorHex(role.color).toUpperCase()}</span> : t('No color')} · {perms.texto}
                             </span>
                           </div>
                         </div>
                       </td>
                       <td className="num">{role.position}</td>
-                      <td><Badge tono={perms.admin ? 'peligro' : 'neutro'}>{perms.admin ? 'Administrador' : 'Permisos'}</Badge></td>
+                      <td><Badge tono={perms.admin ? 'peligro' : 'neutro'}>{perms.admin ? t('Administrator') : t('Permissions')}</Badge></td>
                       <td className="num">{contarMiembros(role.id).toLocaleString()}</td>
                       <td className="rol-acciones">
-                        <Button variante="ghost" tamano="sm" title={motivo ?? (search ? 'Borra la búsqueda para reordenar' : 'Subir posición')} aria-label={`Subir ${role.name}`}
+                        <Button variante="ghost" tamano="sm" title={motivo ?? (search ? t('Clear the search to reorder') : t('Move up'))} aria-label={t('Move up {name}', { name: role.name })}
                           disabled={!ordenable || !sobre || bloqueado(sobre)} onClick={() => { void mover(role, 1); }}><ArrowUp size={12} /></Button>
-                        <Button variante="ghost" tamano="sm" title={motivo ?? (search ? 'Borra la búsqueda para reordenar' : 'Bajar posición')} aria-label={`Bajar ${role.name}`}
+                        <Button variante="ghost" tamano="sm" title={motivo ?? (search ? t('Clear the search to reorder') : t('Move down'))} aria-label={t('Move down {name}', { name: role.name })}
                           disabled={!ordenable || !bajo || esEveryone(bajo)} onClick={() => { void mover(role, -1); }}><ArrowDown size={12} /></Button>
-                        <Button variante="ghost" tamano="sm" title={motivo ?? 'Editar rol'} aria-label={`Editar ${role.name}`}
+                        <Button variante="ghost" tamano="sm" title={motivo ?? t('Edit role')} aria-label={t('Edit {name}', { name: role.name })}
                           disabled={!!motivo} onClick={() => setEditando(role)}><Pencil size={12} /></Button>
-                        <Button variante="ghost" tamano="sm" title={motivo ?? (esEveryone(role) ? '@everyone no se puede borrar' : 'Borrar rol')} aria-label={`Borrar ${role.name}`}
+                        <Button variante="ghost" tamano="sm" title={motivo ?? (esEveryone(role) ? t('@everyone cannot be deleted') : t('Delete role'))} aria-label={t('Delete {name}', { name: role.name })}
                           disabled={!!motivo || esEveryone(role)} onClick={() => setBorrando(role)}><Trash2 size={12} /></Button>
-                        <Button variante="ghost" tamano="sm" title="Copiar ID" aria-label={`Copiar ID de ${role.name}`} onClick={() => copyId(role.id)}>
+                        <Button variante="ghost" tamano="sm" title={t('Copy ID')} aria-label={t('Copy ID of {name}', { name: role.name })} onClick={() => copyId(role.id)}>
                           <Copy size={12} />
                         </Button>
                       </td>
@@ -311,8 +319,8 @@ export const RolesView: React.FC = () => {
       )}
       <ConfirmarPeligroso
         abierto={!!borrando}
-        titulo="Borrar rol"
-        descripcion="El rol se quita de todos los miembros que lo tengan. No se puede deshacer."
+        titulo={t('Delete role')}
+        descripcion={t('The role is removed from every member who has it. This cannot be undone.')}
         nombre={borrando?.name ?? ''}
         onConfirmar={borrar}
         onCerrar={() => setBorrando(null)}

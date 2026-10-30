@@ -16,14 +16,15 @@ use sqlx::SqlitePool;
 
 use crate::commands::{self, sincronizar_guilds, token_del_bot_activo};
 use crate::discord::{DatosCanal, DatosRol};
+use crate::i18n;
 use crate::state::{AppState, Channel, Guild, Member, Role};
 
 /// Respuesta de cada herramienta cuando no hay ningún bot activo.
-pub const SIN_BOT: &str = "No hay bot activo en ARGUS: añade o elige uno en la app";
+pub const SIN_BOT: &str = "No active bot in ARGUS: add or choose one in the app";
 
 /// Respuesta cuando una herramienta no recibe `guild_id` y no hay servidor activo.
 pub const SIN_SERVIDOR: &str =
-    "No hay servidor activo en ARGUS: indica `guild_id` o elige uno con `elegir_servidor`";
+    "No active server in ARGUS: pass `guild_id` or choose one with `elegir_servidor`";
 
 /// Mensajes que devuelve `leer_mensajes` como máximo.
 const MENSAJES_MAX: usize = 50;
@@ -91,9 +92,11 @@ impl PermisosParam {
     /// Texto de bits que espera Discord.
     pub fn a_bits(&self) -> Result<String, String> {
         match self {
-            Self::Bits(t) => t.trim().parse::<u64>().map(|b| b.to_string()).map_err(|_| {
-                "Los permisos deben ser un número de bits o una lista de nombres".to_string()
-            }),
+            Self::Bits(t) => t
+                .trim()
+                .parse::<u64>()
+                .map(|b| b.to_string())
+                .map_err(|_| "Permissions must be a bits number or a list of names".to_string()),
             Self::Nombres(n) => crate::discord::bits_desde_nombres(n),
         }
     }
@@ -120,11 +123,11 @@ impl ColorParam {
             ColorParam::Hex(t) => {
                 let hex = t.trim().trim_start_matches('#');
                 u32::from_str_radix(hex, 16)
-                    .map_err(|_| format!("Color no válido: «{t}» (usa #RRGGBB o un número RGB)"))?
+                    .map_err(|_| format!("Invalid color: «{t}» (use #RRGGBB or an RGB number)"))?
             }
         };
         if valor > 0xFF_FFFF {
-            return Err(format!("Color fuera de rango: {valor} (máximo #FFFFFF)"));
+            return Err(format!("Color out of range: {valor} (maximum #FFFFFF)"));
         }
         Ok(valor)
     }
@@ -470,7 +473,7 @@ impl ArgusMcp {
         self.state
             .load_config_from_pool(&self.pool)
             .await
-            .map_err(|e| format!("No se pudo leer la configuración de ARGUS: {e}"))
+            .map_err(|e| format!("Could not read the ARGUS configuration: {e}"))
     }
 
     /// Recarga y exige un bot activo.
@@ -549,13 +552,13 @@ impl ArgusMcp {
         let guild_id = guild_id.trim();
         let guilds = self.servidores().await.map_err(|e| self.limpiar(e))?;
         let guild = guilds.iter().find(|g| g.id == guild_id).ok_or_else(|| {
-            format!("El bot activo no está en el servidor {guild_id}: usa `listar_servidores`")
+            format!("The active bot is not in server {guild_id}: use `listar_servidores`")
         })?;
         self.state.set_active_guild(&guild.id);
         self.state
             .save_config_to_pool(&self.pool)
             .await
-            .map_err(|e| format!("No se pudo guardar el servidor activo: {e}"))?;
+            .map_err(|e| format!("Could not save the active server: {e}"))?;
         Ok(json!({ "servidor_activo": { "id": guild.id, "nombre": guild.name } }).to_string())
     }
 
@@ -596,7 +599,7 @@ impl ArgusMcp {
         // Sin el intent de miembros Discord rechaza la lista: el mapa sigue siendo útil.
         let (miembros, aviso) = match commands::leer_miembros(&self.state, &gid, self.url()).await {
             Ok(m) => (Some(m), None),
-            Err(e) => (None, Some(self.limpiar(e))),
+            Err(e) => (None, Some(self.tr(&self.limpiar(e)))),
         };
         let visibles: Vec<&Channel> = canales
             .iter()
@@ -879,8 +882,22 @@ impl ArgusMcp {
 
     // ------------------------------------------- escritura: mensajes, canales, roles
 
-    fn mensaje(texto: String) -> Result<String, String> {
-        Ok(json!({ "mensaje": texto }).to_string())
+    fn mensaje(&self, texto: String) -> Result<String, String> {
+        Ok(json!({ "mensaje": self.tr(&texto) }).to_string())
+    }
+
+    /// Idioma guardado en la config de la base (inglés por defecto).
+    fn idioma(&self) -> String {
+        i18n::idioma(&self.state)
+    }
+
+    fn tr(&self, texto: &str) -> String {
+        i18n::tr(&self.idioma(), texto)
+    }
+
+    /// Salida de una herramienta: el error sale en el idioma de la config.
+    fn salida(&self, r: Result<String, String>) -> Result<String, String> {
+        r.map_err(|e| self.tr(&e))
     }
 
     pub async fn enviar_mensaje_json(
@@ -892,7 +909,7 @@ impl ArgusMcp {
         let texto = commands::enviar_a_canal(&self.state, channel_id.trim(), contenido, self.url())
             .await
             .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     pub async fn enviar_dm_json(&self, user_id: &str, contenido: &str) -> Result<String, String> {
@@ -900,7 +917,7 @@ impl ArgusMcp {
         let texto = commands::enviar_dm(&self.state, user_id.trim(), contenido, self.url())
             .await
             .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     pub async fn borrar_mensaje_json(
@@ -919,7 +936,7 @@ impl ArgusMcp {
         )
         .await
         .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     pub async fn borrar_mensajes_json(
@@ -938,7 +955,7 @@ impl ArgusMcp {
         )
         .await
         .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     pub async fn fijar_mensaje_json(
@@ -959,7 +976,7 @@ impl ArgusMcp {
         )
         .await
         .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     pub async fn crear_canal_json(&self, p: &CrearCanalParams) -> Result<String, String> {
@@ -974,7 +991,7 @@ impl ArgusMcp {
                 "foro" | "forum" => 15,
                 _ => {
                     return Err(
-                        "Tipo de canal no admitido: usa texto, voz, categoria, anuncios o foro"
+                        "Unsupported channel type: use texto, voz, categoria, anuncios or foro"
                             .to_string(),
                     )
                 }
@@ -1020,7 +1037,7 @@ impl ArgusMcp {
         let texto = commands::borrar_canal(&self.state, &gid, channel_id.trim(), self.url())
             .await
             .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     pub async fn ordenar_canales_json(
@@ -1036,7 +1053,7 @@ impl ArgusMcp {
         let texto = commands::reordenar_canales(&self.state, &gid, &pares, self.url())
             .await
             .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     pub async fn crear_rol_json(&self, p: &CrearRolParams) -> Result<String, String> {
@@ -1078,7 +1095,7 @@ impl ArgusMcp {
         let texto = commands::borrar_rol(&self.state, &gid, role_id.trim(), self.url())
             .await
             .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     pub async fn ordenar_roles_json(
@@ -1094,7 +1111,7 @@ impl ArgusMcp {
         let texto = commands::reordenar_roles(&self.state, &gid, &pares, self.url())
             .await
             .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     pub async fn cambiar_rol_json(
@@ -1115,7 +1132,7 @@ impl ArgusMcp {
         )
         .await
         .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     pub async fn permiso_canal_json(&self, p: &PermisoCanalParams) -> Result<String, String> {
@@ -1135,7 +1152,7 @@ impl ArgusMcp {
         )
         .await
         .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     pub async fn quitar_permiso_canal_json(
@@ -1154,7 +1171,7 @@ impl ArgusMcp {
         )
         .await
         .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     // ------------------------------- escritura: moderación, servidor, invitaciones, webhooks
@@ -1170,7 +1187,7 @@ impl ArgusMcp {
         )
         .await
         .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     pub async fn banear_json(&self, p: &BanearParams) -> Result<String, String> {
@@ -1187,7 +1204,7 @@ impl ArgusMcp {
         )
         .await
         .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     pub async fn desbanear_json(
@@ -1200,7 +1217,7 @@ impl ArgusMcp {
         let texto = commands::quitar_ban(&self.state, &gid, user_id.trim(), motivo, self.url())
             .await
             .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     pub async fn silenciar_json(&self, p: &SilenciarParams) -> Result<String, String> {
@@ -1215,7 +1232,7 @@ impl ArgusMcp {
         )
         .await
         .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     pub async fn cambiar_apodo_json(&self, p: &CambiarApodoParams) -> Result<String, String> {
@@ -1230,7 +1247,7 @@ impl ArgusMcp {
         )
         .await
         .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     /// Lee los ajustes actuales y cambia solo los campos indicados; el guardado
@@ -1306,7 +1323,7 @@ impl ArgusMcp {
         let texto = commands::borrar_invitacion(&self.state, &gid, codigo.trim(), self.url())
             .await
             .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 
     /// Única respuesta que incluye la URL completa del webhook (lleva su token).
@@ -1336,7 +1353,7 @@ impl ArgusMcp {
         let texto = commands::borrar_webhook(&self.state, &gid, webhook_id.trim(), self.url())
             .await
             .map_err(|e| self.limpiar(e))?;
-        Self::mensaje(texto)
+        self.mensaje(texto)
     }
 }
 
@@ -1354,7 +1371,7 @@ fn tipo_de_overwrite(t: &str) -> Result<u8, String> {
     match normalizar(t).as_str() {
         "rol" | "role" | "0" => Ok(0),
         "miembro" | "member" | "usuario" | "1" => Ok(1),
-        _ => Err("El tipo debe ser «rol» o «miembro»".to_string()),
+        _ => Err("The type must be «rol» or «miembro»".to_string()),
     }
 }
 
@@ -1414,472 +1431,532 @@ fn miembro_json(m: &Member, roles: &[Role]) -> serde_json::Value {
 impl ArgusMcp {
     #[tool(
         name = "estado",
-        description = "Muestra el bot activo de ARGUS (con su nombre oficial de Discord) y el servidor activo, que es el que usan por defecto las demás herramientas."
+        description = "Shows the active ARGUS bot (with its official Discord name) and the active server, which the other tools use by default."
     )]
     async fn estado(&self) -> Result<String, String> {
-        self.estado_json().await
+        let r = self.estado_json().await;
+        self.salida(r)
     }
 
     #[tool(
         name = "listar_servidores",
-        description = "Lista los servidores de Discord donde está el bot activo (id y nombre) e indica cuál es el servidor activo."
+        description = "Lists the Discord servers the active bot is in (id and name) and marks which one is the active server."
     )]
     async fn listar_servidores(&self) -> Result<String, String> {
-        self.listar_servidores_json().await
+        let r = self.listar_servidores_json().await;
+        self.salida(r)
     }
 
     #[tool(
         name = "elegir_servidor",
-        description = "Cambia el servidor activo (se guarda en la base de datos de ARGUS, igual que al elegirlo en la app). El servidor debe ser uno de los del bot activo."
+        description = "Changes the active server (saved in the ARGUS database, same as choosing it in the app). It must be one of the active bot's servers."
     )]
     async fn elegir_servidor(
         &self,
         Parameters(p): Parameters<ElegirServidorParams>,
     ) -> Result<String, String> {
-        self.elegir_servidor_json(&p.guild_id).await
+        let r = self.elegir_servidor_json(&p.guild_id).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "mapa_servidor",
-        description = "Mapa del servidor: categorías con sus canales, canales sin categoría y roles (con nº de miembros). Solo lectura. `guild_id` es opcional (por defecto, el servidor activo)."
+        description = "Server map: categories with their channels, channels without a category and roles (with member counts). Read-only. `guild_id` is optional (defaults to the active server)."
     )]
     async fn mapa_servidor(
         &self,
         Parameters(p): Parameters<ServidorParams>,
     ) -> Result<String, String> {
-        self.mapa_servidor_json(p.guild_id.as_deref()).await
+        let r = self.mapa_servidor_json(p.guild_id.as_deref()).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "listar_canales",
-        description = "Lista los canales y categorías del servidor (id, nombre, tipo, categoría, posición y permisos específicos). Solo lectura. `guild_id` es opcional."
+        description = "Lists the server's channels and categories (id, name, type, category, position and specific permissions). Read-only. `guild_id` is optional."
     )]
     async fn listar_canales(
         &self,
         Parameters(p): Parameters<ServidorParams>,
     ) -> Result<String, String> {
-        self.listar_canales_json(p.guild_id.as_deref()).await
+        let r = self.listar_canales_json(p.guild_id.as_deref()).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "listar_roles",
-        description = "Lista los roles del servidor, del más alto al más bajo, con color y permisos legibles. Solo lectura. `guild_id` es opcional."
+        description = "Lists the server's roles, highest to lowest, with color and readable permissions. Read-only. `guild_id` is optional."
     )]
     async fn listar_roles(
         &self,
         Parameters(p): Parameters<ServidorParams>,
     ) -> Result<String, String> {
-        self.listar_roles_json(p.guild_id.as_deref()).await
+        let r = self.listar_roles_json(p.guild_id.as_deref()).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "listar_miembros",
-        description = "Lista miembros del servidor con sus roles. Admite `buscar` (usuario, apodo o ID) y `limite` (por defecto 25, máximo 100). Solo lectura. `guild_id` es opcional."
+        description = "Lists server members with their roles. Supports `buscar` (user, nickname or ID) and `limite` (default 25, maximum 100). Read-only. `guild_id` is optional."
     )]
     async fn listar_miembros(
         &self,
         Parameters(p): Parameters<ListarMiembrosParams>,
     ) -> Result<String, String> {
-        self.listar_miembros_json(p.guild_id.as_deref(), p.buscar.as_deref(), p.limite)
-            .await
+        let r = self
+            .listar_miembros_json(p.guild_id.as_deref(), p.buscar.as_deref(), p.limite)
+            .await;
+        self.salida(r)
     }
 
     #[tool(
         name = "info_miembro",
-        description = "Datos de un miembro (usuario, apodo, roles con nombre, fecha de ingreso). Solo lectura. `guild_id` es opcional."
+        description = "Details of one member (user, nickname, roles with names, join date). Read-only. `guild_id` is optional."
     )]
     async fn info_miembro(
         &self,
         Parameters(p): Parameters<InfoMiembroParams>,
     ) -> Result<String, String> {
-        self.info_miembro_json(p.guild_id.as_deref(), &p.user_id)
-            .await
+        let r = self
+            .info_miembro_json(p.guild_id.as_deref(), &p.user_id)
+            .await;
+        self.salida(r)
     }
 
     #[tool(
         name = "permisos_bot",
-        description = "Permisos efectivos del bot activo en el servidor, con nombres en español. Solo lectura. `guild_id` es opcional."
+        description = "Effective permissions of the active bot on the server, with their official names. Read-only. `guild_id` is optional."
     )]
     async fn permisos_bot(
         &self,
         Parameters(p): Parameters<ServidorParams>,
     ) -> Result<String, String> {
-        self.permisos_bot_json(p.guild_id.as_deref()).await
+        let r = self.permisos_bot_json(p.guild_id.as_deref()).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "info_servidor",
-        description = "Nombre, icono y número aproximado de miembros del servidor. Solo lectura. `guild_id` es opcional."
+        description = "Name, icon and approximate member count of the server. Read-only. `guild_id` is optional."
     )]
     async fn info_servidor(
         &self,
         Parameters(p): Parameters<ServidorParams>,
     ) -> Result<String, String> {
-        self.info_servidor_json(p.guild_id.as_deref()).await
+        let r = self.info_servidor_json(p.guild_id.as_deref()).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "ajustes_servidor",
-        description = "Ajustes generales del servidor (descripción, verificación, filtro de contenido, notificaciones, canales de sistema y AFK). Requiere «Gestionar servidor». Solo lectura. `guild_id` es opcional."
+        description = "General server settings (description, verification, content filter, notifications, system and AFK channels). Requires «Manage Server». Read-only. `guild_id` is optional."
     )]
     async fn ajustes_servidor(
         &self,
         Parameters(p): Parameters<ServidorParams>,
     ) -> Result<String, String> {
-        self.ajustes_servidor_json(p.guild_id.as_deref()).await
+        let r = self.ajustes_servidor_json(p.guild_id.as_deref()).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "registro_auditoria",
-        description = "Últimas 50 entradas del registro de auditoría con texto legible. Requiere «Ver registro de auditoría». Solo lectura. `guild_id` es opcional."
+        description = "Latest 50 audit log entries as readable text. Requires «View Audit Log». Read-only. `guild_id` is optional."
     )]
     async fn registro_auditoria(
         &self,
         Parameters(p): Parameters<ServidorParams>,
     ) -> Result<String, String> {
-        self.registro_auditoria_json(p.guild_id.as_deref()).await
+        let r = self.registro_auditoria_json(p.guild_id.as_deref()).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "leer_mensajes",
-        description = "Lee los últimos mensajes de un canal (`limite` de 1 a 50, del más nuevo al más antiguo). Requiere «Leer el historial de mensajes». Solo lectura. `guild_id` es opcional."
+        description = "Reads the latest messages of a channel (`limite` from 1 to 50, newest first). Requires «Read Message History». Read-only. `guild_id` is optional."
     )]
     async fn leer_mensajes(
         &self,
         Parameters(p): Parameters<LeerMensajesParams>,
     ) -> Result<String, String> {
-        self.leer_mensajes_json(p.guild_id.as_deref(), &p.channel_id, p.limite)
-            .await
+        let r = self
+            .leer_mensajes_json(p.guild_id.as_deref(), &p.channel_id, p.limite)
+            .await;
+        self.salida(r)
     }
 
     #[tool(
         name = "listar_baneos",
-        description = "Lista los usuarios baneados con su motivo. Requiere «Banear miembros». Solo lectura. `guild_id` es opcional."
+        description = "Lists banned users with their reason. Requires «Ban Members». Read-only. `guild_id` is optional."
     )]
     async fn listar_baneos(
         &self,
         Parameters(p): Parameters<ServidorParams>,
     ) -> Result<String, String> {
-        self.listar_baneos_json(p.guild_id.as_deref()).await
+        let r = self.listar_baneos_json(p.guild_id.as_deref()).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "listar_invitaciones",
-        description = "Lista las invitaciones del servidor (código, enlace, canal, usos). Requiere «Gestionar servidor». Solo lectura. `guild_id` es opcional."
+        description = "Lists the server's invites (code, link, channel, uses). Requires «Manage Server». Read-only. `guild_id` is optional."
     )]
     async fn listar_invitaciones(
         &self,
         Parameters(p): Parameters<ServidorParams>,
     ) -> Result<String, String> {
-        self.listar_invitaciones_json(p.guild_id.as_deref()).await
+        let r = self.listar_invitaciones_json(p.guild_id.as_deref()).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "listar_webhooks",
-        description = "Lista los webhooks del servidor (id, nombre, canal) sin token ni URL: la URL completa solo se da al crearlos. Requiere «Gestionar webhooks». Solo lectura. `guild_id` es opcional."
+        description = "Lists the server's webhooks (id, name, channel) without token or URL: the full URL is only given when creating one. Requires «Manage Webhooks». Read-only. `guild_id` is optional."
     )]
     async fn listar_webhooks(
         &self,
         Parameters(p): Parameters<ServidorParams>,
     ) -> Result<String, String> {
-        self.listar_webhooks_json(p.guild_id.as_deref()).await
+        let r = self.listar_webhooks_json(p.guild_id.as_deref()).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "enviar_mensaje",
-        description = "Envía un mensaje de texto (hasta 2000 caracteres) a un canal como el bot activo. Requiere poder enviar mensajes en ese canal."
+        description = "Sends a text message (up to 2000 characters) to a channel as the active bot. Requires permission to send messages in that channel."
     )]
     async fn enviar_mensaje(
         &self,
         Parameters(p): Parameters<EnviarMensajeParams>,
     ) -> Result<String, String> {
-        self.enviar_mensaje_json(&p.channel_id, &p.contenido).await
+        let r = self.enviar_mensaje_json(&p.channel_id, &p.contenido).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "enviar_dm",
-        description = "Envía un mensaje directo (hasta 2000 caracteres) a un usuario como el bot activo. El usuario debe permitir mensajes directos."
+        description = "Sends a direct message (up to 2000 characters) to a user as the active bot. The user must allow direct messages."
     )]
     async fn enviar_dm(&self, Parameters(p): Parameters<EnviarDmParams>) -> Result<String, String> {
-        self.enviar_dm_json(&p.user_id, &p.contenido).await
+        let r = self.enviar_dm_json(&p.user_id, &p.contenido).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "borrar_mensaje",
-        description = "Borra un mensaje de un canal. Requiere «Gestionar mensajes». `guild_id` es opcional (por defecto, el servidor activo)."
+        description = "Deletes a message from a channel. Requires «Manage Messages». `guild_id` is optional (defaults to the active server)."
     )]
     async fn borrar_mensaje(
         &self,
         Parameters(p): Parameters<MensajeParams>,
     ) -> Result<String, String> {
-        self.borrar_mensaje_json(p.guild_id.as_deref(), &p.channel_id, &p.message_id)
-            .await
+        let r = self
+            .borrar_mensaje_json(p.guild_id.as_deref(), &p.channel_id, &p.message_id)
+            .await;
+        self.salida(r)
     }
 
     #[tool(
         name = "borrar_mensajes",
-        description = "Borra varios mensajes de un canal de una vez (entre 2 y 100, todos de menos de 14 días). Requiere «Gestionar mensajes». `guild_id` es opcional."
+        description = "Deletes several messages from a channel at once (between 2 and 100, all less than 14 days old). Requires «Manage Messages». `guild_id` is optional."
     )]
     async fn borrar_mensajes(
         &self,
         Parameters(p): Parameters<BorrarMensajesParams>,
     ) -> Result<String, String> {
-        self.borrar_mensajes_json(p.guild_id.as_deref(), &p.channel_id, &p.message_ids)
-            .await
+        let r = self
+            .borrar_mensajes_json(p.guild_id.as_deref(), &p.channel_id, &p.message_ids)
+            .await;
+        self.salida(r)
     }
 
     #[tool(
         name = "fijar_mensaje",
-        description = "Fija un mensaje en su canal. Requiere «Gestionar mensajes». `guild_id` es opcional."
+        description = "Pins a message in its channel. Requires «Manage Messages». `guild_id` is optional."
     )]
     async fn fijar_mensaje(
         &self,
         Parameters(p): Parameters<MensajeParams>,
     ) -> Result<String, String> {
-        self.fijar_mensaje_json(p.guild_id.as_deref(), &p.channel_id, &p.message_id, true)
-            .await
+        let r = self
+            .fijar_mensaje_json(p.guild_id.as_deref(), &p.channel_id, &p.message_id, true)
+            .await;
+        self.salida(r)
     }
 
     #[tool(
         name = "desfijar_mensaje",
-        description = "Quita un mensaje de los fijados de su canal. Requiere «Gestionar mensajes». `guild_id` es opcional."
+        description = "Unpins a message from its channel. Requires «Manage Messages». `guild_id` is optional."
     )]
     async fn desfijar_mensaje(
         &self,
         Parameters(p): Parameters<MensajeParams>,
     ) -> Result<String, String> {
-        self.fijar_mensaje_json(p.guild_id.as_deref(), &p.channel_id, &p.message_id, false)
-            .await
+        let r = self
+            .fijar_mensaje_json(p.guild_id.as_deref(), &p.channel_id, &p.message_id, false)
+            .await;
+        self.salida(r)
     }
 
     #[tool(
         name = "crear_canal",
-        description = "Crea un canal o categoría (`tipo`: texto, voz, categoria, anuncios o foro). Requiere «Gestionar canales». `guild_id` es opcional."
+        description = "Creates a channel or category (`tipo`: texto, voz, categoria, anuncios or foro). Requires «Manage Channels». `guild_id` is optional."
     )]
     async fn crear_canal(
         &self,
         Parameters(p): Parameters<CrearCanalParams>,
     ) -> Result<String, String> {
-        self.crear_canal_json(&p).await
+        let r = self.crear_canal_json(&p).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "editar_canal",
-        description = "Edita nombre, categoría, tema, NSFW o modo lento de un canal; solo cambia los campos indicados. Requiere «Gestionar canales». `guild_id` es opcional."
+        description = "Edits a channel's name, category, topic, NSFW flag or slowmode; only the given fields change. Requires «Manage Channels». `guild_id` is optional."
     )]
     async fn editar_canal(
         &self,
         Parameters(p): Parameters<EditarCanalParams>,
     ) -> Result<String, String> {
-        self.editar_canal_json(&p).await
+        let r = self.editar_canal_json(&p).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "borrar_canal",
-        description = "Borra un canal o categoría (acción irreversible). Requiere «Gestionar canales». `guild_id` es opcional."
+        description = "Deletes a channel or category (irreversible). Requires «Manage Channels». `guild_id` is optional."
     )]
     async fn borrar_canal(&self, Parameters(p): Parameters<CanalParams>) -> Result<String, String> {
-        self.borrar_canal_json(p.guild_id.as_deref(), &p.channel_id)
-            .await
+        let r = self
+            .borrar_canal_json(p.guild_id.as_deref(), &p.channel_id)
+            .await;
+        self.salida(r)
     }
 
     #[tool(
         name = "ordenar_canales",
-        description = "Cambia la posición de varios canales a la vez con una lista de {id, posicion}. Requiere «Gestionar canales». `guild_id` es opcional."
+        description = "Changes the position of several channels at once with a list of {id, posicion}. Requires «Manage Channels». `guild_id` is optional."
     )]
     async fn ordenar_canales(
         &self,
         Parameters(p): Parameters<OrdenarParams>,
     ) -> Result<String, String> {
-        self.ordenar_canales_json(p.guild_id.as_deref(), &p.posiciones)
-            .await
+        let r = self
+            .ordenar_canales_json(p.guild_id.as_deref(), &p.posiciones)
+            .await;
+        self.salida(r)
     }
 
     #[tool(
         name = "crear_rol",
-        description = "Crea un rol. `permisos` acepta el texto de bits o una lista de nombres (p. ej. [\"ManageMessages\",\"ViewChannel\"]). Requiere «Gestionar roles». `guild_id` es opcional."
+        description = "Creates a role. `permisos` accepts the bits text or a list of names (e.g. [\"ManageMessages\",\"ViewChannel\"]). Requires «Manage Roles». `guild_id` is optional."
     )]
     async fn crear_rol(&self, Parameters(p): Parameters<CrearRolParams>) -> Result<String, String> {
-        self.crear_rol_json(&p).await
+        let r = self.crear_rol_json(&p).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "editar_rol",
-        description = "Edita un rol; solo cambia los campos indicados. `permisos` (bits o lista de nombres) sustituye a los actuales. Requiere «Gestionar roles» y que el rol esté por debajo del rol del bot. `guild_id` es opcional."
+        description = "Edits a role; only the given fields change. `permisos` (bits or list of names) replaces the current ones. Requires «Manage Roles» and the role must be below the bot's role. `guild_id` is optional."
     )]
     async fn editar_rol(
         &self,
         Parameters(p): Parameters<EditarRolParams>,
     ) -> Result<String, String> {
-        self.editar_rol_json(&p).await
+        let r = self.editar_rol_json(&p).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "borrar_rol",
-        description = "Borra un rol (acción irreversible). Requiere «Gestionar roles» y que el rol esté por debajo del rol del bot. `guild_id` es opcional."
+        description = "Deletes a role (irreversible). Requires «Manage Roles» and the role must be below the bot's role. `guild_id` is optional."
     )]
     async fn borrar_rol(&self, Parameters(p): Parameters<RolParams>) -> Result<String, String> {
-        self.borrar_rol_json(p.guild_id.as_deref(), &p.role_id)
-            .await
+        let r = self
+            .borrar_rol_json(p.guild_id.as_deref(), &p.role_id)
+            .await;
+        self.salida(r)
     }
 
     #[tool(
         name = "ordenar_roles",
-        description = "Cambia la posición de varios roles con una lista de {id, posicion}. Origen y destino deben quedar por debajo del rol del bot. Requiere «Gestionar roles». `guild_id` es opcional."
+        description = "Changes the position of several roles with a list of {id, posicion}. Source and target must stay below the bot's role. Requires «Manage Roles». `guild_id` is optional."
     )]
     async fn ordenar_roles(
         &self,
         Parameters(p): Parameters<OrdenarParams>,
     ) -> Result<String, String> {
-        self.ordenar_roles_json(p.guild_id.as_deref(), &p.posiciones)
-            .await
+        let r = self
+            .ordenar_roles_json(p.guild_id.as_deref(), &p.posiciones)
+            .await;
+        self.salida(r)
     }
 
     #[tool(
         name = "dar_rol",
-        description = "Añade un rol a un miembro. Discord exige «Gestionar roles» y que el rol esté por debajo del rol del bot. `guild_id` es opcional."
+        description = "Adds a role to a member. Discord requires «Manage Roles» and the role must be below the bot's role. `guild_id` is optional."
     )]
     async fn dar_rol(&self, Parameters(p): Parameters<RolMiembroParams>) -> Result<String, String> {
-        self.cambiar_rol_json(p.guild_id.as_deref(), &p.user_id, &p.role_id, true)
-            .await
+        let r = self
+            .cambiar_rol_json(p.guild_id.as_deref(), &p.user_id, &p.role_id, true)
+            .await;
+        self.salida(r)
     }
 
     #[tool(
         name = "quitar_rol",
-        description = "Quita un rol a un miembro. Discord exige «Gestionar roles» y que el rol esté por debajo del rol del bot. `guild_id` es opcional."
+        description = "Removes a role from a member. Discord requires «Manage Roles» and the role must be below the bot's role. `guild_id` is optional."
     )]
     async fn quitar_rol(
         &self,
         Parameters(p): Parameters<RolMiembroParams>,
     ) -> Result<String, String> {
-        self.cambiar_rol_json(p.guild_id.as_deref(), &p.user_id, &p.role_id, false)
-            .await
+        let r = self
+            .cambiar_rol_json(p.guild_id.as_deref(), &p.user_id, &p.role_id, false)
+            .await;
+        self.salida(r)
     }
 
     #[tool(
         name = "permiso_canal",
-        description = "Fija los permisos específicos de un rol o miembro en un canal (`tipo`: rol o miembro; `permitir` y `denegar` en bits o lista de nombres). Requiere «Gestionar roles». `guild_id` es opcional."
+        description = "Sets the specific permissions of a role or member in a channel (`tipo`: rol or miembro; `permitir` and `denegar` as bits or a list of names). Requires «Manage Roles». `guild_id` is optional."
     )]
     async fn permiso_canal(
         &self,
         Parameters(p): Parameters<PermisoCanalParams>,
     ) -> Result<String, String> {
-        self.permiso_canal_json(&p).await
+        let r = self.permiso_canal_json(&p).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "quitar_permiso_canal",
-        description = "Quita los permisos específicos de un rol o miembro en un canal (`tipo`: rol o miembro). Requiere «Gestionar roles». `guild_id` es opcional."
+        description = "Removes the specific permissions of a role or member in a channel (`tipo`: rol or miembro). Requires «Manage Roles». `guild_id` is optional."
     )]
     async fn quitar_permiso_canal(
         &self,
         Parameters(p): Parameters<QuitarPermisoCanalParams>,
     ) -> Result<String, String> {
-        self.quitar_permiso_canal_json(&p).await
+        let r = self.quitar_permiso_canal_json(&p).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "expulsar",
-        description = "Expulsa a un miembro del servidor. El `motivo` queda en el registro de auditoría. Requiere «Expulsar miembros»; se rechaza al dueño y a quien tenga un rol igual o superior al del bot. `guild_id` es opcional."
+        description = "Kicks a member from the server. The `motivo` goes to the audit log. Requires «Kick Members»; the owner and anyone with a role equal to or above the bot's are rejected. `guild_id` is optional."
     )]
     async fn expulsar(&self, Parameters(p): Parameters<ExpulsarParams>) -> Result<String, String> {
-        self.expulsar_json(&p).await
+        let r = self.expulsar_json(&p).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "banear",
-        description = "Banea a un usuario (aunque no esté en el servidor), con `motivo` para el registro de auditoría y `dias_mensajes` (0–7) de mensajes a borrar. Requiere «Banear miembros»; se rechaza al dueño y a quien tenga un rol igual o superior al del bot. `guild_id` es opcional."
+        description = "Bans a user (even if not in the server), with a `motivo` for the audit log and `dias_mensajes` (0–7) of messages to delete. Requires «Ban Members»; the owner and anyone with a role equal to or above the bot's are rejected. `guild_id` is optional."
     )]
     async fn banear(&self, Parameters(p): Parameters<BanearParams>) -> Result<String, String> {
-        self.banear_json(&p).await
+        let r = self.banear_json(&p).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "desbanear",
-        description = "Quita el ban a un usuario, con `motivo` opcional para el registro de auditoría. Requiere «Banear miembros». `guild_id` es opcional."
+        description = "Unbans a user, with an optional `motivo` for the audit log. Requires «Ban Members». `guild_id` is optional."
     )]
     async fn desbanear(&self, Parameters(p): Parameters<ExpulsarParams>) -> Result<String, String> {
-        self.desbanear_json(p.guild_id.as_deref(), &p.user_id, p.motivo.as_deref())
-            .await
+        let r = self
+            .desbanear_json(p.guild_id.as_deref(), &p.user_id, p.motivo.as_deref())
+            .await;
+        self.salida(r)
     }
 
     #[tool(
         name = "silenciar",
-        description = "Silencia (timeout) a un miembro durante `minutos` (máximo 40320 = 28 días); 0 quita el silencio. El `motivo` queda en el registro de auditoría. Requiere «Moderar miembros»; se rechaza al dueño y a quien tenga un rol igual o superior al del bot. `guild_id` es opcional."
+        description = "Times out a member for `minutos` (maximum 40320 = 28 days); 0 removes the timeout. The `motivo` goes to the audit log. Requires «Timeout Members»; the owner and anyone with a role equal to or above the bot's are rejected. `guild_id` is optional."
     )]
     async fn silenciar(
         &self,
         Parameters(p): Parameters<SilenciarParams>,
     ) -> Result<String, String> {
-        self.silenciar_json(&p).await
+        let r = self.silenciar_json(&p).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "cambiar_apodo",
-        description = "Cambia el apodo de un miembro en el servidor (hasta 32 caracteres); sin `apodo` lo borra. El `motivo` queda en el registro de auditoría. Requiere «Gestionar apodos»; se rechaza al dueño y a quien tenga un rol igual o superior al del bot (el propio bot siempre puede). `guild_id` es opcional."
+        description = "Changes a member's nickname on the server (up to 32 characters); without `apodo` it is cleared. The `motivo` goes to the audit log. Requires «Manage Nicknames»; the owner and anyone with a role equal to or above the bot's are rejected (the bot itself always can). `guild_id` is optional."
     )]
     async fn cambiar_apodo(
         &self,
         Parameters(p): Parameters<CambiarApodoParams>,
     ) -> Result<String, String> {
-        self.cambiar_apodo_json(&p).await
+        let r = self.cambiar_apodo_json(&p).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "editar_servidor",
-        description = "Edita los ajustes generales del servidor (nombre, descripción, nivel de verificación, filtro de contenido, notificaciones por defecto, canal de sistema, canal AFK y tiempo AFK); solo cambia los campos indicados y un texto vacío en descripción o canales los quita. Requiere «Gestionar servidor». `guild_id` es opcional."
+        description = "Edits the general server settings (name, description, verification level, content filter, default notifications, system channel, AFK channel and AFK timeout); only the given fields change and an empty description or channel clears it. Requires «Manage Server». `guild_id` is optional."
     )]
     async fn editar_servidor(
         &self,
         Parameters(p): Parameters<EditarServidorParams>,
     ) -> Result<String, String> {
-        self.editar_servidor_json(&p).await
+        let r = self.editar_servidor_json(&p).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "crear_invitacion",
-        description = "Crea una invitación a un canal (`caducidad_segundos` 0–604800, por defecto 86400; `usos_maximos` 0–100, por defecto ilimitados). Requiere «Crear invitaciones». `guild_id` es opcional."
+        description = "Creates an invite to a channel (`caducidad_segundos` 0–604800, default 86400; `usos_maximos` 0–100, default unlimited). Requires «Create Invite». `guild_id` is optional."
     )]
     async fn crear_invitacion(
         &self,
         Parameters(p): Parameters<CrearInvitacionParams>,
     ) -> Result<String, String> {
-        self.crear_invitacion_json(&p).await
+        let r = self.crear_invitacion_json(&p).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "borrar_invitacion",
-        description = "Borra una invitación por su código. Requiere «Gestionar servidor». `guild_id` es opcional."
+        description = "Deletes an invite by its code. Requires «Manage Server». `guild_id` is optional."
     )]
     async fn borrar_invitacion(
         &self,
         Parameters(p): Parameters<BorrarInvitacionParams>,
     ) -> Result<String, String> {
-        self.borrar_invitacion_json(p.guild_id.as_deref(), &p.codigo)
-            .await
+        let r = self
+            .borrar_invitacion_json(p.guild_id.as_deref(), &p.codigo)
+            .await;
+        self.salida(r)
     }
 
     #[tool(
         name = "crear_webhook",
-        description = "Crea un webhook en un canal y devuelve su URL completa (es la única vez que se muestra: contiene el token, guárdala con cuidado). Requiere «Gestionar webhooks». `guild_id` es opcional."
+        description = "Creates a webhook in a channel and returns its full URL (shown only this once: it contains the token, keep it safe). Requires «Manage Webhooks». `guild_id` is optional."
     )]
     async fn crear_webhook(
         &self,
         Parameters(p): Parameters<CrearWebhookParams>,
     ) -> Result<String, String> {
-        self.crear_webhook_json(&p).await
+        let r = self.crear_webhook_json(&p).await;
+        self.salida(r)
     }
 
     #[tool(
         name = "borrar_webhook",
-        description = "Borra un webhook por su ID (acción irreversible). Requiere «Gestionar webhooks». `guild_id` es opcional."
+        description = "Deletes a webhook by its ID (irreversible). Requires «Manage Webhooks». `guild_id` is optional."
     )]
     async fn borrar_webhook(
         &self,
         Parameters(p): Parameters<BorrarWebhookParams>,
     ) -> Result<String, String> {
-        self.borrar_webhook_json(p.guild_id.as_deref(), &p.webhook_id)
-            .await
+        let r = self
+            .borrar_webhook_json(p.guild_id.as_deref(), &p.webhook_id)
+            .await;
+        self.salida(r)
     }
 }
 
@@ -1889,8 +1966,8 @@ impl ServerHandler for ArgusMcp {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("argus-mcp", env!("CARGO_PKG_VERSION")))
             .with_instructions(
-                "Gestiona Discord con los bots registrados en ARGUS. Empieza con `estado` \
-                 para ver el bot y el servidor activos.",
+                "Manage Discord with the bots registered in ARGUS. Start with `estado` \
+                 to see the active bot and server.",
             )
     }
 }
@@ -1987,6 +2064,67 @@ mod tests {
         assert_eq!(mcp.estado_json().await.unwrap_err(), SIN_BOT);
         assert_eq!(mcp.listar_servidores_json().await.unwrap_err(), SIN_BOT);
         assert_eq!(mcp.elegir_servidor_json("555").await.unwrap_err(), SIN_BOT);
+    }
+
+    #[tokio::test]
+    async fn los_mensajes_salen_en_el_idioma_de_la_config() {
+        let (_dir, pool) = bd_temporal().await;
+        let discord = discord_falso().await;
+        let mcp = servidor(pool.clone(), &discord).await;
+
+        // Inglés por defecto.
+        assert_eq!(
+            mcp.estado().await.unwrap_err(),
+            "No active bot in ARGUS: add or choose one in the app"
+        );
+
+        // Español con `ui_language = "es"` guardado en la base.
+        mcp.state.config.lock().unwrap().ui_language = "es".to_string();
+        mcp.state.save_config_to_pool(&pool).await.unwrap();
+        assert_eq!(
+            mcp.estado().await.unwrap_err(),
+            "No hay bot activo en ARGUS: añade o elige uno en la app"
+        );
+        let err = mcp
+            .elegir_servidor(Parameters(ElegirServidorParams {
+                guild_id: "555".into(),
+            }))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            err,
+            "No hay bot activo en ARGUS: añade o elige uno en la app"
+        );
+
+        // Con bot activo: el servidor activo falta y el mensaje también se traduce.
+        guardar_bot(&pool).await;
+        assert_eq!(
+            mcp.listar_canales(Parameters(ServidorParams::default()))
+                .await
+                .unwrap_err(),
+            "No hay servidor activo en ARGUS: indica `guild_id` o elige uno con `elegir_servidor`"
+        );
+        mcp.state.config.lock().unwrap().ui_language = "en".to_string();
+        mcp.state.save_config_to_pool(&pool).await.unwrap();
+        assert_eq!(
+            mcp.listar_canales(Parameters(ServidorParams::default()))
+                .await
+                .unwrap_err(),
+            "No active server in ARGUS: pass `guild_id` or choose one with `elegir_servidor`"
+        );
+    }
+
+    #[test]
+    fn las_descripciones_de_las_herramientas_estan_en_ingles() {
+        for t in ArgusMcp::tool_router().list_all() {
+            let d = t.description.as_deref().unwrap_or_default();
+            assert!(
+                !d.contains("Requiere") && !d.contains("opcional."),
+                "{}",
+                t.name
+            );
+            assert!(!d.contains("Solo lectura"), "{}", t.name);
+        }
     }
 
     #[tokio::test]
@@ -2429,19 +2567,19 @@ mod tests {
         let (_d, mcp, _s) = mcp_con_servidor(0, true).await;
         assert_eq!(
             mcp.listar_baneos_json(None).await.unwrap_err(),
-            "Al bot le falta el permiso «Banear miembros»"
+            "The bot is missing the permission «Banear miembros»"
         );
         assert_eq!(
             mcp.registro_auditoria_json(None).await.unwrap_err(),
-            "Al bot le falta el permiso «Ver registro de auditoría»"
+            "The bot is missing the permission «Ver registro de auditoría»"
         );
         assert_eq!(
             mcp.listar_webhooks_json(None).await.unwrap_err(),
-            "Al bot le falta el permiso «Gestionar webhooks»"
+            "The bot is missing the permission «Gestionar webhooks»"
         );
         assert_eq!(
             mcp.leer_mensajes_json(None, "11", None).await.unwrap_err(),
-            "Al bot le falta el permiso «Leer el historial de mensajes»"
+            "The bot is missing the permission «Leer el historial de mensajes»"
         );
     }
 
@@ -2451,7 +2589,7 @@ mod tests {
     const GESTIONAR_CANALES: u64 = 1 << 4;
     const GESTIONAR_ROLES: u64 = 1 << 28;
     const JERARQUIA: &str =
-        "Ese rol está por encima del rol del bot: súbelo en Ajustes del servidor → Roles";
+        "That role is above the bot's role: move it up in Server settings → Roles";
 
     fn mensaje_discord(id: &str, canal: &str) -> serde_json::Value {
         json!({
@@ -2627,7 +2765,7 @@ mod tests {
         // Mismos errores que la app: vacío o demasiado largo no llegan a Discord.
         let largo = "a".repeat(2001);
         let e = mcp.enviar_mensaje_json("11", &largo).await.unwrap_err();
-        assert!(e.contains("demasiado largo"), "{e}");
+        assert!(e.contains("too long"), "{e}");
         assert!(mcp.enviar_dm_json("1001", "  ").await.is_err());
     }
 
@@ -2646,17 +2784,17 @@ mod tests {
         aceptar(&s, "PUT", "/api/v10/channels/11/pins/301", 204, None, 1).await;
         aceptar(&s, "DELETE", "/api/v10/channels/11/pins/301", 204, None, 1).await;
         let r = mcp.borrar_mensaje_json(None, "11", "301").await.unwrap();
-        assert!(r.contains("borrado"));
+        assert!(r.contains("deleted"));
         let r = mcp
             .fijar_mensaje_json(None, "11", "301", true)
             .await
             .unwrap();
-        assert!(r.contains("fijado"));
+        assert!(r.contains("pinned"));
         let r = mcp
             .fijar_mensaje_json(None, "11", "301", false)
             .await
             .unwrap();
-        assert!(r.contains("desfijado"));
+        assert!(r.contains("unpinned"));
     }
 
     #[tokio::test]
@@ -2673,18 +2811,18 @@ mod tests {
             .mount(&s)
             .await;
         let ok = mcp.borrar_mensajes_json(None, "11", &[a.clone(), b]).await;
-        assert!(ok.unwrap().contains("2 mensajes borrados"));
+        assert!(ok.unwrap().contains("2 messages deleted"));
         // Una sola, o una de más de 14 días: error de la app, sin llamar a Discord.
         let e = mcp
             .borrar_mensajes_json(None, "11", &[a.clone()])
             .await
             .unwrap_err();
-        assert!(e.contains("entre 2 y 100"), "{e}");
+        assert!(e.contains("between 2 and 100"), "{e}");
         let e = mcp
             .borrar_mensajes_json(None, "11", &[a, snowflake_hace_dias(20)])
             .await
             .unwrap_err();
-        assert!(e.contains("14 días"), "{e}");
+        assert!(e.contains("14 days"), "{e}");
     }
 
     #[tokio::test]
@@ -2693,7 +2831,7 @@ mod tests {
         prohibir_cambios(&s).await;
         // `borrar_mensaje` sí llama a Discord sin el permiso: el bot puede borrar
         // los suyos (ver tests_mensajes.rs).
-        let falta = "Al bot le falta el permiso «Gestionar mensajes»";
+        let falta = "The bot is missing the permission «Gestionar mensajes»";
         let e = mcp.fijar_mensaje_json(None, "11", "301", true).await;
         assert_eq!(e.unwrap_err(), falta);
         let ids = [snowflake_hace_dias(1), snowflake_hace_dias(2)];
@@ -2759,22 +2897,22 @@ mod tests {
             .ordenar_canales_json(None, &[pos("20", 1), pos("11", 0)])
             .await
             .unwrap();
-        assert!(r.contains("2 canales reordenados"));
+        assert!(r.contains("2 channels reordered"));
         let r = mcp.borrar_canal_json(None, "20").await.unwrap();
-        assert!(r.contains("Canal 20 borrado"));
+        assert!(r.contains("Channel 20 deleted"));
         // Tipo desconocido: error propio, sin llamar a Discord.
         let e = mcp
             .crear_canal_json(&canal_nuevo("x", Some("holograma")))
             .await
             .unwrap_err();
-        assert!(e.contains("Tipo de canal no admitido"));
+        assert!(e.contains("Unsupported channel type"));
     }
 
     #[tokio::test]
     async fn canales_sin_permiso_no_llegan_a_discord() {
         let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_MENSAJES, true).await;
         prohibir_cambios(&s).await;
-        let falta = "Al bot le falta el permiso «Gestionar canales»";
+        let falta = "The bot is missing the permission «Gestionar canales»";
         let e = mcp.crear_canal_json(&canal_nuevo("x", None)).await;
         assert_eq!(e.unwrap_err(), falta);
         let e = mcp.borrar_canal_json(None, "11").await;
@@ -2855,9 +2993,9 @@ mod tests {
             .ordenar_roles_json(None, &[pos("700", 2)])
             .await
             .unwrap();
-        assert!(r.contains("1 roles reordenados"));
+        assert!(r.contains("1 roles reordered"));
         let r = mcp.borrar_rol_json(None, "700").await.unwrap();
-        assert!(r.contains("Rol 700 borrado"));
+        assert!(r.contains("Role 700 deleted"));
     }
 
     #[tokio::test]
@@ -2865,7 +3003,7 @@ mod tests {
         // Sin «Gestionar roles».
         let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_MENSAJES, true).await;
         prohibir_cambios(&s).await;
-        let falta = "Al bot le falta el permiso «Gestionar roles»";
+        let falta = "The bot is missing the permission «Gestionar roles»";
         assert_eq!(mcp.borrar_rol_json(None, "700").await.unwrap_err(), falta);
         let e = mcp.crear_rol_json(&rol_nuevo("x")).await;
         assert_eq!(e.unwrap_err(), falta);
@@ -2915,12 +3053,12 @@ mod tests {
             .cambiar_rol_json(None, "1001", "700", true)
             .await
             .unwrap();
-        assert!(r.contains("añadido"));
+        assert!(r.contains("added"));
         let r = mcp
             .cambiar_rol_json(None, "1001", "700", false)
             .await
             .unwrap();
-        assert!(r.contains("quitado"));
+        assert!(r.contains("removed"));
     }
 
     #[tokio::test]
@@ -2970,7 +3108,7 @@ mod tests {
         ]));
         p.denegar = Some(PermisosParam::Bits("2048".into()));
         let r = mcp.permiso_canal_json(&p).await.unwrap();
-        assert!(r.contains("actualizados"));
+        assert!(r.contains("updated"));
         let mut p = permiso("1001", "miembro");
         p.denegar = Some(PermisosParam::Nombres(vec!["SendMessages".into()]));
         mcp.permiso_canal_json(&p).await.unwrap();
@@ -2979,14 +3117,14 @@ mod tests {
                 .quitar_permiso_canal_json(&quitar_permiso(objetivo, tipo))
                 .await
                 .unwrap();
-            assert!(r.contains("quitados"));
+            assert!(r.contains("removed"));
         }
         // Tipo inválido y permiso desconocido: errores propios.
         let e = mcp
             .quitar_permiso_canal_json(&quitar_permiso("700", "cosa"))
             .await
             .unwrap_err();
-        assert!(e.contains("«rol» o «miembro»"));
+        assert!(e.contains("«rol» or «miembro»"));
         let mut p = permiso("700", "rol");
         p.permitir = Some(PermisosParam::Nombres(vec!["Volar".into()]));
         let e = mcp.permiso_canal_json(&p).await.unwrap_err();
@@ -2997,7 +3135,7 @@ mod tests {
     async fn permisos_de_canal_sin_permiso_no_llegan_a_discord() {
         let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_MENSAJES, true).await;
         prohibir_cambios(&s).await;
-        let falta = "Al bot le falta el permiso «Gestionar roles»";
+        let falta = "The bot is missing the permission «Gestionar roles»";
         let e = mcp.permiso_canal_json(&permiso("700", "rol")).await;
         assert_eq!(e.unwrap_err(), falta);
         let e = mcp
@@ -3063,8 +3201,8 @@ mod tests {
     const GESTIONAR_APODOS: u64 = 1 << 27;
     const GESTIONAR_WEBHOOKS: u64 = 1 << 29;
     const MODERAR: u64 = 1 << 40;
-    const DUENO: &str = "No se puede hacer eso al dueño del servidor";
-    const JERARQUIA_MIEMBRO: &str = "Ese miembro tiene un rol igual o superior al del bot: sube el rol del bot en Ajustes del servidor → Roles";
+    const DUENO: &str = "That cannot be done to the server owner";
+    const JERARQUIA_MIEMBRO: &str = "That member has a role equal to or above the bot's: move the bot's role up in Server settings → Roles";
 
     fn expulsar_a(user: &str) -> ExpulsarParams {
         ExpulsarParams {
@@ -3166,21 +3304,25 @@ mod tests {
 
         let mut p = expulsar_a("1001");
         p.motivo = Some("spam".into());
-        assert!(mcp.expulsar_json(&p).await.unwrap().contains("expulsado"));
+        assert!(mcp.expulsar_json(&p).await.unwrap().contains("kicked"));
         let mut p = banear_a("1001", Some(2));
         p.motivo = Some("insultos".into());
-        assert!(mcp.banear_json(&p).await.unwrap().contains("baneado"));
+        assert!(mcp.banear_json(&p).await.unwrap().contains("banned"));
         let r = mcp
             .desbanear_json(None, "1004", Some("perdonado"))
             .await
             .unwrap();
-        assert!(r.contains("Ban de 1004 quitado"));
+        assert!(r.contains("Ban of 1004 removed"));
         let mut p = silenciar_a("1001", 0);
         p.motivo = Some("calma".into());
-        assert!(mcp.silenciar_json(&p).await.unwrap().contains("quitado"));
+        assert!(mcp.silenciar_json(&p).await.unwrap().contains("removed"));
         let mut p = apodo_de("1001", Some("Nuevo"));
         p.motivo = Some("normas".into());
-        assert!(mcp.cambiar_apodo_json(&p).await.unwrap().contains("Apodo"));
+        assert!(mcp
+            .cambiar_apodo_json(&p)
+            .await
+            .unwrap()
+            .contains("Nickname"));
     }
 
     #[tokio::test]
@@ -3197,7 +3339,7 @@ mod tests {
         )
         .await;
         let r = mcp.silenciar_json(&silenciar_a("1001", 10)).await.unwrap();
-        assert!(r.contains("silenciado por 10 minutos"), "{r}");
+        assert!(r.contains("timed out for 10 minutes"), "{r}");
         let peticiones = s.received_requests().await.unwrap();
         let patch = peticiones
             .iter()
@@ -3210,7 +3352,7 @@ mod tests {
             .silenciar_json(&silenciar_a("1001", 40321))
             .await
             .unwrap_err();
-        assert!(e.contains("28 días"), "{e}");
+        assert!(e.contains("28 days"), "{e}");
     }
 
     #[tokio::test]
@@ -3260,17 +3402,17 @@ mod tests {
         let e = mcp.banear_json(&banear_a("1001", Some(8))).await;
         assert_eq!(
             e.unwrap_err(),
-            "Los días de mensajes a borrar deben estar entre 0 y 7"
+            "The days of messages to delete must be between 0 and 7"
         );
         let e = mcp.banear_json(&banear_a("1001", Some(300))).await;
-        assert!(e.unwrap_err().contains("entre 0 y 7"));
+        assert!(e.unwrap_err().contains("between 0 and 7"));
     }
 
     #[tokio::test]
     async fn moderacion_sin_permiso_no_llega_a_discord() {
         let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_MENSAJES, true).await;
         prohibir_cambios(&s).await;
-        let falta = |p: &str| format!("Al bot le falta el permiso «{p}»");
+        let falta = |p: &str| format!("The bot is missing the permission «{p}»");
         let e = mcp.expulsar_json(&expulsar_a("1001")).await;
         assert_eq!(e.unwrap_err(), falta("Expulsar miembros"));
         let e = mcp.banear_json(&banear_a("1001", None)).await;
@@ -3383,7 +3525,7 @@ mod tests {
             ..p
         };
         let e = mcp.crear_invitacion_json(&p).await.unwrap_err();
-        assert!(e.contains("7 días"), "{e}");
+        assert!(e.contains("7 days"), "{e}");
     }
 
     #[tokio::test]

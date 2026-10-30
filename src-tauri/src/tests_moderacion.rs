@@ -13,8 +13,8 @@ use crate::state::{AppState, BotConfig};
 const KICK: u64 = 1 << 1;
 const BAN: u64 = 1 << 2;
 const APODOS: u64 = 1 << 27;
-const DUENO: &str = "No se puede hacer eso al dueño del servidor";
-const JERARQUIA: &str = "Ese miembro tiene un rol igual o superior al del bot: sube el rol del bot en Ajustes del servidor → Roles";
+const DUENO: &str = "That cannot be done to the server owner";
+const JERARQUIA: &str = "That member has a role equal to or above the bot's: move the bot's role up in Server settings → Roles";
 
 fn estado(token: &str) -> AppState {
     let state = AppState::new();
@@ -173,7 +173,7 @@ async fn dias_de_mensajes_fuera_de_rango_no_llaman_a_discord() {
     let e = banear_miembro(&state, "555", "1001", None, 8, Some(&addr))
         .await
         .unwrap_err();
-    assert_eq!(e, "Los días de mensajes a borrar deben estar entre 0 y 7");
+    assert_eq!(e, "The days of messages to delete must be between 0 and 7");
 }
 
 #[tokio::test]
@@ -319,29 +319,29 @@ async fn sin_permiso_no_llama_a_discord() {
         expulsar_miembro(&state, "555", "1001", None, a)
             .await
             .unwrap_err(),
-        "Al bot le falta el permiso «Expulsar miembros»"
+        "The bot is missing the permission «Expulsar miembros»"
     );
     assert_eq!(
         banear_miembro(&state, "555", "1001", None, 0, a)
             .await
             .unwrap_err(),
-        "Al bot le falta el permiso «Banear miembros»"
+        "The bot is missing the permission «Banear miembros»"
     );
     assert_eq!(
         quitar_ban(&state, "555", "1001", None, a)
             .await
             .unwrap_err(),
-        "Al bot le falta el permiso «Banear miembros»"
+        "The bot is missing the permission «Banear miembros»"
     );
     assert_eq!(
         listar_bans(&state, "555", a).await.unwrap_err(),
-        "Al bot le falta el permiso «Banear miembros»"
+        "The bot is missing the permission «Banear miembros»"
     );
     assert_eq!(
         cambiar_apodo(&state, "555", "1001", Some("x"), None, a)
             .await
             .unwrap_err(),
-        "Al bot le falta el permiso «Gestionar apodos»"
+        "The bot is missing the permission «Gestionar apodos»"
     );
 }
 
@@ -362,7 +362,7 @@ async fn apodo_demasiado_largo_no_llama_a_discord() {
     )
     .await
     .unwrap_err();
-    assert_eq!(e, "El apodo no puede superar los 32 caracteres");
+    assert_eq!(e, "The nickname cannot exceed 32 characters");
 }
 
 const MODERAR: u64 = 1 << 40;
@@ -383,11 +383,11 @@ async fn silencia_y_quita_timeout_con_motivo() {
     let r = silenciar_miembro(&state, "555", "1001", 10, Some("calma"), Some(&addr))
         .await
         .unwrap();
-    assert!(r.contains("silenciado"), "{r}");
+    assert!(r.contains("timed out"), "{r}");
     let r = silenciar_miembro(&state, "555", "1001", 0, Some("calma"), Some(&addr))
         .await
         .unwrap();
-    assert!(r.contains("quitado"), "{r}");
+    assert!(r.contains("removed"), "{r}");
     let reqs: Vec<_> = server
         .received_requests()
         .await
@@ -424,7 +424,7 @@ async fn silencio_rechaza_dueno_jerarquia_permiso_y_exceso() {
     assert!(silenciar_miembro(&state, "555", "1001", 40321, None, a)
         .await
         .unwrap_err()
-        .contains("28 días"));
+        .contains("28 days"));
 
     let server = MockServer::start().await;
     mock_servidor(&server, 0).await;
@@ -434,6 +434,6 @@ async fn silencio_rechaza_dueno_jerarquia_permiso_y_exceso() {
         silenciar_miembro(&state, "555", "1001", 5, None, Some(&addr))
             .await
             .unwrap_err(),
-        "Al bot le falta el permiso «Moderar miembros»"
+        "The bot is missing the permission «Moderar miembros»"
     );
 }

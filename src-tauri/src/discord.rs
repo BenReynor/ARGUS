@@ -22,7 +22,7 @@ pub fn build_client(token: &str, base_url: Option<&str>) -> Client {
 }
 
 /// Obtiene el usuario del token (`GET /users/@me`). Un 401 se traduce a
-/// "Token inválido".
+/// "Invalid token".
 pub async fn fetch_current_user(
     token: &str,
     base_url: Option<&str>,
@@ -32,7 +32,7 @@ pub async fn fetch_current_user(
     response
         .model()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))
+        .map_err(|e| format!("Invalid response from Discord: {e}"))
 }
 
 /// Obtiene la aplicación del bot (`GET /applications/@me`; twilight usa su
@@ -50,12 +50,12 @@ pub async fn fetch_current_application(
     response
         .model()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))
+        .map_err(|e| format!("Invalid response from Discord: {e}"))
 }
 
 /// Aviso (no error) cuando la aplicación no tiene activo el intent de miembros.
 pub const AVISO_INTENT_MIEMBROS: &str =
-    "Activa «Server Members Intent» en el Developer Portal → Bot";
+    "Enable «Server Members Intent» in the Developer Portal → Bot";
 
 /// Comprueba los `flags` de la aplicación: GATEWAY_GUILD_MEMBERS (1<<14) o
 /// GATEWAY_GUILD_MEMBERS_LIMITED (1<<15). Sin `flags` en la respuesta no hay
@@ -93,7 +93,7 @@ pub async fn fetch_current_user_guilds(
     response
         .models()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))
+        .map_err(|e| format!("Invalid response from Discord: {e}"))
 }
 
 /// Nombre en español de un permiso de Discord (nombre de la API en mayúsculas).
@@ -133,13 +133,13 @@ pub fn traducir_respuesta(status: u16, cuerpo: &[u8]) -> String {
         .and_then(|m| m.as_str())
         .unwrap_or("");
     match status {
-        401 => "Token inválido".to_string(),
+        401 => "Invalid token".to_string(),
         403 => match permiso_en_texto(texto) {
-            Some(p) => format!("Al bot le falta el permiso «{p}»"),
-            None => "Al bot le falta un permiso para hacer esto en el servidor".to_string(),
+            Some(p) => format!("The bot is missing the permission «{p}»"),
+            None => "The bot is missing a permission to do this on the server".to_string(),
         },
         404 => {
-            "No encontrado: el servidor, canal, rol o miembro no existe o el bot no tiene acceso"
+            "Not found: the server, channel, role or member does not exist or the bot has no access"
                 .to_string()
         }
         429 => {
@@ -149,15 +149,14 @@ pub fn traducir_respuesta(status: u16, cuerpo: &[u8]) -> String {
                 .and_then(|r| r.as_f64());
             match espera {
                 Some(s) => format!(
-                    "Discord limitó las peticiones; vuelve a intentarlo en {:.0} s",
+                    "Discord rate limited the requests; try again in {:.0} s",
                     s.ceil()
                 ),
-                None => "Discord limitó las peticiones; vuelve a intentarlo en unos segundos"
-                    .to_string(),
+                None => "Discord rate limited the requests; try again in a few seconds".to_string(),
             }
         }
-        _ if texto.is_empty() => format!("Discord respondió con un error ({status})"),
-        _ => format!("Discord respondió con un error ({status}): {texto}"),
+        _ if texto.is_empty() => format!("Discord responded with an error ({status})"),
+        _ => format!("Discord responded with an error ({status}): {texto}"),
     }
 }
 
@@ -167,7 +166,7 @@ pub fn traducir_error(e: twilight_http::Error) -> String {
     match e.kind() {
         ErrorType::Response { status, body, .. } => traducir_respuesta(status.get(), body),
         ErrorType::Unauthorized => traducir_respuesta(401, b""),
-        _ => format!("No se pudo contactar con Discord: {e}"),
+        _ => format!("Could not reach Discord: {e}"),
     }
 }
 
@@ -223,7 +222,7 @@ fn parse_guild_id(
         .parse::<u64>()
         .ok()
         .and_then(twilight_model::id::Id::new_checked)
-        .ok_or_else(|| "ID de servidor inválido".to_string())
+        .ok_or_else(|| "Invalid server ID".to_string())
 }
 
 /// Lee los canales de un servidor (`GET /guilds/{id}/channels`).
@@ -238,7 +237,7 @@ pub async fn fetch_guild_channels(
     let canales = response
         .models()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     Ok(canales.into_iter().map(convertir_canal).collect())
 }
 
@@ -254,7 +253,7 @@ pub async fn fetch_guild_roles(
     let roles = response
         .models()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     Ok(roles.into_iter().map(convertir_rol).collect())
 }
 
@@ -290,7 +289,7 @@ pub async fn fetch_guild_members(
         let mut peticion = client
             .guild_members(gid)
             .limit(PAGINA_MIEMBROS)
-            .map_err(|e| format!("Petición inválida: {e}"))?;
+            .map_err(|e| format!("Invalid request: {e}"))?;
         if let Some(id) = despues {
             peticion = peticion.after(id);
         }
@@ -299,7 +298,7 @@ pub async fn fetch_guild_members(
             .map_err(traducir_error)?
             .models()
             .await
-            .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+            .map_err(|e| format!("Invalid response from Discord: {e}"))?;
         let completa = pagina.len() >= PAGINA_MIEMBROS as usize;
         despues = pagina.last().map(|m| m.user.id);
         todos.extend(pagina.into_iter().map(convertir_miembro));
@@ -322,7 +321,7 @@ pub async fn fetch_guild_member(
         .parse::<u64>()
         .ok()
         .and_then(twilight_model::id::Id::new_checked)
-        .ok_or_else(|| "ID de usuario inválido".to_string())?;
+        .ok_or_else(|| "Invalid user ID".to_string())?;
     let client = build_client(token, base_url);
     let miembro = client
         .guild_member(gid, uid)
@@ -330,7 +329,7 @@ pub async fn fetch_guild_member(
         .map_err(traducir_error)?
         .model()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     Ok(convertir_miembro(miembro))
 }
 
@@ -340,12 +339,12 @@ pub const MAX_LONGITUD_MENSAJE: usize = 2000;
 /// Valida el contenido antes de llamar a Discord: no vacío y ≤ 2000 caracteres.
 pub fn validar_contenido(content: &str) -> Result<(), String> {
     if content.trim().is_empty() {
-        return Err("El mensaje no puede estar vacío".to_string());
+        return Err("The message cannot be empty".to_string());
     }
     let n = content.chars().count();
     if n > MAX_LONGITUD_MENSAJE {
         return Err(format!(
-            "El mensaje es demasiado largo ({n} caracteres; el máximo es {MAX_LONGITUD_MENSAJE})"
+            "The message is too long ({n} characters; the maximum is {MAX_LONGITUD_MENSAJE})"
         ));
     }
     Ok(())
@@ -356,7 +355,7 @@ fn parse_id<M>(texto: &str, que: &str) -> Result<twilight_model::id::Id<M>, Stri
         .parse::<u64>()
         .ok()
         .and_then(twilight_model::id::Id::new_checked)
-        .ok_or_else(|| format!("ID de {que} inválido"))
+        .ok_or_else(|| format!("Invalid {que} ID"))
 }
 
 /// Envía un mensaje a un canal (`POST /channels/{id}/messages`) y devuelve el
@@ -368,17 +367,17 @@ pub async fn send_channel_message(
     content: &str,
 ) -> Result<String, String> {
     validar_contenido(content)?;
-    let cid = parse_id(channel_id, "canal")?;
+    let cid = parse_id(channel_id, "channel")?;
     let client = build_client(token, base_url);
     let mensaje = client
         .create_message(cid)
         .content(content)
-        .map_err(|e| format!("Mensaje inválido: {e}"))?
+        .map_err(|e| format!("Invalid message: {e}"))?
         .await
         .map_err(traducir_error)?
         .model()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     Ok(mensaje.id.to_string())
 }
 
@@ -391,7 +390,7 @@ pub async fn send_direct_message(
     content: &str,
 ) -> Result<String, String> {
     validar_contenido(content)?;
-    let uid = parse_id(user_id, "usuario")?;
+    let uid = parse_id(user_id, "user")?;
     let client = build_client(token, base_url);
     let canal = client
         .create_private_channel(uid)
@@ -399,7 +398,7 @@ pub async fn send_direct_message(
         .map_err(traducir_error)?
         .model()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     send_channel_message(token, base_url, &canal.id.to_string(), content).await
 }
 
@@ -414,8 +413,8 @@ pub async fn set_member_role(
     anadir: bool,
 ) -> Result<(), String> {
     let gid = parse_guild_id(guild_id)?;
-    let uid = parse_id(user_id, "usuario")?;
-    let rid = parse_id(role_id, "rol")?;
+    let uid = parse_id(user_id, "user")?;
+    let rid = parse_id(role_id, "role")?;
     let client = build_client(token, base_url);
     if anadir {
         client
@@ -433,7 +432,7 @@ pub async fn set_member_role(
 
 /// Máximo que admite Discord para un timeout: 28 días.
 pub const TIMEOUT_MAX_MINUTOS: u32 = 28 * 24 * 60;
-pub const ERROR_TIMEOUT_MAX: &str = "El silencio no puede superar los 28 días (40320 minutos)";
+pub const ERROR_TIMEOUT_MAX: &str = "A timeout cannot exceed 28 days (40320 minutes)";
 
 /// Silencia a un miembro (`PATCH /guilds/{id}/members/{user_id}` con
 /// `communication_disabled_until`). 0 minutos quita el timeout.
@@ -450,25 +449,25 @@ pub async fn set_member_timeout(
     }
     let motivo = validar_motivo(motivo)?;
     let gid = parse_guild_id(guild_id)?;
-    let uid = parse_id(user_id, "usuario")?;
+    let uid = parse_id(user_id, "user")?;
     let hasta = if minutos == 0 {
         None
     } else {
         let secs = chrono::Utc::now().timestamp() + i64::from(minutos) * 60;
         Some(
             twilight_model::util::Timestamp::from_secs(secs)
-                .map_err(|_| "Fecha de silencio inválida".to_string())?,
+                .map_err(|_| "Invalid timeout date".to_string())?,
         )
     };
     let client = build_client(token, base_url);
     let mut peticion = client
         .update_guild_member(gid, uid)
         .communication_disabled_until(hasta)
-        .map_err(|_| "Duración de silencio inválida".to_string())?;
+        .map_err(|_| "Invalid timeout duration".to_string())?;
     if let Some(m) = motivo {
         peticion = peticion
             .reason(m)
-            .map_err(|_| "Motivo inválido".to_string())?;
+            .map_err(|_| "Invalid reason".to_string())?;
     }
     peticion.await.map_err(traducir_error)?;
     Ok(())
@@ -488,7 +487,7 @@ pub async fn fetch_guild_owner_id(
         .map_err(traducir_error)?
         .bytes()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     Ok(serde_json::from_slice::<serde_json::Value>(&cuerpo)
         .ok()
         .and_then(|v| v.get("owner_id")?.as_str().map(str::to_string)))
@@ -500,9 +499,7 @@ const MAX_MOTIVO: usize = 512;
 fn validar_motivo(motivo: Option<&str>) -> Result<Option<&str>, String> {
     let motivo = motivo.map(str::trim).filter(|m| !m.is_empty());
     if motivo.is_some_and(|m| m.chars().count() > MAX_MOTIVO) {
-        return Err(format!(
-            "El motivo no puede superar los {MAX_MOTIVO} caracteres"
-        ));
+        return Err(format!("The reason cannot exceed {MAX_MOTIVO} characters"));
     }
     Ok(motivo)
 }
@@ -518,13 +515,13 @@ pub async fn kick_guild_member(
 ) -> Result<(), String> {
     let motivo = validar_motivo(motivo)?;
     let gid = parse_guild_id(guild_id)?;
-    let uid = parse_id(user_id, "usuario")?;
+    let uid = parse_id(user_id, "user")?;
     let client = build_client(token, base_url);
     let mut peticion = client.remove_guild_member(gid, uid);
     if let Some(m) = motivo {
         peticion = peticion
             .reason(m)
-            .map_err(|_| "Motivo inválido".to_string())?;
+            .map_err(|_| "Invalid reason".to_string())?;
     }
     peticion.await.map_err(traducir_error)?;
     Ok(())
@@ -557,11 +554,11 @@ pub async fn ban_guild_member(
     dias: u8,
 ) -> Result<(), String> {
     if dias > BAN_DIAS_MAX {
-        return Err("Los días de mensajes a borrar deben estar entre 0 y 7".to_string());
+        return Err("The days of messages to delete must be between 0 and 7".to_string());
     }
     let motivo = validar_motivo(motivo)?;
     let gid = parse_guild_id(guild_id)?;
-    let uid = parse_id::<twilight_model::id::marker::UserMarker>(user_id, "usuario")?;
+    let uid = parse_id::<twilight_model::id::marker::UserMarker>(user_id, "user")?;
     // twilight 0.15 manda `delete_message_seconds` en la query, pero Discord lo
     // lee del cuerpo JSON: se arma la petición a mano (con la cabecera de motivo).
     let cuerpo = serde_json::json!({"delete_message_seconds": u32::from(dias) * 86_400});
@@ -572,16 +569,16 @@ pub async fn ban_guild_member(
             user_id: uid.get(),
         })
         .json(&cuerpo)
-        .map_err(|e| format!("Petición inválida: {e}"))?;
+        .map_err(|e| format!("Invalid request: {e}"))?;
     if let Some(m) = motivo {
         // Los tipos de cabecera son los de la versión de `http` de twilight:
         // se obtienen por inferencia con `parse`.
         let nombre = "x-audit-log-reason"
             .parse()
-            .map_err(|_| "Motivo inválido".to_string())?;
+            .map_err(|_| "Invalid reason".to_string())?;
         let valor = codificar_motivo(m)
             .parse()
-            .map_err(|_| "Motivo inválido".to_string())?;
+            .map_err(|_| "Invalid reason".to_string())?;
         constructor = constructor.headers(std::iter::once((nombre, valor)));
     }
     build_client(token, base_url)
@@ -601,13 +598,13 @@ pub async fn unban_guild_member(
 ) -> Result<(), String> {
     let motivo = validar_motivo(motivo)?;
     let gid = parse_guild_id(guild_id)?;
-    let uid = parse_id(user_id, "usuario")?;
+    let uid = parse_id(user_id, "user")?;
     let client = build_client(token, base_url);
     let mut peticion = client.delete_ban(gid, uid);
     if let Some(m) = motivo {
         peticion = peticion
             .reason(m)
-            .map_err(|_| "Motivo inválido".to_string())?;
+            .map_err(|_| "Invalid reason".to_string())?;
     }
     peticion.await.map_err(traducir_error)?;
     Ok(())
@@ -635,7 +632,7 @@ pub async fn fetch_guild_bans(
         .map_err(traducir_error)?
         .models()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     Ok(bans
         .into_iter()
         .map(|b| Ban {
@@ -658,20 +655,20 @@ pub async fn set_member_nickname(
 ) -> Result<(), String> {
     let apodo = apodo.map(str::trim).filter(|a| !a.is_empty());
     if apodo.is_some_and(|a| a.chars().count() > 32) {
-        return Err("El apodo no puede superar los 32 caracteres".to_string());
+        return Err("The nickname cannot exceed 32 characters".to_string());
     }
     let motivo = validar_motivo(motivo)?;
     let gid = parse_guild_id(guild_id)?;
-    let uid = parse_id(user_id, "usuario")?;
+    let uid = parse_id(user_id, "user")?;
     let client = build_client(token, base_url);
     let mut peticion = client
         .update_guild_member(gid, uid)
         .nick(apodo)
-        .map_err(|_| "Apodo inválido".to_string())?;
+        .map_err(|_| "Invalid nickname".to_string())?;
     if let Some(m) = motivo {
         peticion = peticion
             .reason(m)
-            .map_err(|_| "Motivo inválido".to_string())?;
+            .map_err(|_| "Invalid reason".to_string())?;
     }
     peticion.await.map_err(traducir_error)?;
     Ok(())
@@ -697,26 +694,26 @@ fn validar_datos_canal(datos: &DatosCanal) -> Result<(), String> {
     if let Some(nombre) = &datos.name {
         let largo = nombre.trim().chars().count();
         if largo == 0 || largo > 100 {
-            return Err("El nombre del canal debe tener entre 1 y 100 caracteres".to_string());
+            return Err("The channel name must be between 1 and 100 characters".to_string());
         }
     }
     if let Some(tipo) = datos.channel_type {
         if !TIPOS_DE_CANAL.contains(&tipo) {
-            return Err("Tipo de canal no admitido".to_string());
+            return Err("Unsupported channel type".to_string());
         }
     }
     if datos
         .rate_limit_per_user
         .is_some_and(|s| s > MAX_SLOWMODE_SEGUNDOS)
     {
-        return Err("El modo lento no puede superar las 6 horas (21600 s)".to_string());
+        return Err("Slowmode cannot exceed 6 hours (21600 s)".to_string());
     }
     if datos
         .topic
         .as_ref()
         .is_some_and(|t| t.chars().count() > 1024)
     {
-        return Err("El tema del canal no puede superar los 1024 caracteres".to_string());
+        return Err("The channel topic cannot exceed 1024 characters".to_string());
     }
     Ok(())
 }
@@ -735,24 +732,24 @@ pub async fn create_guild_channel(
         .as_deref()
         .map(str::trim)
         .filter(|n| !n.is_empty())
-        .ok_or("El canal necesita un nombre")?;
+        .ok_or("The channel needs a name")?;
     let gid = parse_guild_id(guild_id)?;
     let client = build_client(token, base_url);
     let mut peticion = client
         .create_guild_channel(gid, nombre)
-        .map_err(|_| "Nombre de canal inválido".to_string())?;
+        .map_err(|_| "Invalid channel name".to_string())?;
     let tipo = datos.channel_type.unwrap_or(0);
     peticion = peticion.kind(ChannelType::from(tipo));
     if let Some(padre) = datos.parent_id.as_deref().filter(|p| !p.is_empty()) {
         if tipo == 4 {
-            return Err("Una categoría no puede estar dentro de otra categoría".to_string());
+            return Err("A category cannot be inside another category".to_string());
         }
-        peticion = peticion.parent_id(parse_id(padre, "categoría")?);
+        peticion = peticion.parent_id(parse_id(padre, "category")?);
     }
     if let Some(tema) = datos.topic.as_deref() {
         peticion = peticion
             .topic(tema)
-            .map_err(|_| "Tema de canal inválido".to_string())?;
+            .map_err(|_| "Invalid channel topic".to_string())?;
     }
     if let Some(nsfw) = datos.nsfw {
         peticion = peticion.nsfw(nsfw);
@@ -760,14 +757,14 @@ pub async fn create_guild_channel(
     if let Some(segundos) = datos.rate_limit_per_user {
         peticion = peticion
             .rate_limit_per_user(segundos)
-            .map_err(|_| "Modo lento inválido".to_string())?;
+            .map_err(|_| "Invalid slowmode".to_string())?;
     }
     let canal = peticion
         .await
         .map_err(traducir_error)?
         .model()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     Ok(convertir_canal(canal))
 }
 
@@ -780,13 +777,13 @@ pub async fn update_channel(
 ) -> Result<crate::state::Channel, String> {
     use twilight_model::channel::ChannelType;
     validar_datos_canal(datos)?;
-    let cid = parse_id(channel_id, "canal")?;
+    let cid = parse_id(channel_id, "channel")?;
     let client = build_client(token, base_url);
     let mut peticion = client.update_channel(cid);
     if let Some(nombre) = datos.name.as_deref() {
         peticion = peticion
             .name(nombre.trim())
-            .map_err(|_| "Nombre de canal inválido".to_string())?;
+            .map_err(|_| "Invalid channel name".to_string())?;
     }
     if let Some(tipo) = datos.channel_type {
         peticion = peticion.kind(ChannelType::from(tipo));
@@ -795,14 +792,14 @@ pub async fn update_channel(
         let padre = if padre.is_empty() {
             None
         } else {
-            Some(parse_id(padre, "categoría")?)
+            Some(parse_id(padre, "category")?)
         };
         peticion = peticion.parent_id(padre);
     }
     if let Some(tema) = datos.topic.as_deref() {
         peticion = peticion
             .topic(tema)
-            .map_err(|_| "Tema de canal inválido".to_string())?;
+            .map_err(|_| "Invalid channel topic".to_string())?;
     }
     if let Some(nsfw) = datos.nsfw {
         peticion = peticion.nsfw(nsfw);
@@ -810,14 +807,14 @@ pub async fn update_channel(
     if let Some(segundos) = datos.rate_limit_per_user {
         peticion = peticion
             .rate_limit_per_user(segundos)
-            .map_err(|_| "Modo lento inválido".to_string())?;
+            .map_err(|_| "Invalid slowmode".to_string())?;
     }
     let canal = peticion
         .await
         .map_err(traducir_error)?
         .model()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     Ok(convertir_canal(canal))
 }
 
@@ -827,7 +824,7 @@ pub async fn delete_channel(
     base_url: Option<&str>,
     channel_id: &str,
 ) -> Result<(), String> {
-    let cid = parse_id(channel_id, "canal")?;
+    let cid = parse_id(channel_id, "channel")?;
     build_client(token, base_url)
         .delete_channel(cid)
         .await
@@ -844,7 +841,7 @@ fn parse_bits_permisos(
         .parse::<u64>()
         .ok()
         .and_then(twilight_model::guild::Permissions::from_bits)
-        .ok_or_else(|| format!("Los permisos {que} no son válidos"))
+        .ok_or_else(|| format!("The {que} permissions are not valid"))
 }
 
 /// Crea o cambia un overwrite de canal (`PUT /channels/{id}/permissions/{target}`).
@@ -862,16 +859,16 @@ pub async fn set_channel_overwrite(
     use twilight_model::http::permission_overwrite::{
         PermissionOverwrite, PermissionOverwriteType,
     };
-    let cid = parse_id(channel_id, "canal")?;
-    let permitidos = parse_bits_permisos(allow, "permitidos")?;
-    let denegados = parse_bits_permisos(deny, "denegados")?;
+    let cid = parse_id(channel_id, "channel")?;
+    let permitidos = parse_bits_permisos(allow, "allowed")?;
+    let denegados = parse_bits_permisos(deny, "denied")?;
     if permitidos.intersects(denegados) {
-        return Err("Un mismo permiso no puede estar permitido y denegado a la vez".to_string());
+        return Err("A permission cannot be both allowed and denied".to_string());
     }
     let overwrite = PermissionOverwrite {
         allow: Some(permitidos),
         deny: Some(denegados),
-        id: parse_id(target_id, if es_miembro { "miembro" } else { "rol" })?,
+        id: parse_id(target_id, if es_miembro { "member" } else { "role" })?,
         kind: if es_miembro {
             PermissionOverwriteType::Member
         } else {
@@ -893,17 +890,17 @@ pub async fn delete_channel_overwrite(
     target_id: &str,
     es_miembro: bool,
 ) -> Result<(), String> {
-    let cid = parse_id(channel_id, "canal")?;
+    let cid = parse_id(channel_id, "channel")?;
     let client = build_client(token, base_url);
     let peticion = client.delete_channel_permission(cid);
     if es_miembro {
         peticion
-            .member(parse_id(target_id, "miembro")?)
+            .member(parse_id(target_id, "member")?)
             .await
             .map_err(traducir_error)?;
     } else {
         peticion
-            .role(parse_id(target_id, "rol")?)
+            .role(parse_id(target_id, "role")?)
             .await
             .map_err(traducir_error)?;
     }
@@ -919,7 +916,7 @@ pub async fn reorder_guild_channels(
     posiciones: &[(String, u64)],
 ) -> Result<(), String> {
     if posiciones.is_empty() {
-        return Err("No hay posiciones que cambiar".to_string());
+        return Err("There are no positions to change".to_string());
     }
     let gid = parse_guild_id(guild_id)?;
     let pares = posiciones
@@ -927,7 +924,7 @@ pub async fn reorder_guild_channels(
         .map(|(id, pos)| {
             Ok(
                 twilight_http::request::guild::update_guild_channel_positions::Position::from((
-                    parse_id(id, "canal")?,
+                    parse_id(id, "channel")?,
                     *pos,
                 )),
             )
@@ -955,11 +952,11 @@ fn validar_datos_rol(datos: &DatosRol) -> Result<(), String> {
     if let Some(nombre) = &datos.name {
         let largo = nombre.trim().chars().count();
         if largo == 0 || largo > 100 {
-            return Err("El nombre del rol debe tener entre 1 y 100 caracteres".to_string());
+            return Err("The role name must be between 1 and 100 characters".to_string());
         }
     }
     if datos.color.is_some_and(|c| c > 0xFF_FFFF) {
-        return Err("El color del rol no es válido".to_string());
+        return Err("The role color is not valid".to_string());
     }
     parse_permisos(datos)?;
     Ok(())
@@ -974,7 +971,7 @@ fn parse_permisos(datos: &DatosRol) -> Result<Option<twilight_model::guild::Perm
                 .parse::<u64>()
                 .ok()
                 .and_then(twilight_model::guild::Permissions::from_bits)
-                .ok_or_else(|| "Los permisos del rol no son válidos".to_string())
+                .ok_or_else(|| "The role permissions are not valid".to_string())
         })
         .transpose()
 }
@@ -992,7 +989,7 @@ pub async fn create_guild_role(
         .as_deref()
         .map(str::trim)
         .filter(|n| !n.is_empty())
-        .ok_or("El rol necesita un nombre")?;
+        .ok_or("The role needs a name")?;
     let gid = parse_guild_id(guild_id)?;
     let client = build_client(token, base_url);
     let mut peticion = client.create_role(gid).name(nombre);
@@ -1013,7 +1010,7 @@ pub async fn create_guild_role(
         .map_err(traducir_error)?
         .model()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     Ok(convertir_rol(rol))
 }
 
@@ -1027,7 +1024,7 @@ pub async fn update_guild_role(
 ) -> Result<crate::state::Role, String> {
     validar_datos_rol(datos)?;
     let gid = parse_guild_id(guild_id)?;
-    let rid = parse_id(role_id, "rol")?;
+    let rid = parse_id(role_id, "role")?;
     let client = build_client(token, base_url);
     let mut peticion = client.update_role(gid, rid);
     if let Some(nombre) = datos.name.as_deref() {
@@ -1050,7 +1047,7 @@ pub async fn update_guild_role(
         .map_err(traducir_error)?
         .model()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     Ok(convertir_rol(rol))
 }
 
@@ -1062,7 +1059,7 @@ pub async fn delete_guild_role(
     role_id: &str,
 ) -> Result<(), String> {
     let gid = parse_guild_id(guild_id)?;
-    let rid = parse_id(role_id, "rol")?;
+    let rid = parse_id(role_id, "role")?;
     build_client(token, base_url)
         .delete_role(gid, rid)
         .await
@@ -1079,7 +1076,7 @@ pub async fn reorder_guild_roles(
     posiciones: &[(String, u64)],
 ) -> Result<(), String> {
     if posiciones.is_empty() {
-        return Err("No hay posiciones que cambiar".to_string());
+        return Err("There are no positions to change".to_string());
     }
     let gid = parse_guild_id(guild_id)?;
     // twilight 0.15 serializa estos pares como `["id", pos]`, pero Discord
@@ -1087,7 +1084,7 @@ pub async fn reorder_guild_roles(
     let cuerpo = posiciones
         .iter()
         .map(|(id, pos)| {
-            parse_id::<twilight_model::id::marker::RoleMarker>(id, "rol")?;
+            parse_id::<twilight_model::id::marker::RoleMarker>(id, "role")?;
             Ok(serde_json::json!({"id": id, "position": pos}))
         })
         .collect::<Result<Vec<_>, String>>()?;
@@ -1097,7 +1094,7 @@ pub async fn reorder_guild_roles(
         },
     )
     .json(&cuerpo)
-    .map_err(|e| format!("Petición inválida: {e}"))?
+    .map_err(|e| format!("Invalid request: {e}"))?
     .build();
     build_client(token, base_url)
         .request::<twilight_http::response::marker::EmptyBody>(peticion)
@@ -1275,7 +1272,7 @@ pub fn bits_desde_nombres(nombres: &[String]) -> Result<String, String> {
             .chain(PERMISOS_DISCORD.iter())
             .find(|(_, n)| normalizar_permiso(n) == buscado)
             .map(|(bit, _)| *bit)
-            .ok_or_else(|| format!("Permiso desconocido: «{}»", nombre.trim()))?;
+            .ok_or_else(|| format!("Unknown permission: «{}»", nombre.trim()))?;
         bits |= 1 << bit;
     }
     Ok(bits.to_string())
@@ -1297,9 +1294,9 @@ pub async fn fetch_guild_info(
         .map_err(traducir_error)?
         .bytes()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     let json: serde_json::Value = serde_json::from_slice(&cuerpo)
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     let texto = |k: &str| json.get(k).and_then(|v| v.as_str()).map(str::to_string);
     Ok(crate::state::Guild {
         id: texto("id").unwrap_or_else(|| guild_id.to_string()),
@@ -1330,7 +1327,7 @@ pub async fn fetch_bot_permissions(
         .map_err(traducir_error)?
         .bytes()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     let owner_id = serde_json::from_slice::<serde_json::Value>(&cuerpo)
         .ok()
         .and_then(|v| v.get("owner_id")?.as_str().map(str::to_string));
@@ -1375,7 +1372,7 @@ fn id_opcional(texto: &Option<String>, que: &str) -> Result<Option<String>, Stri
 fn validar_ajustes(a: &AjustesServidor) -> Result<serde_json::Value, String> {
     let nombre = a.name.trim();
     if nombre.chars().count() < 2 || nombre.chars().count() > 100 {
-        return Err("El nombre del servidor debe tener entre 2 y 100 caracteres".to_string());
+        return Err("The server name must be between 2 and 100 characters".to_string());
     }
     let descripcion = a
         .description
@@ -1383,19 +1380,19 @@ fn validar_ajustes(a: &AjustesServidor) -> Result<serde_json::Value, String> {
         .map(str::trim)
         .filter(|d| !d.is_empty());
     if descripcion.is_some_and(|d| d.chars().count() > 120) {
-        return Err("La descripción no puede superar los 120 caracteres".to_string());
+        return Err("The description cannot exceed 120 characters".to_string());
     }
     if a.verification_level > 4 {
-        return Err("Nivel de verificación inválido (0–4)".to_string());
+        return Err("Invalid verification level (0–4)".to_string());
     }
     if a.explicit_content_filter > 2 {
-        return Err("Filtro de contenido inválido (0–2)".to_string());
+        return Err("Invalid content filter (0–2)".to_string());
     }
     if a.default_message_notifications > 1 {
-        return Err("Notificaciones por defecto inválidas (0–1)".to_string());
+        return Err("Invalid default notifications (0–1)".to_string());
     }
     if !AFK_TIEMPOS.contains(&a.afk_timeout) {
-        return Err("El tiempo AFK debe ser 60, 300, 900, 1800 o 3600 segundos".to_string());
+        return Err("The AFK timeout must be 60, 300, 900, 1800 or 3600 seconds".to_string());
     }
     let sistema = id_opcional(&a.system_channel_id, "canal del sistema")?;
     let afk = id_opcional(&a.afk_channel_id, "canal AFK")?;
@@ -1439,9 +1436,9 @@ pub async fn fetch_guild_settings(
         .map_err(traducir_error)?
         .bytes()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     let json: serde_json::Value = serde_json::from_slice(&cuerpo)
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     Ok(ajustes_desde_json(&json))
 }
 
@@ -1460,7 +1457,7 @@ pub async fn update_guild_settings(
             guild_id: gid.get(),
         })
         .json(&cuerpo)
-        .map_err(|e| format!("Petición inválida: {e}"))?
+        .map_err(|e| format!("Invalid request: {e}"))?
         .build();
     let respuesta = build_client(token, base_url)
         .request::<twilight_http::response::marker::EmptyBody>(peticion)
@@ -1468,9 +1465,9 @@ pub async fn update_guild_settings(
         .map_err(traducir_error)?
         .bytes()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     let json: serde_json::Value = serde_json::from_slice(&respuesta)
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     Ok(ajustes_desde_json(&json))
 }
 
@@ -1611,9 +1608,9 @@ pub async fn fetch_audit_log(
         .map_err(traducir_error)?
         .bytes()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     let json: serde_json::Value = serde_json::from_slice(&cuerpo)
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     Ok(interpretar_auditoria(&json))
 }
 
@@ -1730,21 +1727,21 @@ mod tests {
 
     #[test]
     fn traduce_cada_codigo_de_error() {
-        assert_eq!(traducir_respuesta(401, b"{}"), "Token inválido");
+        assert_eq!(traducir_respuesta(401, b"{}"), "Invalid token");
         assert_eq!(
             traducir_respuesta(
                 403,
                 br#"{"code":50013,"message":"Missing Permissions: MANAGE_ROLES"}"#
             ),
-            "Al bot le falta el permiso «Gestionar roles»"
+            "The bot is missing the permission «Gestionar roles»"
         );
         assert!(
             traducir_respuesta(403, br#"{"message":"Missing Permissions"}"#)
-                .contains("le falta un permiso")
+                .contains("missing a permission")
         );
-        assert!(traducir_respuesta(404, b"").starts_with("No encontrado"));
-        assert!(traducir_respuesta(429, br#"{"retry_after":1.5}"#).contains("en 2 s"));
-        assert!(traducir_respuesta(429, b"").contains("limitó las peticiones"));
+        assert!(traducir_respuesta(404, b"").starts_with("Not found"));
+        assert!(traducir_respuesta(429, br#"{"retry_after":1.5}"#).contains("in 2 s"));
+        assert!(traducir_respuesta(429, b"").contains("rate limited"));
         assert!(traducir_respuesta(500, b"").contains("(500)"));
     }
 
@@ -1769,7 +1766,7 @@ mod tests {
                 serde_json::json!({"code":0,"message":"401: Unauthorized"})
             )
             .await,
-            "Token inválido"
+            "Invalid token"
         );
         assert_eq!(
             error_de_estado(
@@ -1777,20 +1774,20 @@ mod tests {
                 serde_json::json!({"code":50013,"message":"Missing Permissions: BAN_MEMBERS"})
             )
             .await,
-            "Al bot le falta el permiso «Banear miembros»"
+            "The bot is missing the permission «Banear miembros»"
         );
         assert!(error_de_estado(
             404,
             serde_json::json!({"code":10004,"message":"Unknown Guild"})
         )
         .await
-        .starts_with("No encontrado"));
+        .starts_with("Not found"));
         let limite = error_de_estado(
             429,
             serde_json::json!({"message":"You are being rate limited.","retry_after":3.0,"global":false}),
         )
         .await;
-        assert!(limite.contains("limitó las peticiones"), "{limite}");
+        assert!(limite.contains("rate limited"), "{limite}");
     }
 
     #[test]

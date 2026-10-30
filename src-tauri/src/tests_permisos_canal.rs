@@ -10,9 +10,8 @@ use crate::state::{AppState, BotConfig, Guild, ServerMap};
 
 const GESTIONAR_ROLES: u64 = 1 << 28;
 const ADMINISTRADOR: u64 = 1 << 3;
-const SIN_PERMISO: &str = "Al bot le falta el permiso «Gestionar roles»";
-const JERARQUIA: &str =
-    "Ese rol está por encima del rol del bot: súbelo en Ajustes del servidor → Roles";
+const SIN_PERMISO: &str = "The bot is missing the permission «Gestionar roles»";
+const JERARQUIA: &str = "That role is above the bot's role: move it up in Server settings → Roles";
 
 fn estado(token: &str) -> AppState {
     let state = AppState::new();

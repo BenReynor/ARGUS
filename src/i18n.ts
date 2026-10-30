@@ -1,10 +1,10 @@
-import { es } from './i18n/es';
+import { es, NOMBRE_ES } from './i18n/es';
 
 export type Idioma = 'en' | 'es';
 
 export const IDIOMAS: { id: Idioma; nombre: string }[] = [
   { id: 'en', nombre: 'English' },
-  { id: 'es', nombre: 'Español' },
+  { id: 'es', nombre: NOMBRE_ES },
 ];
 
 let actual: Idioma = 'en';

@@ -193,18 +193,6 @@ export type ChannelType =
   | 'GUILD_FORUM' 
   | 'GUILD_MEDIA';
 
-export const CHANNEL_TYPE_LABELS: Record<number, string> = {
-  0: 'Texto',
-  2: 'Voz',
-  4: 'Categoría',
-  5: 'Anuncio',
-  10: 'Hilo de anuncio',
-  11: 'Hilo público',
-  12: 'Hilo privado',
-  13: 'Escenario',
-  15: 'Foro',
-  16: 'Media',
-};
 /** Ajustes del servidor en Discord (sincronizado con `AjustesServidor` de discord.rs). */
 export interface AjustesServidor {
   name: string;

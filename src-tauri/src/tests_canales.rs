@@ -11,7 +11,7 @@ use crate::state::{AppState, BotConfig, Guild, ServerMap};
 
 const GESTIONAR_CANALES: u64 = 1 << 4;
 const ADMINISTRADOR: u64 = 1 << 3;
-const ESPERADO_SIN_PERMISO: &str = "Al bot le falta el permiso «Gestionar canales»";
+const ESPERADO_SIN_PERMISO: &str = "The bot is missing the permission «Gestionar canales»";
 
 fn estado(token: &str) -> AppState {
     let state = AppState::new();
@@ -334,12 +334,12 @@ async fn datos_invalidos_se_rechazan_sin_llamar_a_discord() {
     let e = crear_canal(&state, "555", &sin_nombre, b)
         .await
         .unwrap_err();
-    assert!(e.contains("nombre"), "{e}");
+    assert!(e.contains("name"), "{e}");
     let lento = DatosCanal {
         name: Some("a".into()),
         rate_limit_per_user: Some(30000),
         ..Default::default()
     };
     let e = crear_canal(&state, "555", &lento, b).await.unwrap_err();
-    assert!(e.contains("modo lento"), "{e}");
+    assert!(e.contains("lowmode"), "{e}");
 }

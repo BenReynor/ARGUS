@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Notify;
 use twilight_gateway::{Intents, Shard, ShardId};
 use twilight_model::gateway::event::Event;
@@ -42,7 +42,13 @@ pub const DEBOUNCE: Duration = Duration::from_millis(500);
 pub const EVENTO_ESTADO: &str = "bot-status-change";
 
 /// Emite `bot-status-change` con el estado actual.
+/// El último error va en el idioma de la config.
 pub fn emitir_estado(app: &AppHandle, status: &crate::state::BotStatus) {
+    let lang = app
+        .try_state::<crate::state::AppState>()
+        .map(|s| crate::i18n::idioma(&s))
+        .unwrap_or_else(|| crate::i18n::IDIOMA_DEFECTO.to_string());
+    let status = crate::i18n::estado_traducido(&lang, status.clone());
     if let Err(e) = app.emit(EVENTO_ESTADO, status) {
         tracing::warn!("No se pudo emitir bot-status-change: {e}");
     }
@@ -106,13 +112,13 @@ pub fn lanzar(
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("Error del Gateway: {e}");
+                    tracing::warn!("Gateway error: {e}");
                     if e.is_fatal() {
                         let nuevo = {
                             let mut st = estado.lock().unwrap();
                             st.running = false;
                             st.connected = false;
-                            st.last_error = Some(format!("Error del Gateway: {e}"));
+                            st.last_error = Some(format!("Gateway error: {e}"));
                             st.clone()
                         };
                         emitir_estado(&app_estado, &nuevo);

@@ -42,6 +42,56 @@ for (const ruta of archivos(src)) {
   }
 }
 
+// Literales visibles en español (con tilde, ñ, ¿ o ¡) fuera de src/i18n/: el texto
+// fuente va en inglés dentro de t(); el español solo vive en el catálogo.
+const reEspanol = /[áéíóúñÁÉÍÓÚÑ¿¡]/;
+const dirI18n = join(src, 'i18n');
+
+// Recorre el código saltando comentarios y devuelve cada literal de cadena con su línea.
+function* literales(codigo) {
+  let i = 0;
+  let linea = 1;
+  while (i < codigo.length) {
+    const c = codigo[i];
+    if (c === '\n') { linea++; i++; continue; }
+    if (c === '/' && codigo[i + 1] === '/') { while (i < codigo.length && codigo[i] !== '\n') i++; continue; }
+    if (c === '/' && codigo[i + 1] === '*') {
+      i += 2;
+      while (i < codigo.length && !(codigo[i] === '*' && codigo[i + 1] === '/')) { if (codigo[i] === '\n') linea++; i++; }
+      i += 2;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') {
+      const inicio = linea;
+      let texto = '';
+      i++;
+      while (i < codigo.length && codigo[i] !== c) {
+        if (codigo[i] === '\\') { texto += codigo[i++]; }
+        if (codigo[i] === '\n') linea++;
+        texto += codigo[i++];
+      }
+      i++;
+      yield [inicio, texto];
+      continue;
+    }
+    i++;
+  }
+}
+
+const sueltos = [];
+for (const ruta of archivos(src)) {
+  if (ruta.startsWith(dirI18n + '/') || ruta.startsWith(dirI18n + '\\')) continue;
+  const codigo = readFileSync(ruta, 'utf8');
+  for (const [linea, texto] of literales(codigo)) {
+    if (reEspanol.test(texto)) sueltos.push(`${relative(raiz, ruta)}:${linea}  ${JSON.stringify(texto)}`);
+  }
+}
+if (sueltos.length) {
+  console.error(`i18n: ${sueltos.length} literal(es) en español fuera de src/i18n/ (escríbelos en inglés dentro de t()):`);
+  for (const s of sueltos) console.error('  ' + s);
+  process.exit(1);
+}
+
 if (faltan.length) {
   console.error(`i18n: ${faltan.length} texto(s) sin traducción en src/i18n/es.ts:`);
   for (const f of faltan) console.error('  ' + f);

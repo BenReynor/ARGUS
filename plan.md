@@ -239,22 +239,22 @@ ARGUS se publica para cualquiera: la interfaz arranca en **inglés** y el usuari
 - [x] Traducir el Panel y los Logs
   criterio: Dashboard.tsx (incluidas las explicaciones de cada permiso del bot) y LogsView.tsx usan `t()` en todos sus textos visibles, tooltips y mensajes; en inglés por defecto y en español con el selector; `npm run i18n:check` y `npm run build` pasan
 
-- [ ] Traducir Canales
+- [x] Traducir Canales
   criterio: ChannelsView.tsx, PermisosCanal.tsx y ActividadCanal.tsx usan `t()` en textos visibles, placeholders, tooltips, diálogos de confirmación, notificaciones y en lo que escriben en Logs (los prefijos como `[CANALES]` pasan a inglés, p. ej. `[CHANNELS]`); los nombres de los permisos se muestran con su nombre oficial de Discord en inglés sin traducir; `npm run i18n:check` y `npm run build` pasan
 
-- [ ] Traducir Roles y Miembros
+- [x] Traducir Roles y Miembros
   criterio: RolesView.tsx y MembersView.tsx usan `t()` en textos visibles, los títulos de los grupos de permisos (los permisos en sí con su nombre oficial de Discord, sin traducir), placeholders, tooltips (incluido el motivo de una acción desactivada), diálogos y notificaciones; `npm run i18n:check` y `npm run build` pasan
 
-- [ ] Traducir Servidor y Ajustes
+- [x] Traducir Servidor y Ajustes
   criterio: ServidorView.tsx (ajustes del servidor y registro de auditoría; los tipos de acción con su nombre oficial de Discord, sin traducir) y SettingsView.tsx (bots, este servidor, MCP, apariencia, general, nombres de los temas) usan `t()`; `npm run i18n:check` y `npm run build` pasan
 
-- [ ] Mensajes del backend en el idioma elegido
+- [x] Mensajes del backend en el idioma elegido
   criterio: los mensajes de error y de estado que Rust devuelve a la UI (commands.rs, discord.rs, mensajes.rs, sync.rs, gateway.rs, db.rs) tienen el texto fuente en inglés y un módulo `src-tauri/src/i18n.rs` con el catálogo español y una función que traduce según `ui_language`; los comandos devuelven el mensaje en el idioma de la config; tests de Rust: el mismo error (p. ej. token inválido y falta de permiso contra el Discord falso) sale en inglés por defecto y en español con `ui_language = "es"`; un texto sin entrada en el catálogo sale en inglés; `cargo test` pasa
 
-- [ ] MCP en el idioma elegido
+- [x] MCP en el idioma elegido
   criterio: las descripciones de las herramientas de `argus-mcp` quedan en inglés; los mensajes de sus respuestas y errores (incluido «No hay bot activo en ARGUS…») usan el mismo `i18n.rs` y salen en el idioma guardado en la config de la BD (inglés por defecto); un test de `mcp.rs` lo comprueba en los dos idiomas; tests/mcp_humo.rs sigue pasando; docs/MCP.md en inglés con los mensajes de ejemplo en inglés
 
-- [ ] Sin textos sueltos y documentación
+- [x] Sin textos sueltos y documentación
   criterio: `scripts/comprobar-i18n.mjs` también falla si queda en `src/**/*.tsx`/`*.ts` (fuera de `src/i18n/`) un literal visible en español (con á, é, í, ó, ú, ñ, ¿ o ¡) y pasa sin excepciones; README.md queda en inglés (mismo contenido y capturas) con un enlace «Español» a un README.es.md nuevo con la traducción, y README.es.md enlaza de vuelta «English»; AGENTS.md y CONTEXTO.md dicen «UI en inglés por defecto, español con i18n (`t()` y catálogo)» en lugar de «Español en la UI»; `npm run i18n:check`, `npm run build` y `cargo test` pasan
 
 Verificación manual:

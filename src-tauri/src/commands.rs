@@ -11,11 +11,17 @@ use crate::state::{
 pub fn require_active_guild(state: &AppState) -> Result<String, String> {
     state
         .get_active_guild()
-        .ok_or_else(|| "No hay servidor seleccionado".to_string())
+        .ok_or_else(|| "No server selected".to_string())
 }
 
 #[tauri::command]
 pub async fn start_bot(app: AppHandle, state: State<'_, AppState>) -> Result<BotStatus, String> {
+    let st = state.clone();
+    let resultado = start_bot_en(app, state).await;
+    crate::i18n::localizar_estado(&st, resultado)
+}
+
+async fn start_bot_en(app: AppHandle, state: State<'_, AppState>) -> Result<BotStatus, String> {
     let status = conectar_bot(Some(&app), &state, None).await?;
     lanzar_sincronizacion(app, &state);
     Ok(status)
@@ -43,7 +49,7 @@ async fn sincronizar_y_guardar(
     guild_id: &str,
 ) -> Result<ServerMap, String> {
     let token = crypto::decrypt(&bot.token_ciphertext)
-        .map_err(|e| format!("Error descifrando el token: {e}"))?;
+        .map_err(|e| format!("Error decrypting the token: {e}"))?;
     let mapa = crate::sync::sincronizar_servidor(&token, None, guild_id, |p| {
         crate::sync::emitir_progreso(app, &p)
     })
@@ -61,10 +67,16 @@ async fn sincronizar_y_guardar(
 /// activo y devuelve el mapa nuevo.
 #[tauri::command]
 pub async fn resync_map(app: AppHandle, state: State<'_, AppState>) -> Result<ServerMap, String> {
+    let st = state.clone();
+    let resultado = resync_map_en(app, state).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn resync_map_en(app: AppHandle, state: State<'_, AppState>) -> Result<ServerMap, String> {
     let guild_id = require_active_guild(&state)?;
     let bot = state
         .get_active_bot()
-        .ok_or_else(|| "No hay un bot activo. Elige uno en Configuración.".to_string())?;
+        .ok_or_else(|| "No active bot. Choose one in Settings.".to_string())?;
     let maps = state.server_maps.clone();
     sincronizar_y_guardar(&app, &maps, &bot, &guild_id).await
 }
@@ -76,10 +88,10 @@ async fn conectar_bot(
     state: &AppState,
     base_url: Option<&str>,
 ) -> Result<BotStatus, String> {
-    let active_bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
+    let active_bot = state.get_active_bot().ok_or("No bot selected")?;
 
     let token = crypto::decrypt(&active_bot.token_ciphertext)
-        .map_err(|e| format!("Error descifrando token: {}", e))?;
+        .map_err(|e| format!("Error decrypting the token: {}", e))?;
 
     let resultado = crate::discord::fetch_current_user(&token, base_url).await;
     // El intent de miembros es un aviso, nunca un error: si la aplicación no se
@@ -135,6 +147,12 @@ async fn conectar_bot(
 
 #[tauri::command]
 pub async fn stop_bot(app: AppHandle, state: State<'_, AppState>) -> Result<BotStatus, String> {
+    let st = state.clone();
+    let resultado = stop_bot_en(app, state).await;
+    crate::i18n::localizar_estado(&st, resultado)
+}
+
+async fn stop_bot_en(app: AppHandle, state: State<'_, AppState>) -> Result<BotStatus, String> {
     let tarea = state.gateway_task.lock().unwrap().take();
     if let Some(tarea) = tarea {
         tarea.abort();
@@ -152,12 +170,24 @@ pub async fn stop_bot(app: AppHandle, state: State<'_, AppState>) -> Result<BotS
 
 #[tauri::command]
 pub async fn get_bot_status(state: State<'_, AppState>) -> Result<BotStatus, String> {
+    let st = state.clone();
+    let resultado = get_bot_status_en(state).await;
+    crate::i18n::localizar_estado(&st, resultado)
+}
+
+async fn get_bot_status_en(state: State<'_, AppState>) -> Result<BotStatus, String> {
     Ok(state.bot_status.lock().unwrap().clone())
 }
 
 // Guild management
 #[tauri::command]
 pub async fn list_guilds(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Guild>, String> {
+    let st = state.clone();
+    let resultado = list_guilds_en(app, state).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn list_guilds_en(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Guild>, String> {
     let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
     let guilds = sincronizar_guilds(&pool, &state, None).await?;
     state.config.lock().unwrap().guilds_cache = guilds.clone();
@@ -171,9 +201,9 @@ pub async fn sincronizar_guilds(
     state: &AppState,
     base_url: Option<&str>,
 ) -> Result<Vec<Guild>, String> {
-    let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
+    let bot = state.get_active_bot().ok_or("No bot selected")?;
     let token = crypto::decrypt(&bot.token_ciphertext)
-        .map_err(|e| format!("Error descifrando token: {}", e))?;
+        .map_err(|e| format!("Error decrypting the token: {}", e))?;
     let remotos = crate::discord::fetch_current_user_guilds(&token, base_url).await?;
     let guilds: Vec<Guild> = remotos
         .into_iter()
@@ -193,6 +223,12 @@ pub async fn sincronizar_guilds(
 
 #[tauri::command]
 pub async fn get_active_guild(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let st = state.clone();
+    let resultado = get_active_guild_en(state).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn get_active_guild_en(state: State<'_, AppState>) -> Result<Option<String>, String> {
     Ok(state.get_active_guild())
 }
 
@@ -201,13 +237,31 @@ pub async fn set_active_guild(
     state: State<'_, AppState>,
     guild_id: String,
 ) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = set_active_guild_en(state, guild_id).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn set_active_guild_en(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<String, String> {
     state.set_active_guild(&guild_id);
-    Ok("Guild activa cambiada".to_string())
+    Ok("Active server changed".to_string())
 }
 
 // Channels
 #[tauri::command]
 pub async fn list_channels(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<Vec<Channel>, String> {
+    let st = state.clone();
+    let resultado = list_channels_en(state, guild_id).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn list_channels_en(
     state: State<'_, AppState>,
     guild_id: String,
 ) -> Result<Vec<Channel>, String> {
@@ -228,7 +282,7 @@ pub async fn exigir_permiso(
     if permisos.iter().any(|p| p == permiso) {
         Ok(())
     } else {
-        Err(format!("Al bot le falta el permiso «{permiso}»"))
+        Err(format!("The bot is missing the permission «{permiso}»"))
     }
 }
 
@@ -266,6 +320,17 @@ pub async fn create_channel(
     guild_id: String,
     datos: DatosCanal,
 ) -> Result<Channel, String> {
+    let st = state.clone();
+    let resultado = create_channel_en(app, state, guild_id, datos).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn create_channel_en(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    datos: DatosCanal,
+) -> Result<Channel, String> {
     let canal = crear_canal(&state, &guild_id, &datos, None).await?;
     avisar_mapa_actualizado(&app);
     Ok(canal)
@@ -286,6 +351,18 @@ pub async fn crear_canal(
 
 #[tauri::command]
 pub async fn update_channel(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    datos: DatosCanal,
+) -> Result<Channel, String> {
+    let st = state.clone();
+    let resultado = update_channel_en(app, state, guild_id, channel_id, datos).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn update_channel_en(
     app: AppHandle,
     state: State<'_, AppState>,
     guild_id: String,
@@ -318,6 +395,17 @@ pub async fn delete_channel(
     guild_id: String,
     channel_id: String,
 ) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = delete_channel_en(app, state, guild_id, channel_id).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn delete_channel_en(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+) -> Result<String, String> {
     let mensaje = borrar_canal(&state, &guild_id, &channel_id, None).await?;
     avisar_mapa_actualizado(&app);
     Ok(mensaje)
@@ -333,12 +421,23 @@ pub async fn borrar_canal(
     let token = token_del_bot_activo(state)?;
     crate::discord::delete_channel(&token, base_url, channel_id).await?;
     refrescar_canales_del_mapa(state, guild_id, base_url).await?;
-    Ok(format!("Canal {channel_id} borrado"))
+    Ok(format!("Channel {channel_id} deleted"))
 }
 
 /// Cada par es (id del canal, nueva posición).
 #[tauri::command]
 pub async fn reorder_channels(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    positions: Vec<(String, u64)>,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = reorder_channels_en(app, state, guild_id, positions).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn reorder_channels_en(
     app: AppHandle,
     state: State<'_, AppState>,
     guild_id: String,
@@ -359,12 +458,12 @@ pub async fn reordenar_canales(
     let token = token_del_bot_activo(state)?;
     crate::discord::reorder_guild_channels(&token, base_url, guild_id, posiciones).await?;
     refrescar_canales_del_mapa(state, guild_id, base_url).await?;
-    Ok(format!("{} canales reordenados", posiciones.len()))
+    Ok(format!("{} channels reordered", posiciones.len()))
 }
 
 const PERMISO_GESTIONAR_ROLES: &str = "Gestionar roles";
 const ERROR_JERARQUIA: &str =
-    "Ese rol está por encima del rol del bot: súbelo en Ajustes del servidor → Roles";
+    "That role is above the bot's role: move it up in Server settings → Roles";
 
 /// Orden de un rol en la jerarquía, como lo calcula Discord: gana la posición
 /// mayor y, con la misma posición (pasa al crear roles), el ID menor (el más
@@ -395,7 +494,7 @@ pub async fn exigir_jerarquia(
     objetivos: &[(&str, Option<u64>)],
     base_url: Option<&str>,
 ) -> Result<(), String> {
-    let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
+    let bot = state.get_active_bot().ok_or("No bot selected")?;
     let roles = leer_roles(state, guild_id, base_url).await?;
     let miembro = leer_miembro(state, guild_id, &bot.id, base_url).await?;
     let Some(tope) = rango_mas_alto(&roles, &miembro) else {
@@ -405,7 +504,7 @@ pub async fn exigir_jerarquia(
         let rol = roles
             .iter()
             .find(|r| r.id == *id)
-            .ok_or_else(|| format!("El rol {id} no existe en el servidor"))?;
+            .ok_or_else(|| format!("Role {id} does not exist on the server"))?;
         if rango_rol(rol) >= tope || nueva.is_some_and(|n| n >= tope.0.max(0) as u64) {
             return Err(ERROR_JERARQUIA.to_string());
         }
@@ -413,9 +512,9 @@ pub async fn exigir_jerarquia(
     Ok(())
 }
 
-const ERROR_DUENO: &str = "No se puede hacer eso al dueño del servidor";
+const ERROR_DUENO: &str = "That cannot be done to the server owner";
 const ERROR_JERARQUIA_MIEMBRO: &str =
-    "Ese miembro tiene un rol igual o superior al del bot: sube el rol del bot en Ajustes del servidor → Roles";
+    "That member has a role equal to or above the bot's: move the bot's role up in Server settings → Roles";
 
 /// Comprueba que el bot puede moderar a `user_id`: no es el dueño y su rol más
 /// alto queda por debajo del del bot. Con `permitir_ausente`, un usuario que no
@@ -432,7 +531,7 @@ pub async fn exigir_jerarquia_miembro(
     if dueno.as_deref() == Some(user_id) {
         return Err(ERROR_DUENO.to_string());
     }
-    let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
+    let bot = state.get_active_bot().ok_or("No bot selected")?;
     let objetivo = match leer_miembro(state, guild_id, user_id, base_url).await {
         Ok(m) => m,
         Err(_) if permitir_ausente => return Ok(()),
@@ -461,8 +560,17 @@ pub async fn moderation_context(
     state: State<'_, AppState>,
     guild_id: String,
 ) -> Result<ContextoModeracion, String> {
+    let st = state.clone();
+    let resultado = moderation_context_en(state, guild_id).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn moderation_context_en(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<ContextoModeracion, String> {
     let token = token_del_bot_activo(&state)?;
-    let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
+    let bot = state.get_active_bot().ok_or("No bot selected")?;
     let owner_id = crate::discord::fetch_guild_owner_id(&token, None, &guild_id).await?;
     let roles = leer_roles(&state, &guild_id, None).await?;
     let del_bot = leer_miembro(&state, &guild_id, &bot.id, None).await?;
@@ -486,6 +594,17 @@ pub async fn kick_member(
     user_id: String,
     reason: Option<String>,
 ) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = kick_member_en(state, guild_id, user_id, reason).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn kick_member_en(
+    state: State<'_, AppState>,
+    guild_id: String,
+    user_id: String,
+    reason: Option<String>,
+) -> Result<String, String> {
     expulsar_miembro(&state, &guild_id, &user_id, reason.as_deref(), None).await
 }
 
@@ -500,11 +619,23 @@ pub async fn expulsar_miembro(
     exigir_jerarquia_miembro(state, guild_id, user_id, false, base_url).await?;
     let token = token_del_bot_activo(state)?;
     crate::discord::kick_guild_member(&token, base_url, guild_id, user_id, motivo).await?;
-    Ok(format!("Usuario {user_id} expulsado"))
+    Ok(format!("User {user_id} kicked"))
 }
 
 #[tauri::command]
 pub async fn ban_member(
+    state: State<'_, AppState>,
+    guild_id: String,
+    user_id: String,
+    reason: Option<String>,
+    delete_message_days: Option<u8>,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = ban_member_en(state, guild_id, user_id, reason, delete_message_days).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn ban_member_en(
     state: State<'_, AppState>,
     guild_id: String,
     user_id: String,
@@ -531,17 +662,28 @@ pub async fn banear_miembro(
     base_url: Option<&str>,
 ) -> Result<String, String> {
     if dias > crate::discord::BAN_DIAS_MAX {
-        return Err("Los días de mensajes a borrar deben estar entre 0 y 7".to_string());
+        return Err("The days of messages to delete must be between 0 and 7".to_string());
     }
     exigir_permiso(state, guild_id, "Banear miembros", base_url).await?;
     exigir_jerarquia_miembro(state, guild_id, user_id, true, base_url).await?;
     let token = token_del_bot_activo(state)?;
     crate::discord::ban_guild_member(&token, base_url, guild_id, user_id, motivo, dias).await?;
-    Ok(format!("Usuario {user_id} baneado"))
+    Ok(format!("User {user_id} banned"))
 }
 
 #[tauri::command]
 pub async fn unban_member(
+    state: State<'_, AppState>,
+    guild_id: String,
+    user_id: String,
+    reason: Option<String>,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = unban_member_en(state, guild_id, user_id, reason).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn unban_member_en(
     state: State<'_, AppState>,
     guild_id: String,
     user_id: String,
@@ -560,11 +702,20 @@ pub async fn quitar_ban(
     exigir_permiso(state, guild_id, "Banear miembros", base_url).await?;
     let token = token_del_bot_activo(state)?;
     crate::discord::unban_guild_member(&token, base_url, guild_id, user_id, motivo).await?;
-    Ok(format!("Ban de {user_id} quitado"))
+    Ok(format!("Ban of {user_id} removed"))
 }
 
 #[tauri::command]
 pub async fn list_bans(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<Vec<crate::discord::Ban>, String> {
+    let st = state.clone();
+    let resultado = list_bans_en(state, guild_id).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn list_bans_en(
     state: State<'_, AppState>,
     guild_id: String,
 ) -> Result<Vec<crate::discord::Ban>, String> {
@@ -583,6 +734,18 @@ pub async fn listar_bans(
 
 #[tauri::command]
 pub async fn set_nickname(
+    state: State<'_, AppState>,
+    guild_id: String,
+    user_id: String,
+    nickname: Option<String>,
+    reason: Option<String>,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = set_nickname_en(state, guild_id, user_id, nickname, reason).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn set_nickname_en(
     state: State<'_, AppState>,
     guild_id: String,
     user_id: String,
@@ -615,11 +778,20 @@ pub async fn cambiar_apodo(
     }
     let token = token_del_bot_activo(state)?;
     crate::discord::set_member_nickname(&token, base_url, guild_id, user_id, apodo, motivo).await?;
-    Ok(format!("Apodo de {user_id} actualizado"))
+    Ok(format!("Nickname of {user_id} updated"))
 }
 
 #[tauri::command]
 pub async fn get_guild_settings_discord(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<crate::discord::AjustesServidor, String> {
+    let st = state.clone();
+    let resultado = get_guild_settings_discord_en(state, guild_id).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn get_guild_settings_discord_en(
     state: State<'_, AppState>,
     guild_id: String,
 ) -> Result<crate::discord::AjustesServidor, String> {
@@ -642,6 +814,16 @@ pub async fn update_guild_discord(
     guild_id: String,
     settings: crate::discord::AjustesServidor,
 ) -> Result<crate::discord::AjustesServidor, String> {
+    let st = state.clone();
+    let resultado = update_guild_discord_en(state, guild_id, settings).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn update_guild_discord_en(
+    state: State<'_, AppState>,
+    guild_id: String,
+    settings: crate::discord::AjustesServidor,
+) -> Result<crate::discord::AjustesServidor, String> {
     guardar_ajustes_servidor(&state, &guild_id, &settings, None).await
 }
 
@@ -658,6 +840,15 @@ pub async fn guardar_ajustes_servidor(
 
 #[tauri::command]
 pub async fn audit_log(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<Vec<crate::discord::EntradaAuditoria>, String> {
+    let st = state.clone();
+    let resultado = audit_log_en(state, guild_id).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn audit_log_en(
     state: State<'_, AppState>,
     guild_id: String,
 ) -> Result<Vec<crate::discord::EntradaAuditoria>, String> {
@@ -687,6 +878,16 @@ pub async fn channel_messages(
     guild_id: String,
     channel_id: String,
 ) -> Result<Vec<crate::mensajes::MensajeCanal>, String> {
+    let st = state.clone();
+    let resultado = channel_messages_en(state, guild_id, channel_id).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn channel_messages_en(
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+) -> Result<Vec<crate::mensajes::MensajeCanal>, String> {
     leer_mensajes(&state, &guild_id, &channel_id, None).await
 }
 
@@ -708,6 +909,17 @@ pub async fn delete_message(
     channel_id: String,
     message_id: String,
 ) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = delete_message_en(state, guild_id, channel_id, message_id).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn delete_message_en(
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    message_id: String,
+) -> Result<String, String> {
     borrar_mensaje(&state, &guild_id, &channel_id, &message_id, None).await
 }
 
@@ -723,7 +935,7 @@ pub async fn borrar_mensaje(
         .err();
     let token = token_del_bot_activo(state)?;
     match crate::mensajes::delete_message(&token, base_url, channel_id, message_id).await {
-        Ok(()) => Ok(format!("Mensaje {message_id} borrado")),
+        Ok(()) => Ok(format!("Message {message_id} deleted")),
         // Sin «Gestionar mensajes» el bot aún puede borrar sus propios mensajes:
         // se intenta igual y, si Discord lo rechaza, se explica el permiso.
         Err(_) if sin_permiso.is_some() => Err(sin_permiso.unwrap_or_default()),
@@ -733,6 +945,17 @@ pub async fn borrar_mensaje(
 
 #[tauri::command]
 pub async fn bulk_delete_messages(
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    message_ids: Vec<String>,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = bulk_delete_messages_en(state, guild_id, channel_id, message_ids).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn bulk_delete_messages_en(
     state: State<'_, AppState>,
     guild_id: String,
     channel_id: String,
@@ -754,11 +977,22 @@ pub async fn borrar_mensajes_en_masa(
     let token = token_del_bot_activo(state)?;
     let n =
         crate::mensajes::bulk_delete_messages(&token, base_url, channel_id, message_ids).await?;
-    Ok(format!("{n} mensajes borrados"))
+    Ok(format!("{n} messages deleted"))
 }
 
 #[tauri::command]
 pub async fn pin_message(
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    message_id: String,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = pin_message_en(state, guild_id, channel_id, message_id).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn pin_message_en(
     state: State<'_, AppState>,
     guild_id: String,
     channel_id: String,
@@ -769,6 +1003,17 @@ pub async fn pin_message(
 
 #[tauri::command]
 pub async fn unpin_message(
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    message_id: String,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = unpin_message_en(state, guild_id, channel_id, message_id).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn unpin_message_en(
     state: State<'_, AppState>,
     guild_id: String,
     channel_id: String,
@@ -789,14 +1034,26 @@ pub async fn fijar_mensaje(
     let token = token_del_bot_activo(state)?;
     crate::mensajes::set_pin(&token, base_url, channel_id, message_id, fijar).await?;
     Ok(if fijar {
-        format!("Mensaje {message_id} fijado")
+        format!("Message {message_id} pinned")
     } else {
-        format!("Mensaje {message_id} desfijado")
+        format!("Message {message_id} unpinned")
     })
 }
 
 #[tauri::command]
 pub async fn create_invite(
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    max_age: u32,
+    max_uses: u32,
+) -> Result<crate::mensajes::Invitacion, String> {
+    let st = state.clone();
+    let resultado = create_invite_en(state, guild_id, channel_id, max_age, max_uses).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn create_invite_en(
     state: State<'_, AppState>,
     guild_id: String,
     channel_id: String,
@@ -824,6 +1081,15 @@ pub async fn list_invites(
     state: State<'_, AppState>,
     guild_id: String,
 ) -> Result<Vec<crate::mensajes::Invitacion>, String> {
+    let st = state.clone();
+    let resultado = list_invites_en(state, guild_id).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn list_invites_en(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<Vec<crate::mensajes::Invitacion>, String> {
     leer_invitaciones(&state, &guild_id, None).await
 }
 
@@ -843,6 +1109,16 @@ pub async fn delete_invite(
     guild_id: String,
     code: String,
 ) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = delete_invite_en(state, guild_id, code).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn delete_invite_en(
+    state: State<'_, AppState>,
+    guild_id: String,
+    code: String,
+) -> Result<String, String> {
     borrar_invitacion(&state, &guild_id, &code, None).await
 }
 
@@ -855,11 +1131,20 @@ pub async fn borrar_invitacion(
     exigir_permiso(state, guild_id, PERMISO_SERVIDOR, base_url).await?;
     let token = token_del_bot_activo(state)?;
     crate::mensajes::delete_invite(&token, base_url, code).await?;
-    Ok(format!("Invitación {code} eliminada"))
+    Ok(format!("Invite {code} deleted"))
 }
 
 #[tauri::command]
 pub async fn list_webhooks(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<Vec<crate::mensajes::Webhook>, String> {
+    let st = state.clone();
+    let resultado = list_webhooks_en(state, guild_id).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn list_webhooks_en(
     state: State<'_, AppState>,
     guild_id: String,
 ) -> Result<Vec<crate::mensajes::Webhook>, String> {
@@ -878,6 +1163,17 @@ pub async fn leer_webhooks(
 
 #[tauri::command]
 pub async fn create_webhook(
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    name: String,
+) -> Result<crate::mensajes::Webhook, String> {
+    let st = state.clone();
+    let resultado = create_webhook_en(state, guild_id, channel_id, name).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn create_webhook_en(
     state: State<'_, AppState>,
     guild_id: String,
     channel_id: String,
@@ -904,6 +1200,16 @@ pub async fn delete_webhook(
     guild_id: String,
     webhook_id: String,
 ) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = delete_webhook_en(state, guild_id, webhook_id).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn delete_webhook_en(
+    state: State<'_, AppState>,
+    guild_id: String,
+    webhook_id: String,
+) -> Result<String, String> {
     borrar_webhook(&state, &guild_id, &webhook_id, None).await
 }
 
@@ -916,7 +1222,7 @@ pub async fn borrar_webhook(
     exigir_permiso(state, guild_id, PERMISO_WEBHOOKS, base_url).await?;
     let token = token_del_bot_activo(state)?;
     crate::mensajes::delete_webhook(&token, base_url, webhook_id).await?;
-    Ok(format!("Webhook {webhook_id} eliminado"))
+    Ok(format!("Webhook {webhook_id} deleted"))
 }
 
 /// Tras cambiar roles, vuelve a leerlos y actualiza el mapa guardado (si hay uno).
@@ -943,6 +1249,17 @@ pub async fn create_role(
     guild_id: String,
     datos: DatosRol,
 ) -> Result<Role, String> {
+    let st = state.clone();
+    let resultado = create_role_en(app, state, guild_id, datos).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn create_role_en(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    datos: DatosRol,
+) -> Result<Role, String> {
     let rol = crear_rol(&state, &guild_id, &datos, None).await?;
     avisar_mapa_actualizado(&app);
     Ok(rol)
@@ -963,6 +1280,18 @@ pub async fn crear_rol(
 
 #[tauri::command]
 pub async fn update_role(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    role_id: String,
+    datos: DatosRol,
+) -> Result<Role, String> {
+    let st = state.clone();
+    let resultado = update_role_en(app, state, guild_id, role_id, datos).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn update_role_en(
     app: AppHandle,
     state: State<'_, AppState>,
     guild_id: String,
@@ -996,6 +1325,17 @@ pub async fn delete_role(
     guild_id: String,
     role_id: String,
 ) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = delete_role_en(app, state, guild_id, role_id).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn delete_role_en(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    role_id: String,
+) -> Result<String, String> {
     let mensaje = borrar_rol(&state, &guild_id, &role_id, None).await?;
     avisar_mapa_actualizado(&app);
     Ok(mensaje)
@@ -1012,12 +1352,23 @@ pub async fn borrar_rol(
     let token = token_del_bot_activo(state)?;
     crate::discord::delete_guild_role(&token, base_url, guild_id, role_id).await?;
     refrescar_roles_del_mapa(state, guild_id, base_url).await?;
-    Ok(format!("Rol {role_id} borrado"))
+    Ok(format!("Role {role_id} deleted"))
 }
 
 /// Cada par es (id del rol, nueva posición).
 #[tauri::command]
 pub async fn reorder_roles(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    positions: Vec<(String, u64)>,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = reorder_roles_en(app, state, guild_id, positions).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn reorder_roles_en(
     app: AppHandle,
     state: State<'_, AppState>,
     guild_id: String,
@@ -1043,12 +1394,30 @@ pub async fn reordenar_roles(
     let token = token_del_bot_activo(state)?;
     crate::discord::reorder_guild_roles(&token, base_url, guild_id, posiciones).await?;
     refrescar_roles_del_mapa(state, guild_id, base_url).await?;
-    Ok(format!("{} roles reordenados", posiciones.len()))
+    Ok(format!("{} roles reordered", posiciones.len()))
 }
 
 /// `kind`: 0 = rol, 1 = miembro (igual que `Overwrite::type_`).
 #[tauri::command]
 pub async fn set_channel_permission(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    target_id: String,
+    kind: u8,
+    allow: String,
+    deny: String,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = set_channel_permission_en(
+        app, state, guild_id, channel_id, target_id, kind, allow, deny,
+    )
+    .await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn set_channel_permission_en(
     app: AppHandle,
     state: State<'_, AppState>,
     guild_id: String,
@@ -1085,7 +1454,7 @@ pub async fn fijar_permiso_canal(
     base_url: Option<&str>,
 ) -> Result<String, String> {
     if kind > 1 {
-        return Err("El tipo de overwrite debe ser 0 (rol) o 1 (miembro)".to_string());
+        return Err("The overwrite type must be 0 (role) or 1 (member)".to_string());
     }
     exigir_permiso(state, guild_id, PERMISO_GESTIONAR_ROLES, base_url).await?;
     if kind == 0 {
@@ -1104,12 +1473,26 @@ pub async fn fijar_permiso_canal(
     .await?;
     refrescar_canales_del_mapa(state, guild_id, base_url).await?;
     Ok(format!(
-        "Permisos de {target_id} actualizados en el canal {channel_id}"
+        "Permissions of {target_id} updated in channel {channel_id}"
     ))
 }
 
 #[tauri::command]
 pub async fn delete_channel_permission(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+    target_id: String,
+    kind: u8,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado =
+        delete_channel_permission_en(app, state, guild_id, channel_id, target_id, kind).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn delete_channel_permission_en(
     app: AppHandle,
     state: State<'_, AppState>,
     guild_id: String,
@@ -1132,7 +1515,7 @@ pub async fn quitar_permiso_canal(
     base_url: Option<&str>,
 ) -> Result<String, String> {
     if kind > 1 {
-        return Err("El tipo de overwrite debe ser 0 (rol) o 1 (miembro)".to_string());
+        return Err("The overwrite type must be 0 (role) or 1 (member)".to_string());
     }
     exigir_permiso(state, guild_id, PERMISO_GESTIONAR_ROLES, base_url).await?;
     if kind == 0 {
@@ -1143,14 +1526,14 @@ pub async fn quitar_permiso_canal(
         .await?;
     refrescar_canales_del_mapa(state, guild_id, base_url).await?;
     Ok(format!(
-        "Permisos de {target_id} quitados del canal {channel_id}"
+        "Permissions of {target_id} removed from channel {channel_id}"
     ))
 }
 
 /// Descifra el token del bot activo.
 pub fn token_del_bot_activo(state: &AppState) -> Result<String, String> {
-    let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
-    crypto::decrypt(&bot.token_ciphertext).map_err(|e| format!("Error descifrando token: {}", e))
+    let bot = state.get_active_bot().ok_or("No bot selected")?;
+    crypto::decrypt(&bot.token_ciphertext).map_err(|e| format!("Error decrypting the token: {}", e))
 }
 
 /// `GET /guilds/{id}/channels` convertido a `Channel` (con overwrites).
@@ -1176,6 +1559,15 @@ pub async fn leer_roles(
 // Members
 #[tauri::command]
 pub async fn list_members(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<Vec<Member>, String> {
+    let st = state.clone();
+    let resultado = list_members_en(state, guild_id).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn list_members_en(
     state: State<'_, AppState>,
     guild_id: String,
 ) -> Result<Vec<Member>, String> {
@@ -1209,12 +1601,27 @@ pub async fn bot_permissions(
     state: State<'_, AppState>,
     guild_id: String,
 ) -> Result<Vec<String>, String> {
+    let st = state.clone();
+    let resultado = bot_permissions_en(state, guild_id).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn bot_permissions_en(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<Vec<String>, String> {
     permisos_del_bot(&state, &guild_id, None).await
 }
 
 /// Nombre, icono y miembros aproximados del servidor.
 #[tauri::command]
 pub async fn guild_info(state: State<'_, AppState>, guild_id: String) -> Result<Guild, String> {
+    let st = state.clone();
+    let resultado = guild_info_en(state, guild_id).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn guild_info_en(state: State<'_, AppState>, guild_id: String) -> Result<Guild, String> {
     informacion_del_servidor(&state, &guild_id, None).await
 }
 
@@ -1232,7 +1639,7 @@ pub async fn permisos_del_bot(
     guild_id: &str,
     base_url: Option<&str>,
 ) -> Result<Vec<String>, String> {
-    let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
+    let bot = state.get_active_bot().ok_or("No bot selected")?;
     let token = token_del_bot_activo(state)?;
     crate::discord::fetch_bot_permissions(&token, base_url, guild_id, &bot.id).await
 }
@@ -1240,12 +1647,28 @@ pub async fn permisos_del_bot(
 // Roles
 #[tauri::command]
 pub async fn list_roles(state: State<'_, AppState>, guild_id: String) -> Result<Vec<Role>, String> {
+    let st = state.clone();
+    let resultado = list_roles_en(state, guild_id).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn list_roles_en(state: State<'_, AppState>, guild_id: String) -> Result<Vec<Role>, String> {
     leer_roles(&state, &guild_id, None).await
 }
 
 // Discord operations
 #[tauri::command]
 pub async fn send_message(
+    state: State<'_, AppState>,
+    channel_id: String,
+    content: String,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = send_message_en(state, channel_id, content).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn send_message_en(
     state: State<'_, AppState>,
     channel_id: String,
     content: String,
@@ -1263,11 +1686,21 @@ pub async fn enviar_a_canal(
     crate::discord::validar_contenido(content)?;
     let token = token_del_bot_activo(state)?;
     let id = crate::discord::send_channel_message(&token, base_url, channel_id, content).await?;
-    Ok(format!("Mensaje enviado a canal {channel_id} (id {id})"))
+    Ok(format!("Message sent to channel {channel_id} (id {id})"))
 }
 
 #[tauri::command]
 pub async fn send_dm(
+    state: State<'_, AppState>,
+    user_id: String,
+    content: String,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = send_dm_en(state, user_id, content).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn send_dm_en(
     state: State<'_, AppState>,
     user_id: String,
     content: String,
@@ -1285,11 +1718,21 @@ pub async fn enviar_dm(
     crate::discord::validar_contenido(content)?;
     let token = token_del_bot_activo(state)?;
     let id = crate::discord::send_direct_message(&token, base_url, user_id, content).await?;
-    Ok(format!("DM enviado a usuario {user_id} (id {id})"))
+    Ok(format!("DM sent to user {user_id} (id {id})"))
 }
 
 #[tauri::command]
 pub async fn get_member_info(
+    state: State<'_, AppState>,
+    guild_id: String,
+    user_id: String,
+) -> Result<Member, String> {
+    let st = state.clone();
+    let resultado = get_member_info_en(state, guild_id, user_id).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn get_member_info_en(
     state: State<'_, AppState>,
     guild_id: String,
     user_id: String,
@@ -1304,11 +1747,33 @@ pub async fn add_role(
     user_id: String,
     role_id: String,
 ) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = add_role_en(state, guild_id, user_id, role_id).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn add_role_en(
+    state: State<'_, AppState>,
+    guild_id: String,
+    user_id: String,
+    role_id: String,
+) -> Result<String, String> {
     cambiar_rol(&state, &guild_id, &user_id, &role_id, true, None).await
 }
 
 #[tauri::command]
 pub async fn remove_role(
+    state: State<'_, AppState>,
+    guild_id: String,
+    user_id: String,
+    role_id: String,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = remove_role_en(state, guild_id, user_id, role_id).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn remove_role_en(
     state: State<'_, AppState>,
     guild_id: String,
     user_id: String,
@@ -1329,14 +1794,26 @@ pub async fn cambiar_rol(
     let token = token_del_bot_activo(state)?;
     crate::discord::set_member_role(&token, base_url, guild_id, user_id, role_id, anadir).await?;
     Ok(if anadir {
-        format!("Rol {role_id} añadido a usuario {user_id}")
+        format!("Role {role_id} added to user {user_id}")
     } else {
-        format!("Rol {role_id} quitado a usuario {user_id}")
+        format!("Role {role_id} removed from user {user_id}")
     })
 }
 
 #[tauri::command]
 pub async fn timeout_member(
+    state: State<'_, AppState>,
+    guild_id: String,
+    user_id: String,
+    duration_minutes: u32,
+    reason: Option<String>,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = timeout_member_en(state, guild_id, user_id, duration_minutes, reason).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn timeout_member_en(
     state: State<'_, AppState>,
     guild_id: String,
     user_id: String,
@@ -1374,20 +1851,32 @@ pub async fn silenciar_miembro(
     crate::discord::set_member_timeout(&token, base_url, guild_id, user_id, minutos, motivo)
         .await?;
     Ok(if minutos == 0 {
-        format!("Silencio quitado a usuario {user_id}")
+        format!("Timeout removed from user {user_id}")
     } else {
-        format!("Usuario {user_id} silenciado por {minutos} minutos")
+        format!("User {user_id} timed out for {minutos} minutes")
     })
 }
 
 // Config
 #[tauri::command]
 pub async fn get_config(state: State<'_, AppState>) -> Result<Config, String> {
+    let st = state.clone();
+    let resultado = get_config_en(state).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn get_config_en(state: State<'_, AppState>) -> Result<Config, String> {
     Ok(state.config.lock().unwrap().clone())
 }
 
 #[tauri::command]
 pub async fn get_config_full(state: State<'_, AppState>) -> Result<Config, String> {
+    let st = state.clone();
+    let resultado = get_config_full_en(state).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn get_config_full_en(state: State<'_, AppState>) -> Result<Config, String> {
     Ok(state.config.lock().unwrap().clone())
 }
 
@@ -1397,16 +1886,12 @@ pub async fn save_config(
     state: State<'_, AppState>,
     config: Config,
 ) -> Result<String, String> {
-    *state.config.lock().unwrap() = config;
-    state
-        .save_config_to_db(&app)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok("Configuración guardada".to_string())
+    let st = state.clone();
+    let resultado = save_config_en(app, state, config).await;
+    crate::i18n::localizar_texto(&st, resultado)
 }
 
-#[tauri::command]
-pub async fn save_config_full(
+async fn save_config_en(
     app: AppHandle,
     state: State<'_, AppState>,
     config: Config,
@@ -1416,11 +1901,41 @@ pub async fn save_config_full(
         .save_config_to_db(&app)
         .await
         .map_err(|e| e.to_string())?;
-    Ok("Configuración completa guardada".to_string())
+    Ok("Settings saved".to_string())
+}
+
+#[tauri::command]
+pub async fn save_config_full(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    config: Config,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = save_config_full_en(app, state, config).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn save_config_full_en(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    config: Config,
+) -> Result<String, String> {
+    *state.config.lock().unwrap() = config;
+    state
+        .save_config_to_db(&app)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok("Full settings saved".to_string())
 }
 
 #[tauri::command]
 pub async fn get_active_guild_cmd(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let st = state.clone();
+    let resultado = get_active_guild_cmd_en(state).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn get_active_guild_cmd_en(state: State<'_, AppState>) -> Result<Option<String>, String> {
     Ok(state.get_active_guild())
 }
 
@@ -1429,19 +1944,40 @@ pub async fn set_active_guild_cmd(
     state: State<'_, AppState>,
     guild_id: String,
 ) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = set_active_guild_cmd_en(state, guild_id).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn set_active_guild_cmd_en(
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<String, String> {
     state.set_active_guild(&guild_id);
-    Ok("Guild activa cambiada".to_string())
+    Ok("Active server changed".to_string())
 }
 
 // Server map
 #[tauri::command]
 pub async fn get_server_map(state: State<'_, AppState>) -> Result<Option<ServerMap>, String> {
+    let st = state.clone();
+    let resultado = get_server_map_en(state).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn get_server_map_en(state: State<'_, AppState>) -> Result<Option<ServerMap>, String> {
     let guild_id = require_active_guild(&state)?;
     Ok(state.get_map(&guild_id))
 }
 
 #[tauri::command]
 pub async fn refresh_server_map(state: State<'_, AppState>) -> Result<ServerMap, String> {
+    let st = state.clone();
+    let resultado = refresh_server_map_en(state).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn refresh_server_map_en(state: State<'_, AppState>) -> Result<ServerMap, String> {
     let guild_id = require_active_guild(&state)?;
     let channels = list_channels(state.clone(), guild_id.clone()).await?;
     let roles = list_roles(state.clone(), guild_id.clone()).await?;
@@ -1500,12 +2036,28 @@ pub async fn refresh_server_map(state: State<'_, AppState>) -> Result<ServerMap,
 // Bot management (multi-bot)
 #[tauri::command]
 pub async fn list_bots(state: State<'_, AppState>) -> Result<Vec<BotConfig>, String> {
+    let st = state.clone();
+    let resultado = list_bots_en(state).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn list_bots_en(state: State<'_, AppState>) -> Result<Vec<BotConfig>, String> {
     let config = state.config.lock().unwrap();
     Ok(config.bots.clone())
 }
 
 #[tauri::command]
 pub async fn add_bot(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    token: String,
+) -> Result<BotRegistrado, String> {
+    let st = state.clone();
+    let resultado = add_bot_en(app, state, token).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn add_bot_en(
     app: AppHandle,
     state: State<'_, AppState>,
     token: String,
@@ -1539,12 +2091,12 @@ pub async fn registrar_bot(
 ) -> Result<(BotConfig, Option<String>), String> {
     let token = token.trim();
     if token.is_empty() {
-        return Err("Token inválido".to_string());
+        return Err("Invalid token".to_string());
     }
     let user = crate::discord::fetch_current_user(token, base_url).await?;
     let application = crate::discord::fetch_current_application(token, base_url).await?;
     let token_ciphertext =
-        crypto::encrypt(token).map_err(|e| format!("Error cifrando token: {}", e))?;
+        crypto::encrypt(token).map_err(|e| format!("Error encrypting the token: {}", e))?;
     let now = Utc::now().to_rfc3339();
     let bot = BotConfig {
         id: user.id.to_string(),
@@ -1566,27 +2118,31 @@ pub async fn registrar_bot(
 /// de guardar su id de aplicación, se pide a Discord y se guarda.
 #[tauri::command]
 pub async fn invite_url(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = invite_url_en(app, state).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn invite_url_en(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
     let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
     enlace_de_invitacion(&pool, &state, None).await
 }
 
 /// Ruta del binario `argus-mcp`, que se instala junto al ejecutable de la app.
 pub fn ruta_del_mcp() -> Result<String, String> {
-    let exe = std::env::current_exe().map_err(|e| format!("No se pudo localizar ARGUS: {e}"))?;
+    let exe = std::env::current_exe().map_err(|e| format!("Could not locate ARGUS: {e}"))?;
     let nombre = if cfg!(windows) {
         "argus-mcp.exe"
     } else {
         "argus-mcp"
     };
-    let dir = exe
-        .parent()
-        .ok_or("No se pudo localizar la carpeta de ARGUS")?;
+    let dir = exe.parent().ok_or("Could not locate the ARGUS folder")?;
     Ok(dir.join(nombre).to_string_lossy().into_owned())
 }
 
 #[tauri::command]
-pub fn ruta_mcp() -> Result<String, String> {
-    ruta_del_mcp()
+pub fn ruta_mcp(state: State<'_, AppState>) -> Result<String, String> {
+    crate::i18n::localizar_error(&state, ruta_del_mcp())
 }
 
 pub async fn enlace_de_invitacion(
@@ -1596,10 +2152,10 @@ pub async fn enlace_de_invitacion(
 ) -> Result<String, String> {
     let mut bot = state
         .get_active_bot()
-        .ok_or_else(|| "No hay bot seleccionado".to_string())?;
+        .ok_or_else(|| "No bot selected".to_string())?;
     if bot.application_id.is_none() {
         let token = crypto::decrypt(&bot.token_ciphertext)
-            .map_err(|e| format!("Error descifrando token: {}", e))?;
+            .map_err(|e| format!("Error decrypting the token: {}", e))?;
         let application = crate::discord::fetch_current_application(&token, base_url).await?;
         bot.application_id = Some(application.id.to_string());
         db::upsert_bot(pool, &bot)
@@ -1621,12 +2177,22 @@ pub async fn enlace_de_invitacion(
 pub async fn update_bot(
     app: AppHandle,
     state: State<'_, AppState>,
+    bot: BotConfig,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = update_bot_en(app, state, bot).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn update_bot_en(
+    app: AppHandle,
+    state: State<'_, AppState>,
     mut bot: BotConfig,
 ) -> Result<String, String> {
     // Encrypt token if not already encrypted
     if !bot.token_ciphertext.starts_with("encrypted:") {
         bot.token_ciphertext = crypto::encrypt(&bot.token_ciphertext)
-            .map_err(|e| format!("Error cifrando token: {}", e))?;
+            .map_err(|e| format!("Error encrypting the token: {}", e))?;
     }
 
     // Scoped, not drop(): the guard must not be live across the .await below.
@@ -1654,11 +2220,21 @@ pub async fn update_bot(
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok("Bot actualizado".to_string())
+    Ok("Bot updated".to_string())
 }
 
 #[tauri::command]
 pub async fn delete_bot(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    bot_id: String,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = delete_bot_en(app, state, bot_id).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn delete_bot_en(
     app: AppHandle,
     state: State<'_, AppState>,
     bot_id: String,
@@ -1682,11 +2258,21 @@ pub async fn delete_bot(
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok("Bot eliminado".to_string())
+    Ok("Bot deleted".to_string())
 }
 
 #[tauri::command]
 pub async fn set_active_bot(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    bot_id: String,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = set_active_bot_en(app, state, bot_id).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn set_active_bot_en(
     app: AppHandle,
     state: State<'_, AppState>,
     bot_id: String,
@@ -1699,19 +2285,28 @@ pub async fn set_active_bot(
         .iter()
         .any(|b| b.id == bot_id);
     if !existe {
-        return Err("El bot no está registrado".to_string());
+        return Err("The bot is not registered".to_string());
     }
     state.set_active_bot(&bot_id);
     state
         .save_config_to_db(&app)
         .await
         .map_err(|e| e.to_string())?;
-    Ok("Bot activo cambiado".to_string())
+    Ok("Active bot changed".to_string())
 }
 
 // Templates
 #[tauri::command]
 pub async fn list_templates(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<db::Template>, String> {
+    let st = state.clone();
+    let resultado = list_templates_en(app, state).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn list_templates_en(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<db::Template>, String> {
@@ -1725,11 +2320,21 @@ pub async fn save_template(
     state: State<'_, AppState>,
     template: db::Template,
 ) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = save_template_en(app, state, template).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn save_template_en(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    template: db::Template,
+) -> Result<String, String> {
     let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
     db::save_template(&pool, &template)
         .await
         .map_err(|e| e.to_string())?;
-    Ok("Plantilla guardada".to_string())
+    Ok("Template saved".to_string())
 }
 
 #[tauri::command]
@@ -1738,11 +2343,21 @@ pub async fn delete_template(
     state: State<'_, AppState>,
     template_id: String,
 ) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = delete_template_en(app, state, template_id).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn delete_template_en(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    template_id: String,
+) -> Result<String, String> {
     let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
     db::delete_template(&pool, &template_id)
         .await
         .map_err(|e| e.to_string())?;
-    Ok("Plantilla eliminada".to_string())
+    Ok("Template deleted".to_string())
 }
 
 #[tauri::command]
@@ -1752,16 +2367,27 @@ pub async fn apply_template(
     guild_id: String,
     template_id: String,
 ) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = apply_template_en(app, state, guild_id, template_id).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn apply_template_en(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    template_id: String,
+) -> Result<String, String> {
     let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
     let template = db::get_template(&pool, &template_id)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or("Plantilla no encontrada")?;
+        .ok_or("Template not found")?;
 
     // TODO: Implement actual template application via Discord API
     // For now, just return success
     Ok(format!(
-        "Plantilla '{}' aplicada a guild {}",
+        "Template '{}' applied to server {}",
         template.name, guild_id
     ))
 }
@@ -1769,12 +2395,28 @@ pub async fn apply_template(
 // Vigilance config
 #[tauri::command]
 pub async fn get_vigilance_config(state: State<'_, AppState>) -> Result<VigilanceConfig, String> {
+    let st = state.clone();
+    let resultado = get_vigilance_config_en(state).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn get_vigilance_config_en(state: State<'_, AppState>) -> Result<VigilanceConfig, String> {
     let config = state.config.lock().unwrap();
     Ok(config.vigilance.clone())
 }
 
 #[tauri::command]
 pub async fn save_vigilance_config(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    vigilance: VigilanceConfig,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = save_vigilance_config_en(app, state, vigilance).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn save_vigilance_config_en(
     app: AppHandle,
     state: State<'_, AppState>,
     vigilance: VigilanceConfig,
@@ -1789,7 +2431,7 @@ pub async fn save_vigilance_config(
     db::save_vigilance(&pool, &vigilance)
         .await
         .map_err(|e| e.to_string())?;
-    Ok("Configuración de vigilancia guardada".to_string())
+    Ok("Monitoring settings saved".to_string())
 }
 
 // Ajustes propios de cada servidor (del bot activo)
@@ -1799,7 +2441,17 @@ pub async fn get_guild_settings(
     state: State<'_, AppState>,
     guild_id: String,
 ) -> Result<db::GuildSettings, String> {
-    let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
+    let st = state.clone();
+    let resultado = get_guild_settings_en(app, state, guild_id).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn get_guild_settings_en(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<db::GuildSettings, String> {
+    let bot = state.get_active_bot().ok_or("No bot selected")?;
     let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
     db::get_guild_settings(&pool, &bot.id, &guild_id)
         .await
@@ -1813,23 +2465,50 @@ pub async fn save_guild_settings(
     guild_id: String,
     settings: db::GuildSettings,
 ) -> Result<String, String> {
-    let bot = state.get_active_bot().ok_or("No hay bot seleccionado")?;
+    let st = state.clone();
+    let resultado = save_guild_settings_en(app, state, guild_id, settings).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn save_guild_settings_en(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    settings: db::GuildSettings,
+) -> Result<String, String> {
+    let bot = state.get_active_bot().ok_or("No bot selected")?;
     let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
     db::save_guild_settings(&pool, &bot.id, &guild_id, &settings)
         .await
         .map_err(|e| e.to_string())?;
-    Ok("Ajustes del servidor guardados".to_string())
+    Ok("Server settings saved".to_string())
 }
 
 // CLI Agents
 #[tauri::command]
 pub async fn list_cli_agents(state: State<'_, AppState>) -> Result<Vec<CliAgentConfig>, String> {
+    let st = state.clone();
+    let resultado = list_cli_agents_en(state).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn list_cli_agents_en(state: State<'_, AppState>) -> Result<Vec<CliAgentConfig>, String> {
     let config = state.config.lock().unwrap();
     Ok(config.cli_agents.values().cloned().collect())
 }
 
 #[tauri::command]
 pub async fn save_cli_agent(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    agent: CliAgentConfig,
+) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = save_cli_agent_en(app, state, agent).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn save_cli_agent_en(
     app: AppHandle,
     state: State<'_, AppState>,
     agent: CliAgentConfig,
@@ -1844,12 +2523,27 @@ pub async fn save_cli_agent(
     db::upsert_cli_agent(&pool, &agent)
         .await
         .map_err(|e| e.to_string())?;
-    Ok("Agente CLI guardado".to_string())
+    Ok("CLI agent saved".to_string())
 }
 
 // Messages / Context
 #[tauri::command]
 pub async fn search_messages(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    query: String,
+    guild_id: Option<String>,
+    channel_id: Option<String>,
+    user_id: Option<String>,
+    limit: i64,
+) -> Result<Vec<db::Message>, String> {
+    let st = state.clone();
+    let resultado =
+        search_messages_en(app, state, query, guild_id, channel_id, user_id, limit).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn search_messages_en(
     app: AppHandle,
     state: State<'_, AppState>,
     query: String,
@@ -1878,30 +2572,59 @@ pub async fn cleanup_context(
     guild_id: String,
     user_id: String,
 ) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = cleanup_context_en(app, state, guild_id, user_id).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn cleanup_context_en(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    user_id: String,
+) -> Result<String, String> {
     state
         .cleanup_user_context(&app, &guild_id, &user_id)
         .await
         .map_err(|e| e.to_string())?;
-    Ok("Contexto limpiado".to_string())
+    Ok("Context cleared".to_string())
 }
 
 // Backup
 #[tauri::command]
 pub async fn export_all_data(state: State<'_, AppState>) -> Result<Vec<u8>, String> {
+    let st = state.clone();
+    let resultado = export_all_data_en(state).await;
+    crate::i18n::localizar_error(&st, resultado)
+}
+
+async fn export_all_data_en(state: State<'_, AppState>) -> Result<Vec<u8>, String> {
     // TODO: Implement export to ZIP
     Ok(vec![])
 }
 
 #[tauri::command]
 pub async fn import_data(state: State<'_, AppState>, _data: Vec<u8>) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = import_data_en(state, _data).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn import_data_en(state: State<'_, AppState>, _data: Vec<u8>) -> Result<String, String> {
     // TODO: Implement import from ZIP
-    Ok("Importado".to_string())
+    Ok("Imported".to_string())
 }
 
 #[tauri::command]
 pub async fn uninstall_wipe(state: State<'_, AppState>) -> Result<String, String> {
+    let st = state.clone();
+    let resultado = uninstall_wipe_en(state).await;
+    crate::i18n::localizar_texto(&st, resultado)
+}
+
+async fn uninstall_wipe_en(state: State<'_, AppState>) -> Result<String, String> {
     // TODO: Implement full wipe (DB, config, logs, backups, shortcuts)
-    Ok("Desinstalación completa".to_string())
+    Ok("Uninstall complete".to_string())
 }
 
 #[cfg(test)]
@@ -2103,7 +2826,7 @@ mod tests {
             .await
             .expect_err("debe fallar");
 
-        assert_eq!(err, "Token inválido");
+        assert_eq!(err, "Invalid token");
         assert!(db::list_bots(&pool).await.unwrap().is_empty());
     }
 
@@ -2135,7 +2858,7 @@ mod tests {
             .expect("el aviso no es un error");
         assert_eq!(
             aviso.as_deref(),
-            Some("Activa «Server Members Intent» en el Developer Portal → Bot")
+            Some("Enable «Server Members Intent» in the Developer Portal → Bot")
         );
         assert_eq!(db::list_bots(&pool).await.unwrap().len(), 1);
     }
@@ -2197,7 +2920,7 @@ mod tests {
         let err = conectar_bot(None, &state, None)
             .await
             .expect_err("debe fallar");
-        assert_eq!(err, "No hay bot seleccionado");
+        assert_eq!(err, "No bot selected");
     }
 
     #[tokio::test]
@@ -2247,10 +2970,10 @@ mod tests {
             .await
             .expect_err("debe fallar");
 
-        assert_eq!(err, "Token inválido");
+        assert_eq!(err, "Invalid token");
         let status = state.bot_status.lock().unwrap();
         assert!(!status.connected && !status.running);
-        assert_eq!(status.last_error.as_deref(), Some("Token inválido"));
+        assert_eq!(status.last_error.as_deref(), Some("Invalid token"));
     }
 
     #[tokio::test]
@@ -2458,14 +3181,14 @@ mod tests {
     async fn permisos_del_bot_sin_bot_activo_da_error() {
         let state = AppState::new();
         let err = permisos_del_bot(&state, "555", None).await.unwrap_err();
-        assert_eq!(err, "No hay bot seleccionado");
+        assert_eq!(err, "No bot selected");
     }
 
     #[tokio::test]
     async fn leer_canales_sin_bot_activo_da_error() {
         let state = AppState::new();
         let err = leer_canales(&state, "555", None).await.unwrap_err();
-        assert_eq!(err, "No hay bot seleccionado");
+        assert_eq!(err, "No bot selected");
     }
 
     fn mensaje_json(id: &str, canal: &str) -> serde_json::Value {
@@ -2541,15 +3264,15 @@ mod tests {
         let e1 = enviar_a_canal(&state, "42", &largo, Some(&addr))
             .await
             .unwrap_err();
-        assert!(e1.contains("demasiado largo"), "{e1}");
+        assert!(e1.contains("too long"), "{e1}");
         let e2 = enviar_dm(&state, "77", &largo, Some(&addr))
             .await
             .unwrap_err();
-        assert!(e2.contains("demasiado largo"), "{e2}");
+        assert!(e2.contains("too long"), "{e2}");
         let e3 = enviar_a_canal(&state, "42", "  ", Some(&addr))
             .await
             .unwrap_err();
-        assert!(e3.contains("vacío"), "{e3}");
+        assert!(e3.contains("empty"), "{e3}");
         // 2000 caracteres exactos sí pasan la validación.
         assert!(crate::discord::validar_contenido(&"ñ".repeat(2000)).is_ok());
     }
@@ -2575,11 +3298,11 @@ mod tests {
         let r = cambiar_rol(&state, "555", "1001", "7", true, Some(&addr))
             .await
             .expect("añadir");
-        assert!(r.contains("añadido"), "{r}");
+        assert!(r.contains("added"), "{r}");
         let r = cambiar_rol(&state, "555", "1001", "7", false, Some(&addr))
             .await
             .expect("quitar");
-        assert!(r.contains("quitado"), "{r}");
+        assert!(r.contains("removed"), "{r}");
     }
 
     #[tokio::test]
@@ -2598,11 +3321,11 @@ mod tests {
         let e = cambiar_rol(&state, "555", "1001", "7", true, Some(&addr))
             .await
             .unwrap_err();
-        assert!(e.contains("le falta un permiso"), "{e}");
+        assert!(e.contains("missing a permission"), "{e}");
         let e = cambiar_rol(&state, "555", "abc", "7", true, Some(&addr))
             .await
             .unwrap_err();
-        assert!(e.contains("inválido"), "{e}");
+        assert!(e.contains("Invalid"), "{e}");
     }
 
     #[tokio::test]
@@ -2618,7 +3341,7 @@ mod tests {
         let e = silenciar_miembro(&state, "555", "1001", 28 * 24 * 60 + 1, None, Some(&addr))
             .await
             .unwrap_err();
-        assert!(e.contains("28 días"), "{e}");
+        assert!(e.contains("28 days"), "{e}");
     }
 
     #[tokio::test]
@@ -2638,6 +3361,62 @@ mod tests {
         let e = enviar_a_canal(&state, "42", "hola", Some(&addr))
             .await
             .unwrap_err();
-        assert!(e.contains("le falta un permiso"), "{e}");
+        assert!(e.contains("missing a permission"), "{e}");
+    }
+
+    /// Mismo error, mismo Discord falso: inglés por defecto y español con `ui_language = "es"`.
+    #[tokio::test]
+    async fn los_errores_salen_en_el_idioma_de_la_config() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/users/@me"))
+            .respond_with(
+                ResponseTemplate::new(401)
+                    .set_body_json(serde_json::json!({"message": "401: Unauthorized", "code": 0})),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/channels/42/messages"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(
+                serde_json::json!({"code": 50013, "message": "Missing Permissions"}),
+            ))
+            .mount(&server)
+            .await;
+        let addr = server.address().to_string();
+        let state = estado_con_bot_activo("token-malo");
+        let pool = pool_en_memoria().await;
+
+        let token = registrar_bot(&pool, "token-malo", Some(&addr))
+            .await
+            .unwrap_err();
+        let permiso = enviar_a_canal(&state, "42", "hola", Some(&addr))
+            .await
+            .unwrap_err();
+
+        // Por defecto (config sin tocar): inglés.
+        assert_eq!(state.config.lock().unwrap().ui_language, "en");
+        let en = |r: Result<(), String>| crate::i18n::localizar_error(&state, r).unwrap_err();
+        assert_eq!(en(Err(token.clone())), "Invalid token");
+        assert_eq!(en(Err(permiso.clone())), permiso);
+
+        state.config.lock().unwrap().ui_language = "es".to_string();
+        let es = |r: Result<(), String>| crate::i18n::localizar_error(&state, r).unwrap_err();
+        assert_eq!(es(Err(token)), "Token inválido");
+        assert_ne!(es(Err(permiso.clone())), permiso);
+        assert!(es(Err(permiso)).starts_with("Al bot le falta"));
+
+        // Los mensajes de éxito y el estado del bot también.
+        let ok = crate::i18n::localizar_texto(&state, Ok("Channel 7 deleted".into()));
+        assert_eq!(ok.unwrap(), "Canal 7 borrado");
+        let estado = BotStatus {
+            last_error: Some("Invalid token".into()),
+            ..BotStatus::default()
+        };
+        let estado = crate::i18n::localizar_estado(&state, Ok(estado)).unwrap();
+        assert_eq!(estado.last_error.as_deref(), Some("Token inválido"));
+        state.config.lock().unwrap().ui_language = "en".to_string();
+        let sin_catalogo = crate::i18n::localizar_texto(&state, Ok("Brand new text".into()));
+        assert_eq!(sin_catalogo.unwrap(), "Brand new text");
     }
 }

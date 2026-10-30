@@ -177,7 +177,7 @@ async fn borrado_en_masa_de_mensajes_recientes() {
     let r = borrar_mensajes_en_masa(&state, "555", "10", &[a, b], Some(&addr))
         .await
         .unwrap();
-    assert_eq!(r, "2 mensajes borrados");
+    assert_eq!(r, "2 messages deleted");
 }
 
 #[tokio::test]
@@ -196,12 +196,12 @@ async fn borrado_en_masa_rechaza_antiguos_y_cantidades_invalidas() {
     )
     .await
     .unwrap_err();
-    assert!(err.contains("más de 14 días"), "{err}");
-    assert!(err.contains("1 de 2"), "{err}");
+    assert!(err.contains("older than 14 days"), "{err}");
+    assert!(err.contains("1 of 2"), "{err}");
     let err = borrar_mensajes_en_masa(&state, "555", "10", &[hace_dias(1)], Some(&addr))
         .await
         .unwrap_err();
-    assert_eq!(err, "El borrado en masa necesita entre 2 y 100 mensajes");
+    assert_eq!(err, "Bulk delete needs between 2 and 100 messages");
     let muchos: Vec<String> = (0..101).map(|i| (1_000_000 + i).to_string()).collect();
     assert!(
         borrar_mensajes_en_masa(&state, "555", "10", &muchos, Some(&addr))
@@ -223,7 +223,7 @@ async fn mensajes_sin_permiso_no_llaman_a_discord() {
         .await;
     let state = estado("token-m5");
     let addr = server.address().to_string();
-    let m = "Al bot le falta el permiso «Gestionar mensajes»";
+    let m = "The bot is missing the permission «Gestionar mensajes»";
     assert_eq!(
         fijar_mensaje(&state, "555", "10", "301", true, Some(&addr))
             .await
@@ -246,7 +246,7 @@ async fn mensajes_sin_permiso_no_llaman_a_discord() {
         leer_mensajes(&state, "555", "10", Some(&addr))
             .await
             .unwrap_err(),
-        "Al bot le falta el permiso «Leer el historial de mensajes»"
+        "The bot is missing the permission «Leer el historial de mensajes»"
     );
 }
 
@@ -286,7 +286,7 @@ async fn sin_gestionar_mensajes_un_mensaje_ajeno_explica_el_permiso() {
         borrar_mensaje(&state, "555", "10", "302", Some(&addr))
             .await
             .unwrap_err(),
-        "Al bot le falta el permiso «Gestionar mensajes»"
+        "The bot is missing the permission «Gestionar mensajes»"
     );
 }
 
@@ -359,7 +359,7 @@ async fn invitaciones_validan_y_exigen_permiso() {
     assert!(crear_invitacion(&state, "555", "10", 0, 101, Some(&addr))
         .await
         .is_err());
-    let m = "Al bot le falta el permiso «Gestionar servidor»";
+    let m = "The bot is missing the permission «Gestionar servidor»";
     assert_eq!(
         leer_invitaciones(&state, "555", Some(&addr))
             .await
@@ -433,7 +433,7 @@ async fn webhooks_sin_permiso_o_nombre_invalido() {
         .await;
     let state = estado("token-w2");
     let addr = server.address().to_string();
-    let m = "Al bot le falta el permiso «Gestionar webhooks»";
+    let m = "The bot is missing the permission «Gestionar webhooks»";
     assert_eq!(
         leer_webhooks(&state, "555", Some(&addr)).await.unwrap_err(),
         m

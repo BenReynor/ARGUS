@@ -165,7 +165,7 @@ mod tests {
         })
         .await
         .expect_err("debía fallar");
-        assert!(err.starts_with("No encontrado"), "{err}");
+        assert!(err.starts_with("Not found"), "{err}");
         assert_eq!(*pasos.lock().unwrap(), 1);
     }
 }

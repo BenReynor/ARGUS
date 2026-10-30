@@ -62,7 +62,7 @@ fn argus_mcp_lista_las_tres_herramientas_por_stdio() {
         "params": {"name": "estado", "arguments": {}}
     }));
     let estado = leer_respuesta(3);
-    assert!(estado.to_string().contains("No hay bot activo en ARGUS"));
+    assert!(estado.to_string().contains("No active bot in ARGUS"));
 
     drop(enviar);
     drop(entrada);
