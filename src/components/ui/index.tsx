@@ -1,4 +1,5 @@
 import React from 'react';
+import { t } from '../../i18n';
 import './ui.css';
 
 type Variante = 'primario' | 'secundario' | 'peligro' | 'ghost';
@@ -101,7 +102,7 @@ export const EstadoVacio: React.FC<{ titulo: string; descripcion?: string; child
 );
 
 export const Cargando: React.FC<{ lineas?: number }> = ({ lineas = 3 }) => (
-  <div role="status" aria-label="Cargando">
+  <div role="status" aria-label={t('Loading')}>
     {Array.from({ length: lineas }, (_, i) => (
       <span key={i} className="ui-skeleton" style={{ width: `${100 - i * 15}%` }} />
     ))}
@@ -110,9 +111,9 @@ export const Cargando: React.FC<{ lineas?: number }> = ({ lineas = 3 }) => (
 
 export const ErrorPanel: React.FC<{ mensaje: string; onReintentar?: () => void }> = ({ mensaje, onReintentar }) => (
   <div className="ui-estado ui-estado--error" role="alert">
-    <span className="ui-estado__titulo">Algo salió mal</span>
+    <span className="ui-estado__titulo">{t('Something went wrong')}</span>
     <span>{mensaje}</span>
-    {onReintentar && <Button variante="secundario" onClick={onReintentar}>Reintentar</Button>}
+    {onReintentar && <Button variante="secundario" onClick={onReintentar}>{t('Retry')}</Button>}
   </div>
 );
 
@@ -184,7 +185,7 @@ interface ConfirmarPeligrosoProps {
 }
 
 /** Confirmación destructiva: el botón solo se activa al escribir el nombre exacto del elemento. */
-export const ConfirmarPeligroso: React.FC<ConfirmarPeligrosoProps> = ({ abierto, titulo, descripcion, nombre, textoConfirmar = 'Borrar', onConfirmar, onCerrar }) => {
+export const ConfirmarPeligroso: React.FC<ConfirmarPeligrosoProps> = ({ abierto, titulo, descripcion, nombre, textoConfirmar = t('Delete'), onConfirmar, onCerrar }) => {
   const [escrito, setEscrito] = React.useState('');
   const [trabajando, setTrabajando] = React.useState(false);
   React.useEffect(() => { if (abierto) { setEscrito(''); setTrabajando(false); } }, [abierto]);
@@ -202,7 +203,7 @@ export const ConfirmarPeligroso: React.FC<ConfirmarPeligrosoProps> = ({ abierto,
       onCerrar={onCerrar}
       pie={
         <>
-          <Button variante="secundario" onClick={onCerrar}>Cancelar</Button>
+          <Button variante="secundario" onClick={onCerrar}>{t('Cancel')}</Button>
           <Button variante="peligro" disabled={!coincide} cargando={trabajando} onClick={confirmar}>{textoConfirmar}</Button>
         </>
       }
@@ -210,7 +211,7 @@ export const ConfirmarPeligroso: React.FC<ConfirmarPeligrosoProps> = ({ abierto,
       <form onSubmit={(e) => { e.preventDefault(); void confirmar(); }}>
         <Input
           data-autofocus
-          etiqueta={`Escribe «${nombre}» para confirmar`}
+          etiqueta={t('Type «{nombre}» to confirm', { nombre })}
           value={escrito}
           onChange={(e) => setEscrito(e.target.value)}
           autoComplete="off"

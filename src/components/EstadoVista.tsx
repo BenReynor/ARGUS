@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useStore, useActiveGuildId, useGuildPanel, useLoadGuildPanel, useServerMap } from '../store/useStore';
 import { Button, Cargando, EstadoVacio, ErrorPanel } from './ui';
+import { t } from '../i18n';
 import './Vistas.css';
 
 /** Muestra el estado cargando/error/vacío común de Canales, Roles y Miembros; si hay datos, pinta los hijos. */
@@ -12,7 +13,7 @@ export const EstadoVista: React.FC<{ children: React.ReactNode }> = ({ children 
   const refreshServerMap = useStore((s) => s.refreshServerMap);
 
   if (!activeGuildId) {
-    return <EstadoVacio titulo="Ningún servidor seleccionado" descripcion="Elige un servidor en la columna de la izquierda para ver sus datos." />;
+    return <EstadoVacio titulo={t('No server selected')} descripcion={t('Pick a server in the left column to see its data.')} />;
   }
   if (guildPanel.error) {
     return <ErrorPanel mensaje={guildPanel.error} onReintentar={() => { void loadGuildPanel(activeGuildId); }} />;
@@ -20,8 +21,8 @@ export const EstadoVista: React.FC<{ children: React.ReactNode }> = ({ children 
   if (guildPanel.loading) return <Cargando lineas={5} />;
   if (!serverMap) {
     return (
-      <EstadoVacio titulo="Cargando los datos del servidor" descripcion="Se leen de Discord al elegir el servidor. Si no aparecen, pulsa Cargar de nuevo (el motivo queda en Logs).">
-        <Button variante="secundario" onClick={() => { void refreshServerMap(); }}>Cargar de nuevo</Button>
+      <EstadoVacio titulo={t('Loading the server data')} descripcion={t('They are read from Discord when you pick the server. If they do not appear, press Load again (the reason is in Logs).')}>
+        <Button variante="secundario" onClick={() => { void refreshServerMap(); }}>{t('Load again')}</Button>
       </EstadoVacio>
     );
   }

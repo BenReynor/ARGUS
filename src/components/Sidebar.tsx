@@ -6,6 +6,7 @@ import {
   Power, Circle, Bot, Server
 } from 'lucide-react';
 import { Avatar } from './ui';
+import { t } from '../i18n';
 
 interface SidebarProps {
   tabs: { id: string; label: string; icon: string }[];
@@ -39,21 +40,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
           <span
             className={`punto-estado ${botStatus.connected ? 'status-online' : botStatus.running ? 'status-connecting' : 'status-offline'}`}
             role="img"
-            aria-label={botStatus.connected ? 'Gateway en línea' : botStatus.running ? 'Gateway conectando' : 'Gateway desconectado'}
+            aria-label={botStatus.connected ? t('Gateway online') : botStatus.running ? t('Gateway connecting') : t('Gateway offline')}
           />
         </span>
         <div className="bot-activo">
-          <span className="bot-activo-nombre">{botActivo?.name ?? 'Sin bot activo'}</span>
+          <span className="bot-activo-nombre">{botActivo?.name ?? t('No active bot')}</span>
           <span className="bot-status-mini">
             <span className="status-text">
-              {botStatus.connected ? 'En línea' : botStatus.running ? 'Conectando...' : 'Desconectado'}
+              {botStatus.connected ? t('Online') : botStatus.running ? t('Connecting...') : t('Disconnected')}
             </span>
           </span>
         </div>
       </div>
 
-      <nav className="sidebar-nav" aria-label="Secciones">
-        <span className="nav-categoria">Secciones</span>
+      <nav className="sidebar-nav" aria-label={t('Sections')}>
+        <span className="nav-categoria">{t('Sections')}</span>
         {tabs.map((tab) => {
           const Icon = iconMap[tab.icon];
           const isActive = activeTab === tab.id;
@@ -72,10 +73,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
 
       <div className="sidebar-footer">
         <div className="bot-control">
-          <span className="nav-categoria">Bots</span>
+          <span className="nav-categoria">{t('Bots')}</span>
           <div className="bot-list">
             {config.bots.length === 0 && (
-              <div className="bot-info"><Bot size={16} /><span>Sin bot activo</span></div>
+              <div className="bot-info"><Bot size={16} /><span>{t('No active bot')}</span></div>
             )}
             {config.bots.map((b) => {
               const url = botAvatarUrl(b);
@@ -83,13 +84,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
                 <button
                   key={b.id}
                   className={`nav-item ${b.id === config.active_bot_id ? 'active' : ''}`}
-                  title="Usar como bot activo"
+                  title={t('Use as the active bot')}
                   onClick={async () => {
                     try {
                       await setActiveBot(b.id);
                       setConfig({ active_bot_id: b.id });
                     } catch (e) {
-                      showNotification(typeof e === 'string' ? e : 'No se pudo cambiar de bot', 'error');
+                      showNotification(typeof e === 'string' ? e : t('Could not switch bot'), 'error');
                     }
                   }}
                 >
@@ -111,7 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
                   await stopBot();
                 } else {
                   if (!hasToken) {
-                    showNotification('Añade un bot en Config para encenderlo', 'warning');
+                    showNotification(t('Add a bot in Settings to turn it on'), 'warning');
                     return;
                   }
                   await startBot();
@@ -125,12 +126,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
             {botStatus.running ? (
               <>
                 <Circle className="status-online" size={8} />
-                Apagar
+                {t('Turn off')}
               </>
             ) : (
               <>
                 <Power size={14} />
-                Encender
+                {t('Turn on')}
               </>
             )}
           </button>

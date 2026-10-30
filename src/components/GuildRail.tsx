@@ -4,6 +4,7 @@ import { useStore, useConfig, useActiveGuildId, useSetActiveGuildId, useLoadGuil
 import { listGuilds, setActiveGuild, inviteUrl } from '../api/tauri';
 import type { Guild } from '../api/tauri';
 import { Avatar } from './ui';
+import { t } from '../i18n';
 import { Plus, RefreshCw, AlertTriangle } from 'lucide-react';
 
 const guildIconUrl = (g: Guild) =>
@@ -42,7 +43,7 @@ export const GuildRail: React.FC = () => {
         setGuilds(lista);
         setError(null);
       })
-      .catch((e) => setError(typeof e === 'string' ? e : 'No se pudieron leer los servidores del bot'))
+      .catch((e) => setError(typeof e === 'string' ? e : t("Could not read the bot's servers")))
       .finally(() => {
         enCurso.current = false;
         setCargando(false);
@@ -79,7 +80,7 @@ export const GuildRail: React.FC = () => {
     try {
       await openUrl(await inviteUrl());
     } catch (e) {
-      showNotification(typeof e === 'string' ? e : 'No se pudo abrir el enlace de invitación', 'error');
+      showNotification(typeof e === 'string' ? e : t('Could not open the invite link'), 'error');
     }
   };
 
@@ -97,7 +98,7 @@ export const GuildRail: React.FC = () => {
   });
 
   return (
-    <nav className="guild-rail" aria-label="Servidores">
+    <nav className="guild-rail" aria-label={t('Servers')}>
       {guilds.map((g) => (
         <button
           key={g.id}
@@ -114,9 +115,9 @@ export const GuildRail: React.FC = () => {
       {error && (
         <button
           className="rail-item rail-error"
-          aria-label={`Error al leer los servidores: ${error}. Pulsa para reintentar.`}
+          aria-label={t('Error reading servers: {error}. Press to retry.', { error })}
           onClick={() => cargar()}
-          {...evTip(`${error} — pulsa para reintentar`)}
+          {...evTip(t('{error} — press to retry', { error }))}
         >
           <span className="rail-add-icon"><AlertTriangle size={22} /></span>
         </button>
@@ -124,18 +125,18 @@ export const GuildRail: React.FC = () => {
       <span className="rail-sep" />
       <button
         className="rail-item rail-add"
-        aria-label="Actualizar la lista de servidores"
+        aria-label={t('Refresh the server list')}
         onClick={() => cargar()}
         disabled={cargando || !config.active_bot_id}
-        {...evTip(cargando ? 'Actualizando servidores…' : 'Actualizar la lista de servidores')}
+        {...evTip(cargando ? t('Refreshing servers…') : t('Refresh the server list'))}
       >
         <span className="rail-add-icon"><RefreshCw size={20} className={cargando ? 'rail-girando' : undefined} /></span>
       </button>
       <button
         className="rail-item rail-add"
-        aria-label="Añadir el bot a un servidor"
+        aria-label={t('Add the bot to a server')}
         onClick={invitar}
-        {...evTip('Añadir el bot a un servidor')}
+        {...evTip(t('Add the bot to a server'))}
       >
         <span className="rail-add-icon"><Plus size={22} /></span>
       </button>

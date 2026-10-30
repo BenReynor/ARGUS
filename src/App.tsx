@@ -13,7 +13,7 @@ import { ServidorView } from './components/ServidorView';
 import { Notification } from './components/Notification';
 import { LayoutDashboard, Hash, Users, Shield, Terminal, Settings, Server } from 'lucide-react';
 import { aplicarTema } from './temas';
-import { setIdioma } from './i18n';
+import { setIdioma, t } from './i18n';
 import { pasoCarga, finCarga } from './carga';
 import { useBotStatus, useShowNotification } from './store/useStore';
 import { getConfig, getBotStatus, refreshServerMap, getServerMap, onMapUpdated, onSyncProgress, onBotStatusChange } from './api/tauri';
@@ -37,17 +37,17 @@ function App() {
   useEffect(() => {
     const init = async () => {
       try {
-        pasoCarga('Leyendo tu configuración…', 50);
+        pasoCarga('Reading your settings…', 50);
         // El backend es la fuente de verdad (incluye tema y modo guardados).
         setConfig(await getConfig());
       } catch (e) {
         console.error('Config load error:', e);
       }
       try {
-        pasoCarga('Conectando con el bot…', 65);
+        pasoCarga('Connecting to the bot…', 65);
         const status = await getBotStatus();
         setBotStatus(status);
-        pasoCarga('Cargando tus servidores…', 80);
+        pasoCarga('Loading your servers…', 80);
         const map = await refreshServerMap();
         setServerMap(map);
       } catch (e) {
@@ -80,17 +80,17 @@ function App() {
   }, [setBotStatus, setServerMap, setConfig]);
 
   const tabs: { id: string; label: string; icon: string }[] = [
-    { id: 'dashboard', label: 'Panel', icon: 'layout-dashboard' },
-    { id: 'channels', label: 'Canales', icon: 'hash' },
-    { id: 'members', label: 'Miembros', icon: 'users' },
-    { id: 'roles', label: 'Roles', icon: 'shield' },
-    { id: 'servidor', label: 'Servidor', icon: 'server' },
-    { id: 'logs', label: 'Logs', icon: 'terminal' },
-    { id: 'settings', label: 'Config', icon: 'settings' },
+    { id: 'dashboard', label: t('Dashboard'), icon: 'layout-dashboard' },
+    { id: 'channels', label: t('Channels'), icon: 'hash' },
+    { id: 'members', label: t('Members'), icon: 'users' },
+    { id: 'roles', label: t('Roles'), icon: 'shield' },
+    { id: 'servidor', label: t('Server'), icon: 'server' },
+    { id: 'logs', label: t('Logs'), icon: 'terminal' },
+    { id: 'settings', label: t('Settings'), icon: 'settings' },
   ];
 
   const activeTab = useStore((s) => s.activeTab);
-  const seccion = tabs.find((t) => t.id === activeTab) ?? tabs[0];
+  const seccion = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
   const iconosSeccion: Record<string, any> = {
     'layout-dashboard': LayoutDashboard, hash: Hash, users: Users, shield: Shield, server: Server, terminal: Terminal, settings: Settings,
   };

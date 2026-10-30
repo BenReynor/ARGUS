@@ -1,5 +1,6 @@
 // Pantalla de carga de index.html: avanza la barra con cada paso del arranque
 // y se quita cuando la app tiene datos que mostrar.
+import { t } from './i18n';
 
 const TIEMPO_MAXIMO_MS = 8000; // si Discord tarda, se muestra la app igual
 
@@ -13,13 +14,14 @@ export function pasoCarga(texto: string, porcentaje: number): void {
   const paso = document.getElementById('carga-paso');
   const caja = document.getElementById('carga');
   if (barra) barra.style.width = `${valorActual}%`;
-  if (paso) paso.textContent = texto;
+  if (paso) paso.textContent = t(texto);
+  caja?.setAttribute('aria-label', t('Loading ARGUS'));
   caja?.setAttribute('aria-valuenow', String(Math.round(valorActual)));
 }
 
 export function finCarga(): void {
   if (terminado) return;
-  pasoCarga('Listo', 100);
+  pasoCarga('Ready', 100);
   terminado = true;
   const caja = document.getElementById('carga');
   if (!caja) return;

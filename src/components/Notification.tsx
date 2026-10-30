@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useNotifications, useHideNotification } from '../store/useStore';
 import type { ToastItem, ToastType } from '../store/useStore';
+import { t } from '../i18n';
 import { CheckCircle, AlertCircle, Info, AlertTriangle, X } from 'lucide-react';
 
 const DURACION_MS: Record<ToastType, number> = { success: 4000, info: 4000, warning: 6000, error: 8000 };
@@ -34,7 +35,7 @@ const Toast: React.FC<{ toast: ToastItem; onClose: (id: number) => void }> = ({ 
     >
       <Icon size={18} className="toast__icono" />
       <span className="toast__texto">{toast.message}</span>
-      <button className="icon-btn" aria-label="Cerrar notificación" onClick={() => onClose(toast.id)}>
+      <button className="icon-btn" aria-label={t('Close notification')} onClick={() => onClose(toast.id)}>
         <X size={14} />
       </button>
     </div>
