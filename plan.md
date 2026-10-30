@@ -245,7 +245,7 @@ ARGUS se publica para cualquiera: la interfaz arranca en **inglés** y el usuari
 - [x] Traducir Roles y Miembros
   criterio: RolesView.tsx y MembersView.tsx usan `t()` en textos visibles, los títulos de los grupos de permisos (los permisos en sí con su nombre oficial de Discord, sin traducir), placeholders, tooltips (incluido el motivo de una acción desactivada), diálogos y notificaciones; `npm run i18n:check` y `npm run build` pasan
 
-- [ ] Traducir Servidor y Ajustes
+- [x] Traducir Servidor y Ajustes
   criterio: ServidorView.tsx (ajustes del servidor y registro de auditoría; los tipos de acción con su nombre oficial de Discord, sin traducir) y SettingsView.tsx (bots, este servidor, MCP, apariencia, general, nombres de los temas) usan `t()`; `npm run i18n:check` y `npm run build` pasan
 
 - [ ] Mensajes del backend en el idioma elegido
