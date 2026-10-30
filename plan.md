@@ -248,7 +248,7 @@ ARGUS se publica para cualquiera: la interfaz arranca en **inglés** y el usuari
 - [x] Traducir Servidor y Ajustes
   criterio: ServidorView.tsx (ajustes del servidor y registro de auditoría; los tipos de acción con su nombre oficial de Discord, sin traducir) y SettingsView.tsx (bots, este servidor, MCP, apariencia, general, nombres de los temas) usan `t()`; `npm run i18n:check` y `npm run build` pasan
 
-- [ ] Mensajes del backend en el idioma elegido
+- [x] Mensajes del backend en el idioma elegido
   criterio: los mensajes de error y de estado que Rust devuelve a la UI (commands.rs, discord.rs, mensajes.rs, sync.rs, gateway.rs, db.rs) tienen el texto fuente en inglés y un módulo `src-tauri/src/i18n.rs` con el catálogo español y una función que traduce según `ui_language`; los comandos devuelven el mensaje en el idioma de la config; tests de Rust: el mismo error (p. ej. token inválido y falta de permiso contra el Discord falso) sale en inglés por defecto y en español con `ui_language = "es"`; un texto sin entrada en el catálogo sale en inglés; `cargo test` pasa
 
 - [ ] MCP en el idioma elegido
