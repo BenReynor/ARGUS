@@ -23,7 +23,7 @@ fn id(texto: &str, que: &str) -> Result<u64, String> {
         .parse::<u64>()
         .ok()
         .filter(|n| *n > 0)
-        .ok_or_else(|| format!("ID de {que} inválido"))
+        .ok_or_else(|| format!("Invalid {que} ID"))
 }
 
 /// Envía la petición y devuelve el JSON de la respuesta (`Null` si viene vacía).
@@ -35,7 +35,7 @@ async fn pedir(
 ) -> Result<Value, String> {
     let mut b = twilight_http::request::Request::builder(&ruta);
     if let Some(c) = cuerpo {
-        b = b.json(c).map_err(|e| format!("Petición inválida: {e}"))?;
+        b = b.json(c).map_err(|e| format!("Invalid request: {e}"))?;
     }
     let bytes = build_client(token, base_url)
         .request::<twilight_http::response::marker::EmptyBody>(b.build())
@@ -43,11 +43,11 @@ async fn pedir(
         .map_err(traducir_error)?
         .bytes()
         .await
-        .map_err(|e| format!("Respuesta de Discord inválida: {e}"))?;
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     if bytes.is_empty() {
         return Ok(Value::Null);
     }
-    serde_json::from_slice(&bytes).map_err(|e| format!("Respuesta de Discord inválida: {e}"))
+    serde_json::from_slice(&bytes).map_err(|e| format!("Invalid response from Discord: {e}"))
 }
 
 fn texto(v: &Value, k: &str) -> Option<String> {
@@ -172,7 +172,7 @@ pub fn validar_borrado_masivo(ids: &[String], ahora_ms: i64) -> Result<Vec<Strin
         }
     }
     if limpios.len() < 2 || limpios.len() > 100 {
-        return Err("El borrado en masa necesita entre 2 y 100 mensajes".to_string());
+        return Err("Bulk delete needs between 2 and 100 messages".to_string());
     }
     let viejos = limpios
         .iter()
@@ -183,7 +183,7 @@ pub fn validar_borrado_masivo(ids: &[String], ahora_ms: i64) -> Result<Vec<Strin
         .count();
     if viejos > 0 {
         return Err(format!(
-            "Discord no permite borrar en masa mensajes de más de 14 días: {viejos} de {} son más antiguos. Quítalos de la selección o bórralos uno a uno",
+            "Discord does not allow bulk-deleting messages older than 14 days: {viejos} of {} are older. Remove them from the selection or delete them one by one",
             limpios.len()
         ));
     }
@@ -277,10 +277,10 @@ pub async fn create_invite(
 ) -> Result<Invitacion, String> {
     let channel_id = id(channel_id, "canal")?;
     if max_age > INVITACION_MAX_EDAD {
-        return Err("La caducidad no puede superar 7 días (604800 segundos)".to_string());
+        return Err("The expiry cannot exceed 7 days (604800 seconds)".to_string());
     }
     if max_uses > INVITACION_MAX_USOS {
-        return Err("Los usos máximos no pueden superar 100".to_string());
+        return Err("The maximum uses cannot exceed 100".to_string());
     }
     let json = pedir(
         token,
@@ -311,7 +311,7 @@ pub async fn fetch_invites(
 pub async fn delete_invite(token: &str, base_url: Option<&str>, code: &str) -> Result<(), String> {
     let code = code.trim();
     if code.is_empty() || !code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-        return Err("Código de invitación inválido".to_string());
+        return Err("Invalid invite code".to_string());
     }
     pedir(token, base_url, Route::DeleteInvite { code }, None)
         .await
@@ -361,7 +361,7 @@ pub async fn create_webhook(
     let channel_id = id(channel_id, "canal")?;
     let nombre = name.trim();
     if nombre.is_empty() || nombre.chars().count() > 80 {
-        return Err("El nombre del webhook debe tener entre 1 y 80 caracteres".to_string());
+        return Err("The webhook name must be between 1 and 80 characters".to_string());
     }
     let json = pedir(
         token,

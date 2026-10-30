@@ -9,7 +9,7 @@ const DB_NAME: &str = "argus.db";
 pub async fn get_pool(app: &AppHandle) -> Result<SqlitePool> {
     let pool = app
         .try_state::<sqlx::Pool<sqlx::Sqlite>>()
-        .ok_or_else(|| anyhow::anyhow!("La base de datos no está abierta"))?;
+        .ok_or_else(|| anyhow::anyhow!("The database is not open"))?;
     Ok(pool.inner().clone())
 }
 
@@ -54,7 +54,7 @@ fn carpeta_config(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Result<st
     } else {
         no_vacia("XDG_CONFIG_HOME").or_else(|| no_vacia("HOME").map(|h| h.join(".config")))
     };
-    base.ok_or_else(|| anyhow::anyhow!("No se encontró la carpeta de configuración"))
+    base.ok_or_else(|| anyhow::anyhow!("Configuration folder not found"))
 }
 
 /// Abre la base de datos en `ruta` (o en `ARGUS_DB` si está definida) y aplica

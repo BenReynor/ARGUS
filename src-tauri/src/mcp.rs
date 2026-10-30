@@ -2429,19 +2429,19 @@ mod tests {
         let (_d, mcp, _s) = mcp_con_servidor(0, true).await;
         assert_eq!(
             mcp.listar_baneos_json(None).await.unwrap_err(),
-            "Al bot le falta el permiso «Banear miembros»"
+            "The bot is missing the permission «Banear miembros»"
         );
         assert_eq!(
             mcp.registro_auditoria_json(None).await.unwrap_err(),
-            "Al bot le falta el permiso «Ver registro de auditoría»"
+            "The bot is missing the permission «Ver registro de auditoría»"
         );
         assert_eq!(
             mcp.listar_webhooks_json(None).await.unwrap_err(),
-            "Al bot le falta el permiso «Gestionar webhooks»"
+            "The bot is missing the permission «Gestionar webhooks»"
         );
         assert_eq!(
             mcp.leer_mensajes_json(None, "11", None).await.unwrap_err(),
-            "Al bot le falta el permiso «Leer el historial de mensajes»"
+            "The bot is missing the permission «Leer el historial de mensajes»"
         );
     }
 
@@ -2451,7 +2451,7 @@ mod tests {
     const GESTIONAR_CANALES: u64 = 1 << 4;
     const GESTIONAR_ROLES: u64 = 1 << 28;
     const JERARQUIA: &str =
-        "Ese rol está por encima del rol del bot: súbelo en Ajustes del servidor → Roles";
+        "That role is above the bot's role: move it up in Server settings → Roles";
 
     fn mensaje_discord(id: &str, canal: &str) -> serde_json::Value {
         json!({
@@ -2627,7 +2627,7 @@ mod tests {
         // Mismos errores que la app: vacío o demasiado largo no llegan a Discord.
         let largo = "a".repeat(2001);
         let e = mcp.enviar_mensaje_json("11", &largo).await.unwrap_err();
-        assert!(e.contains("demasiado largo"), "{e}");
+        assert!(e.contains("too long"), "{e}");
         assert!(mcp.enviar_dm_json("1001", "  ").await.is_err());
     }
 
@@ -2646,17 +2646,17 @@ mod tests {
         aceptar(&s, "PUT", "/api/v10/channels/11/pins/301", 204, None, 1).await;
         aceptar(&s, "DELETE", "/api/v10/channels/11/pins/301", 204, None, 1).await;
         let r = mcp.borrar_mensaje_json(None, "11", "301").await.unwrap();
-        assert!(r.contains("borrado"));
+        assert!(r.contains("deleted"));
         let r = mcp
             .fijar_mensaje_json(None, "11", "301", true)
             .await
             .unwrap();
-        assert!(r.contains("fijado"));
+        assert!(r.contains("pinned"));
         let r = mcp
             .fijar_mensaje_json(None, "11", "301", false)
             .await
             .unwrap();
-        assert!(r.contains("desfijado"));
+        assert!(r.contains("unpinned"));
     }
 
     #[tokio::test]
@@ -2673,18 +2673,18 @@ mod tests {
             .mount(&s)
             .await;
         let ok = mcp.borrar_mensajes_json(None, "11", &[a.clone(), b]).await;
-        assert!(ok.unwrap().contains("2 mensajes borrados"));
+        assert!(ok.unwrap().contains("2 messages deleted"));
         // Una sola, o una de más de 14 días: error de la app, sin llamar a Discord.
         let e = mcp
             .borrar_mensajes_json(None, "11", &[a.clone()])
             .await
             .unwrap_err();
-        assert!(e.contains("entre 2 y 100"), "{e}");
+        assert!(e.contains("between 2 and 100"), "{e}");
         let e = mcp
             .borrar_mensajes_json(None, "11", &[a, snowflake_hace_dias(20)])
             .await
             .unwrap_err();
-        assert!(e.contains("14 días"), "{e}");
+        assert!(e.contains("14 days"), "{e}");
     }
 
     #[tokio::test]
@@ -2693,7 +2693,7 @@ mod tests {
         prohibir_cambios(&s).await;
         // `borrar_mensaje` sí llama a Discord sin el permiso: el bot puede borrar
         // los suyos (ver tests_mensajes.rs).
-        let falta = "Al bot le falta el permiso «Gestionar mensajes»";
+        let falta = "The bot is missing the permission «Gestionar mensajes»";
         let e = mcp.fijar_mensaje_json(None, "11", "301", true).await;
         assert_eq!(e.unwrap_err(), falta);
         let ids = [snowflake_hace_dias(1), snowflake_hace_dias(2)];
@@ -2759,9 +2759,9 @@ mod tests {
             .ordenar_canales_json(None, &[pos("20", 1), pos("11", 0)])
             .await
             .unwrap();
-        assert!(r.contains("2 canales reordenados"));
+        assert!(r.contains("2 channels reordered"));
         let r = mcp.borrar_canal_json(None, "20").await.unwrap();
-        assert!(r.contains("Canal 20 borrado"));
+        assert!(r.contains("Channel 20 deleted"));
         // Tipo desconocido: error propio, sin llamar a Discord.
         let e = mcp
             .crear_canal_json(&canal_nuevo("x", Some("holograma")))
@@ -2774,7 +2774,7 @@ mod tests {
     async fn canales_sin_permiso_no_llegan_a_discord() {
         let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_MENSAJES, true).await;
         prohibir_cambios(&s).await;
-        let falta = "Al bot le falta el permiso «Gestionar canales»";
+        let falta = "The bot is missing the permission «Gestionar canales»";
         let e = mcp.crear_canal_json(&canal_nuevo("x", None)).await;
         assert_eq!(e.unwrap_err(), falta);
         let e = mcp.borrar_canal_json(None, "11").await;
@@ -2855,9 +2855,9 @@ mod tests {
             .ordenar_roles_json(None, &[pos("700", 2)])
             .await
             .unwrap();
-        assert!(r.contains("1 roles reordenados"));
+        assert!(r.contains("1 roles reordered"));
         let r = mcp.borrar_rol_json(None, "700").await.unwrap();
-        assert!(r.contains("Rol 700 borrado"));
+        assert!(r.contains("Role 700 deleted"));
     }
 
     #[tokio::test]
@@ -2865,7 +2865,7 @@ mod tests {
         // Sin «Gestionar roles».
         let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_MENSAJES, true).await;
         prohibir_cambios(&s).await;
-        let falta = "Al bot le falta el permiso «Gestionar roles»";
+        let falta = "The bot is missing the permission «Gestionar roles»";
         assert_eq!(mcp.borrar_rol_json(None, "700").await.unwrap_err(), falta);
         let e = mcp.crear_rol_json(&rol_nuevo("x")).await;
         assert_eq!(e.unwrap_err(), falta);
@@ -2915,12 +2915,12 @@ mod tests {
             .cambiar_rol_json(None, "1001", "700", true)
             .await
             .unwrap();
-        assert!(r.contains("añadido"));
+        assert!(r.contains("added"));
         let r = mcp
             .cambiar_rol_json(None, "1001", "700", false)
             .await
             .unwrap();
-        assert!(r.contains("quitado"));
+        assert!(r.contains("removed"));
     }
 
     #[tokio::test]
@@ -2970,7 +2970,7 @@ mod tests {
         ]));
         p.denegar = Some(PermisosParam::Bits("2048".into()));
         let r = mcp.permiso_canal_json(&p).await.unwrap();
-        assert!(r.contains("actualizados"));
+        assert!(r.contains("updated"));
         let mut p = permiso("1001", "miembro");
         p.denegar = Some(PermisosParam::Nombres(vec!["SendMessages".into()]));
         mcp.permiso_canal_json(&p).await.unwrap();
@@ -2979,7 +2979,7 @@ mod tests {
                 .quitar_permiso_canal_json(&quitar_permiso(objetivo, tipo))
                 .await
                 .unwrap();
-            assert!(r.contains("quitados"));
+            assert!(r.contains("removed"));
         }
         // Tipo inválido y permiso desconocido: errores propios.
         let e = mcp
@@ -2997,7 +2997,7 @@ mod tests {
     async fn permisos_de_canal_sin_permiso_no_llegan_a_discord() {
         let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_MENSAJES, true).await;
         prohibir_cambios(&s).await;
-        let falta = "Al bot le falta el permiso «Gestionar roles»";
+        let falta = "The bot is missing the permission «Gestionar roles»";
         let e = mcp.permiso_canal_json(&permiso("700", "rol")).await;
         assert_eq!(e.unwrap_err(), falta);
         let e = mcp
@@ -3063,8 +3063,8 @@ mod tests {
     const GESTIONAR_APODOS: u64 = 1 << 27;
     const GESTIONAR_WEBHOOKS: u64 = 1 << 29;
     const MODERAR: u64 = 1 << 40;
-    const DUENO: &str = "No se puede hacer eso al dueño del servidor";
-    const JERARQUIA_MIEMBRO: &str = "Ese miembro tiene un rol igual o superior al del bot: sube el rol del bot en Ajustes del servidor → Roles";
+    const DUENO: &str = "That cannot be done to the server owner";
+    const JERARQUIA_MIEMBRO: &str = "That member has a role equal to or above the bot's: move the bot's role up in Server settings → Roles";
 
     fn expulsar_a(user: &str) -> ExpulsarParams {
         ExpulsarParams {
@@ -3166,21 +3166,25 @@ mod tests {
 
         let mut p = expulsar_a("1001");
         p.motivo = Some("spam".into());
-        assert!(mcp.expulsar_json(&p).await.unwrap().contains("expulsado"));
+        assert!(mcp.expulsar_json(&p).await.unwrap().contains("kicked"));
         let mut p = banear_a("1001", Some(2));
         p.motivo = Some("insultos".into());
-        assert!(mcp.banear_json(&p).await.unwrap().contains("baneado"));
+        assert!(mcp.banear_json(&p).await.unwrap().contains("banned"));
         let r = mcp
             .desbanear_json(None, "1004", Some("perdonado"))
             .await
             .unwrap();
-        assert!(r.contains("Ban de 1004 quitado"));
+        assert!(r.contains("Ban of 1004 removed"));
         let mut p = silenciar_a("1001", 0);
         p.motivo = Some("calma".into());
-        assert!(mcp.silenciar_json(&p).await.unwrap().contains("quitado"));
+        assert!(mcp.silenciar_json(&p).await.unwrap().contains("removed"));
         let mut p = apodo_de("1001", Some("Nuevo"));
         p.motivo = Some("normas".into());
-        assert!(mcp.cambiar_apodo_json(&p).await.unwrap().contains("Apodo"));
+        assert!(mcp
+            .cambiar_apodo_json(&p)
+            .await
+            .unwrap()
+            .contains("Nickname"));
     }
 
     #[tokio::test]
@@ -3197,7 +3201,7 @@ mod tests {
         )
         .await;
         let r = mcp.silenciar_json(&silenciar_a("1001", 10)).await.unwrap();
-        assert!(r.contains("silenciado por 10 minutos"), "{r}");
+        assert!(r.contains("timed out for 10 minutes"), "{r}");
         let peticiones = s.received_requests().await.unwrap();
         let patch = peticiones
             .iter()
@@ -3210,7 +3214,7 @@ mod tests {
             .silenciar_json(&silenciar_a("1001", 40321))
             .await
             .unwrap_err();
-        assert!(e.contains("28 días"), "{e}");
+        assert!(e.contains("28 days"), "{e}");
     }
 
     #[tokio::test]
@@ -3260,17 +3264,17 @@ mod tests {
         let e = mcp.banear_json(&banear_a("1001", Some(8))).await;
         assert_eq!(
             e.unwrap_err(),
-            "Los días de mensajes a borrar deben estar entre 0 y 7"
+            "The days of messages to delete must be between 0 and 7"
         );
         let e = mcp.banear_json(&banear_a("1001", Some(300))).await;
-        assert!(e.unwrap_err().contains("entre 0 y 7"));
+        assert!(e.unwrap_err().contains("between 0 and 7"));
     }
 
     #[tokio::test]
     async fn moderacion_sin_permiso_no_llega_a_discord() {
         let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_MENSAJES, true).await;
         prohibir_cambios(&s).await;
-        let falta = |p: &str| format!("Al bot le falta el permiso «{p}»");
+        let falta = |p: &str| format!("The bot is missing the permission «{p}»");
         let e = mcp.expulsar_json(&expulsar_a("1001")).await;
         assert_eq!(e.unwrap_err(), falta("Expulsar miembros"));
         let e = mcp.banear_json(&banear_a("1001", None)).await;
@@ -3383,7 +3387,7 @@ mod tests {
             ..p
         };
         let e = mcp.crear_invitacion_json(&p).await.unwrap_err();
-        assert!(e.contains("7 días"), "{e}");
+        assert!(e.contains("7 days"), "{e}");
     }
 
     #[tokio::test]

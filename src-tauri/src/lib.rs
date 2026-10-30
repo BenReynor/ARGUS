@@ -10,6 +10,7 @@ pub mod crypto;
 pub mod db;
 pub mod discord;
 pub mod gateway;
+pub mod i18n;
 pub mod mapa;
 pub mod mcp;
 pub mod mensajes;

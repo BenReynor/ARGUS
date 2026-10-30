@@ -139,7 +139,7 @@ async fn sin_gestionar_servidor_no_lee_ni_guarda() {
     }
     let state = estado("token-aj3");
     let addr = server.address().to_string();
-    let esperado = "Al bot le falta el permiso «Gestionar servidor»";
+    let esperado = "The bot is missing the permission «Gestionar servidor»";
     assert_eq!(
         leer_ajustes_servidor(&state, "555", Some(&addr))
             .await
@@ -171,7 +171,7 @@ async fn valida_los_ajustes_antes_de_llamar_a_discord() {
         guardar_ajustes_servidor(&state, "555", &corto, Some(&addr))
             .await
             .unwrap_err(),
-        "El nombre del servidor debe tener entre 2 y 100 caracteres"
+        "The server name must be between 2 and 100 characters"
     );
     let mut afk = ajustes();
     afk.afk_timeout = 123;
@@ -179,7 +179,7 @@ async fn valida_los_ajustes_antes_de_llamar_a_discord() {
         guardar_ajustes_servidor(&state, "555", &afk, Some(&addr))
             .await
             .unwrap_err(),
-        "El tiempo AFK debe ser 60, 300, 900, 1800 o 3600 segundos"
+        "The AFK timeout must be 60, 300, 900, 1800 or 3600 seconds"
     );
     let mut nivel = ajustes();
     nivel.verification_level = 5;
@@ -250,6 +250,6 @@ async fn auditoria_sin_permiso_no_llama_al_registro() {
         leer_auditoria(&state, "555", Some(&addr))
             .await
             .unwrap_err(),
-        "Al bot le falta el permiso «Ver registro de auditoría»"
+        "The bot is missing the permission «Ver registro de auditoría»"
     );
 }
