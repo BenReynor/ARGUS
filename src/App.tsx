@@ -13,6 +13,7 @@ import { ServidorView } from './components/ServidorView';
 import { Notification } from './components/Notification';
 import { LayoutDashboard, Hash, Users, Shield, Terminal, Settings, Server } from 'lucide-react';
 import { aplicarTema } from './temas';
+import { setIdioma } from './i18n';
 import { pasoCarga, finCarga } from './carga';
 import { useBotStatus, useShowNotification } from './store/useStore';
 import { getConfig, getBotStatus, refreshServerMap, getServerMap, onMapUpdated, onSyncProgress, onBotStatusChange } from './api/tauri';
@@ -27,6 +28,11 @@ function App() {
   useEffect(() => {
     aplicarTema(uiTheme, uiMode);
   }, [uiTheme, uiMode]);
+
+  // El idioma se fija durante el render para que los t() de los hijos ya lo vean;
+  // la `key` del contenedor fuerza a repintar todo el árbol al cambiarlo.
+  const uiLanguage = useStore((s) => s.config.ui_language) || 'en';
+  setIdioma(uiLanguage);
 
   useEffect(() => {
     const init = async () => {
@@ -103,7 +109,7 @@ function App() {
   };
 
   return (
-    <div className="app">
+    <div className="app" key={uiLanguage}>
       <GuildRail />
       <Sidebar tabs={tabs} />
       <div className="main-layout">

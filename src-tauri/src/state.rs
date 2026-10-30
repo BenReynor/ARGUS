@@ -124,6 +124,13 @@ pub struct Config {
     pub ui_theme: String,
     #[serde(default)]
     pub ui_mode: String,
+    /// Idioma de la interfaz: "en" (por defecto) o "es".
+    #[serde(default = "default_ui_language")]
+    pub ui_language: String,
+}
+
+fn default_ui_language() -> String {
+    "en".to_string()
 }
 
 fn default_ui_theme() -> String {
@@ -219,6 +226,7 @@ impl Default for Config {
 
             ui_theme: default_ui_theme(),
             ui_mode: String::new(),
+            ui_language: default_ui_language(),
         }
     }
 }
@@ -480,5 +488,19 @@ mod tests {
         let config: Config = serde_json::from_value(json).unwrap();
         assert_eq!(config.ui_theme, "discord");
         assert_eq!(config.ui_mode, "");
+    }
+
+    #[test]
+    fn old_config_without_ui_language_loads_as_english() {
+        let mut json = serde_json::to_value(Config::default()).unwrap();
+        assert!(json
+            .as_object_mut()
+            .unwrap()
+            .remove("ui_language")
+            .is_some());
+
+        let config: Config = serde_json::from_value(json).unwrap();
+        assert_eq!(config.ui_language, "en");
+        assert_eq!(Config::default().ui_language, "en");
     }
 }

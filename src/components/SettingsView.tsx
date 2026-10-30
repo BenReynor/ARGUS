@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useStore, useConfig, useUiSettings, useSetActiveTab, useShowNotification, useActiveGuildId, useGuildSettings } from '../store/useStore';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { getConfig, saveConfig, saveGuildSettings, addBot, deleteBot, startBot, getBotStatus, inviteUrl, rutaMcp } from '../api/tauri';
-import { Button, Input, Card, Cargando, EstadoVacio } from './ui';
+import { t, IDIOMAS } from '../i18n';
+import { Button, Input, Select, Card, Cargando, EstadoVacio } from './ui';
 import './Vistas.css';
 import { Save, Trash2, Plus, Server, CheckCircle, AlertCircle, Eye, EyeOff, Copy } from 'lucide-react';
 import { TEMAS, aplicarTema } from '../temas';
@@ -62,6 +63,7 @@ export const SettingsView: React.FC = () => {
   const uiSettings = useUiSettings();
   const setUiSettings = useStore((s) => s.setUiSettings);
   const setConfig = useStore((s) => s.setConfig);
+  const setUiLanguage = useStore((s) => s.setUiLanguage);
 
   // El token solo vive en este estado local: nunca se persiste en la UI.
   // El backend lo cifra (AES-GCM) al recibirlo vía add_bot/update_bot.
@@ -412,6 +414,22 @@ export const SettingsView: React.FC = () => {
             });
           })}
         </div>
+        <Select
+          etiqueta="Language / Idioma"
+          ayuda={t('Choose the language of the interface. It applies instantly and is saved.')}
+          value={config.ui_language || 'en'}
+          onChange={async (e) => {
+            try {
+              await setUiLanguage(e.target.value);
+            } catch (err) {
+              showNotification(typeof err === 'string' ? err : t('Could not save the language'), 'error');
+            }
+          }}
+        >
+          {IDIOMAS.map((i) => (
+            <option key={i.id} value={i.id}>{i.nombre}</option>
+          ))}
+        </Select>
       </Seccion>
 
       <Seccion ancha titulo="General" descripcion="Comportamiento de la aplicación y servidor con el que arranca.">

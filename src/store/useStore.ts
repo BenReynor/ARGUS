@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { guildInfo, botPermissions, getGuildSettings, refreshServerMap as cargarMapaRest, setActiveGuild as fijarGuildBackend } from '../api/tauri';
+import { setIdioma } from '../i18n';
+import { guildInfo, saveConfig as guardarConfigBackend, botPermissions, getGuildSettings, refreshServerMap as cargarMapaRest, setActiveGuild as fijarGuildBackend } from '../api/tauri';
 import type { GuildSettings, Config, UiSettings, BotStatus, ServerMap, Channel, Member, Role, Guild } from '../types';
 
 /** Datos del servidor activo y permisos del bot en él. */
@@ -54,6 +55,8 @@ interface AppState {
   setUiSettings: (settings: Partial<UiSettings>) => void;
   loadConfig: () => Promise<void>;
   saveConfig: () => Promise<void>;
+  /** Cambia el idioma de la UI: repinta al instante y lo guarda con save_config. */
+  setUiLanguage: (lang: string) => Promise<void>;
 
   // Bot status
   botStatus: BotStatus;
@@ -148,6 +151,7 @@ const defaultConfig = (): Config => ({
 
   ui_theme: 'discord',
   ui_mode: '',
+  ui_language: 'en',
 });
 
 export const useStore = create<AppState>()(
@@ -166,6 +170,18 @@ export const useStore = create<AppState>()(
       },
       saveConfig: async () => {
         // Guardar en tauri store
+      },
+      setUiLanguage: async (lang) => {
+        const previo = get().config.ui_language;
+        setIdioma(lang);
+        set((state) => ({ config: { ...state.config, ui_language: lang } }));
+        try {
+          await guardarConfigBackend(get().config);
+        } catch (e) {
+          setIdioma(previo);
+          set((state) => ({ config: { ...state.config, ui_language: previo } }));
+          throw e;
+        }
       },
 
       // Bot status
@@ -273,7 +289,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'argus-storage',
-      version: 1,
+      version: 2,
       // v0 guardaba una Config con otra forma (discord_token, server_id...)
       migrate: (persisted: any, version) => {
         if (version < 1 && persisted) {
@@ -287,6 +303,9 @@ export const useStore = create<AppState>()(
               minimize_to_tray: old?.minimize_to_tray ?? true,
             },
           };
+        }
+        if (version < 2 && persisted?.config && !persisted.config.ui_language) {
+          return { ...persisted, config: { ...persisted.config, ui_language: 'en' } };
         }
         return persisted;
       },

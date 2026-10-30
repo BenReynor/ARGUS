@@ -86,6 +86,7 @@ export interface Config {
 
   ui_theme: string;
   ui_mode: string;
+  ui_language: string;
 }
 
 // Ajustes solo de la interfaz: no existen en la Config de Rust.
