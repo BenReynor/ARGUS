@@ -67,7 +67,7 @@ Cada bloque se convierte en tareas con `criterio:` cuando le toque.
 - **Privacidad**: tokens y claves cifrados localmente; nunca en texto plano ni en
   `localStorage`; sin telemetría.
 - **Nada hardcodeado** de un servidor, canal, bot o usuario.
-- **Observabilidad**: estado en BD/archivos, errores visibles en la UI en español.
+- **Observabilidad**: estado en BD/archivos, errores visibles en la UI, en el idioma elegido.
 - **Rendimiento**: Rust en lo caliente; nada de bloquear el runtime (`block_on`
   dentro de tokio) ni retener un `MutexGuard` a través de un `.await`.
 
@@ -79,7 +79,8 @@ Cada bloque se convierte en tareas con `criterio:` cuando le toque.
 
 ## Convenciones
 
-- Español en UI y documentación; commits convencionales (`feat:`, `fix:`…).
+- UI en inglés por defecto con español opcional (i18n, FASE 9); documentación
+  interna en español; commits convencionales (`feat:`, `fix:`…).
 - Una tarea por commit, verificable por el gate: `cargo fmt/check/test` (en
   `src-tauri/`), `tsc` y `npm run build`.
 - Rutas de datos: `~/.config/argus/` (BD, logs, backups); en Windows `%APPDATA%\argus\`.

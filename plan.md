@@ -227,9 +227,44 @@ Verificación manual en tu servidor de pruebas:
 - Pedirle que cree un canal y un rol, envíe un mensaje y luego los borre; comprobarlo en Discord y en el registro de auditoría.
 - Con la app abierta, ver que los cambios hechos por el MCP aparecen en el mapa en vivo.
 
+## FASE 9 — Idiomas: inglés por defecto, español opcional
+ARGUS se publica para cualquiera: la interfaz arranca en **inglés** y el usuario puede cambiarla a **español** en Ajustes. Mismo enfoque que Dédalo: el texto fuente del código está en inglés y una función `t()` lo traduce con un catálogo español; si falta una entrada se muestra el inglés. No se traducen datos de Discord (nombres de canales, roles, miembros) ni los identificadores guardados.
+
+- [ ] Base de idiomas y selector
+  criterio: existe `src/i18n.ts` con `t(texto, vars?)` (texto fuente en inglés, placeholders `{nombre}`) y el catálogo español en `src/i18n/es.ts` (objeto inglés → español); `Config` (state.rs, `src/types`) tiene `ui_language` con valor por defecto `"en"` (con `#[serde(default)]`, una config guardada sin el campo carga como `"en"`, test de Rust que lo comprueba); el store expone el idioma y al cambiarlo la UI se vuelve a pintar al instante y se guarda con `save_config`; `document.documentElement.lang` sigue al idioma; Ajustes → Apariencia tiene un selector «Language / Idioma» con English y Español; existe `scripts/comprobar-i18n.mjs` y el script `"i18n:check"` en package.json, que falla si algún literal pasado a `t('…')`/`t("…")` en `src/` no está en el catálogo español; `npm run i18n:check` pasa
+
+- [ ] Traducir la estructura de la ventana
+  criterio: usando `t()`, quedan en inglés por defecto y traducidos al español los textos de App.tsx (secciones), Sidebar, GuildRail, Header, Notification, EstadoVista, `src/components/ui/` (incluidos Dialogo y ConfirmarPeligroso), `src/carga.ts` y la pantalla de carga de index.html (en index.html el texto inicial pasa a inglés, «Loading…», y carga.ts lo traduce); `npm run i18n:check` y `npm run build` pasan
+
+- [ ] Traducir el Panel y los Logs
+  criterio: Dashboard.tsx (incluidas las explicaciones de cada permiso del bot) y LogsView.tsx usan `t()` en todos sus textos visibles, tooltips y mensajes; en inglés por defecto y en español con el selector; `npm run i18n:check` y `npm run build` pasan
+
+- [ ] Traducir Canales
+  criterio: ChannelsView.tsx, PermisosCanal.tsx y ActividadCanal.tsx usan `t()` en textos visibles, placeholders, tooltips, diálogos de confirmación y notificaciones (los nombres de los permisos de Discord también, con sus nombres oficiales en inglés como fuente); `npm run i18n:check` y `npm run build` pasan
+
+- [ ] Traducir Roles y Miembros
+  criterio: RolesView.tsx y MembersView.tsx usan `t()` en textos visibles, la lista de permisos agrupados, placeholders, tooltips (incluido el motivo de una acción desactivada), diálogos y notificaciones; `npm run i18n:check` y `npm run build` pasan
+
+- [ ] Traducir Servidor y Ajustes
+  criterio: ServidorView.tsx (ajustes del servidor y registro de auditoría, incluidos los nombres de tipos de acción) y SettingsView.tsx (bots, este servidor, MCP, apariencia, general, nombres de los temas) usan `t()`; `npm run i18n:check` y `npm run build` pasan
+
+- [ ] Mensajes del backend en el idioma elegido
+  criterio: los mensajes de error y de estado que Rust devuelve a la UI (commands.rs, discord.rs, mensajes.rs, sync.rs, gateway.rs, db.rs) tienen el texto fuente en inglés y un módulo `src-tauri/src/i18n.rs` con el catálogo español y una función que traduce según `ui_language`; los comandos devuelven el mensaje en el idioma de la config; tests de Rust: el mismo error (p. ej. token inválido y falta de permiso contra el Discord falso) sale en inglés por defecto y en español con `ui_language = "es"`; un texto sin entrada en el catálogo sale en inglés; `cargo test` pasa
+
+- [ ] MCP en el idioma elegido
+  criterio: las descripciones de las herramientas de `argus-mcp` quedan en inglés; los mensajes de sus respuestas y errores (incluido «No hay bot activo en ARGUS…») usan el mismo `i18n.rs` y salen en el idioma guardado en la config de la BD (inglés por defecto); un test de `mcp.rs` lo comprueba en los dos idiomas; tests/mcp_humo.rs sigue pasando; docs/MCP.md en inglés con los mensajes de ejemplo en inglés
+
+- [ ] Sin textos sueltos y documentación
+  criterio: `scripts/comprobar-i18n.mjs` también falla si queda en `src/**/*.tsx`/`*.ts` (fuera de `src/i18n/`) un literal visible en español (con á, é, í, ó, ú, ñ, ¿ o ¡) y pasa sin excepciones; README.md queda en inglés (mismo contenido y capturas) con un enlace «Español» a un README.es.md nuevo con la traducción, y README.es.md enlaza de vuelta «English»; AGENTS.md y CONTEXTO.md dicen «UI en inglés por defecto, español con i18n (`t()` y catálogo)» en lugar de «Español en la UI»; `npm run i18n:check`, `npm run build` y `cargo test` pasan
+
+Verificación manual:
+- Abrir ARGUS: todo en inglés. Ajustes → Language → Español: todo cambia al instante; cerrar y abrir: sigue en español.
+- Provocar un error (token inválido) en los dos idiomas.
+- Con el MCP: pedir algo sin bot activo y ver el mensaje en el idioma elegido.
+
 ## Después del MVP (sin criterios todavía: se detallan al empezar cada bloque)
 - Plantillas: esquema, vista de plantillas, vista previa en árbol, aplicador ordenado (roles → categorías → canales → overwrites), validación de permisos, crear servidor nuevo desde plantilla.
 - Personalidad del bot: perfiles (prompt, modelo, canales, reglas), escuchar MESSAGE_CREATE, filtros (mención, canal, cooldown, ignorar bots), proveedor LLM configurable (Ollama / compatible OpenAI), memoria corta por canal, anti-spam, modo observador, comandos slash.
 - Vigilancia y logs: niveles y timestamps, eventos con filtros, vista timeline, alertas nativas, health check del Gateway, interacción opcional con otros bots con reglas anti-bucle.
 - Integraciones: Telegram, backup automático, agentes CLI (el MCP propio está en la FASE 8).
-- UX y rendimiento: i18n ES/EN, listas virtualizadas, paginación de miembros en la UI, métricas, revisar CPU/RAM.
+- UX y rendimiento: listas virtualizadas, paginación de miembros en la UI, métricas, revisar CPU/RAM.

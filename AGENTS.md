@@ -12,7 +12,10 @@ existen: ARCHITECTURE_MAP.md. Errores ya corregidos: lecciones.md.
   local (ver plan.md).
 - No uses `sudo` ni instales paquetes del sistema.
 - Tokens y claves: siempre cifrados (crypto.rs). Nunca en `localStorage` ni en logs.
-- Español en la UI y en los mensajes de error.
+- UI y mensajes de error en **inglés por defecto, español con i18n**: el texto
+  fuente va en inglés dentro de `t()` (frontend `src/i18n.ts`, backend
+  `src-tauri/src/i18n.rs`) y su traducción en el catálogo español. Documentación
+  y commits del proyecto siguen en español.
 
 ## Entorno
 - Rust/cargo 1.99 y Node 22 ya están en el PATH. Ejecuta `cargo` tal cual (sin
