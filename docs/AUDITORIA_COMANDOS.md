@@ -1,5 +1,10 @@
 # Auditoría de comandos Tauri (`src-tauri/src/commands.rs`)
 
+> **Documento histórico.** Es la auditoría de la FASE 0, antes de conectar
+> Discord de verdad. Las FASES 1–8 sustituyeron los comandos mock por llamadas
+> reales con twilight y añadieron muchos más (78 hoy). El estado actual está en
+> el código y en [`FICHA_TECNICA.md`](FICHA_TECNICA.md).
+
 Leyenda de estado:
 - **real**: hace trabajo efectivo (estado en memoria, SQLite, proceso local); no necesita Discord API.
 - **mock**: devuelve datos inventados o no hace nada real, aunque su firma aparenta hacerlo.

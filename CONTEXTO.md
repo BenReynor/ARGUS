@@ -30,24 +30,24 @@ en vivo y, más adelante, darle personalidad y automatismos.
 
 ## Estado actual (lo que existe de verdad)
 
-- Backend Rust (`src-tauri/src`): `main.rs` (setup, tray, migraciones, carga de
-  config), `state.rs` (Config, AppState, tipos del mapa), `commands.rs` (41
-  comandos; casi todos los de Discord son mock: ver `docs/AUDITORIA_COMANDOS.md`),
-  `db.rs` (SQLite vía sqlx), `crypto.rs` (AES-GCM + tests).
-- BD (`src-tauri/migrations/001_init.sql`): config, bots, guilds, server_maps,
-  templates, cli_agents, vigilance, messages, incidents, settings.
-- Frontend (`src/`): Header (selector de guild), Sidebar, Dashboard, ChannelsView,
-  MembersView, RolesView, SettingsView, LogsView, Notification; store Zustand;
-  tipos en `src/types/index.ts` sincronizados con Rust.
-- Pendiente de limpiar: IDs, nombres y canales del servidor ISD y "Agente Albert"
-  escritos en código (primera tarea de la FASE 1).
+- FASES 0–8 de plan.md hechas: multi-bot, datos y acciones reales por REST,
+  mapa en vivo por Gateway, interfaz con 10 temas, control total del servidor
+  (canales, roles, permisos, moderación, ajustes, auditoría, mensajes,
+  invitaciones, webhooks) y el MCP `argus-mcp` (docs/MCP.md).
+- Backend Rust (`src-tauri/src`): biblioteca `argus_lib` compartida por la app y
+  por el binario `argus-mcp`; cliente de Discord con twilight (`discord.rs`),
+  comandos Tauri en `commands.rs`, SQLite con sqlx (`db.rs`), cifrado AES-GCM
+  (`crypto.rs`). Qué hace cada archivo: ARCHITECTURE_MAP.md.
+- Frontend (`src/`): React + Zustand; vistas Panel, Canales, Miembros, Roles,
+  Servidor, Logs y Ajustes; temas en `src/styles/temas/`.
+- Pendiente: la verificación manual de la FASE 4 en el servidor de pruebas y
+  probar `argus-mcp` con un cliente MCP real; Windows solo está probado en CI.
 
 ## Después del MVP (visión, sin criterios todavía)
 
 Cada bloque se convierte en tareas con `criterio:` cuando le toque.
 
-1. **Edición completa del servidor**: crear/editar/borrar canales, categorías y
-   roles, permisos y overwrites, moderación (ban/kick/timeout), mensajes.
+1. ~~**Edición completa del servidor**~~: hecho en la FASE 7.
 2. **Plantillas**: guardar la estructura de un servidor y aplicarla a otro
    (roles → categorías → canales → overwrites), con vista previa y validación de
    permisos del bot.
@@ -57,9 +57,10 @@ Cada bloque se convierte en tareas con `criterio:` cuando le toque.
    compatible con la API de OpenAI); proveedores y costes se verifican al empezar.
 4. **Vigilancia y logs**: eventos (altas/bajas, bans, cambios de rol/canal,
    mensajes borrados) con filtros y timeline; alertas nativas.
-5. **Integraciones**: notificaciones Telegram, backup automático, MCP propio de
-   ARGUS, agentes CLI (opencode/codex/claude).
-6. **UX**: i18n ES/EN, temas, paleta de comandos, listas virtualizadas.
+5. **Integraciones**: notificaciones Telegram, backup automático, agentes CLI
+   (opencode/codex/claude). El MCP propio ya existe (FASE 8).
+6. **UX**: i18n ES/EN, paleta de comandos, listas virtualizadas (los temas ya
+   están, FASES 5–6).
 
 ## Principios
 
@@ -81,7 +82,7 @@ Cada bloque se convierte en tareas con `criterio:` cuando le toque.
 - Español en UI y documentación; commits convencionales (`feat:`, `fix:`…).
 - Una tarea por commit, verificable por el gate: `cargo fmt/check/test` (en
   `src-tauri/`), `tsc` y `npm run build`.
-- Rutas de datos: `~/.config/argus/` (BD, logs, backups).
+- Rutas de datos: `~/.config/argus/` (BD, logs, backups); en Windows `%APPDATA%\argus\`.
 - Fechas: ISO 8601 UTC en BD, formato local en la UI.
 
 ## Integración con Dédalo
