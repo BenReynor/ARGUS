@@ -108,7 +108,7 @@ const DialogoRol: React.FC<{
         <Interruptor etiqueta={t('Display separately')} ayuda={t('Lists the members with this role in their own group.')} valor={form.hoist} onCambio={(v) => setForm({ ...form, hoist: v })} />
         <Interruptor etiqueta={t('Mentionable')} ayuda={t('Anyone can mention the role with @.')} valor={form.mentionable} onCambio={(v) => setForm({ ...form, mentionable: v })} />
         <div className="rol-form__admin">
-          <Interruptor etiqueta={t('Administrator')} ayuda={t('Shortcut: grants every permission and bypasses channel overwrites. Use with care.')} valor={admin} onCambio={(v) => poner(BIT_ADMIN, v)} />
+          <Interruptor etiqueta="Administrator" ayuda={t('Shortcut: grants every permission and bypasses channel overwrites. Use with care.')} valor={admin} onCambio={(v) => poner(BIT_ADMIN, v)} />
         </div>
         <div className="rol-form__permisos">
           {GRUPOS_PERMISOS.map(({ grupo, permisos }) => (
@@ -284,7 +284,7 @@ export const RolesView: React.FC = () => {
                         </div>
                       </td>
                       <td className="num">{role.position}</td>
-                      <td><Badge tono={perms.admin ? 'peligro' : 'neutro'}>{perms.admin ? t('Administrator') : t('Permissions')}</Badge></td>
+                      <td><Badge tono={perms.admin ? 'peligro' : 'neutro'}>{perms.admin ? 'Administrator' : t('Permissions')}</Badge></td>
                       <td className="num">{contarMiembros(role.id).toLocaleString()}</td>
                       <td className="rol-acciones">
                         <Button variante="ghost" tamano="sm" title={motivo ?? (search ? t('Clear the search to reorder') : t('Move up'))} aria-label={t('Move up {name}', { name: role.name })}
