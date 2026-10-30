@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { setIdioma } from '../i18n';
+import { setIdioma, t } from '../i18n';
+import { nombreOficialPermiso } from '../permisos';
 import { guildInfo, saveConfig as guardarConfigBackend, botPermissions, getGuildSettings, refreshServerMap as cargarMapaRest, setActiveGuild as fijarGuildBackend } from '../api/tauri';
 import type { GuildSettings, Config, UiSettings, BotStatus, ServerMap, Channel, Member, Role, Guild } from '../types';
 
@@ -28,7 +29,7 @@ export const PERMISOS_REQUERIDOS: string[] = [
 /** Texto que explica por qué una acción está desactivada, o null si se puede usar. */
 export const motivoPermisoAusente = (permissions: string[] | null, requerido: string): string | null =>
   permissions && !permissions.includes(requerido)
-    ? `El bot no tiene el permiso «${requerido}» en este servidor`
+    ? t('The bot does not have the “{permission}” permission on this server', { permission: nombreOficialPermiso(requerido) })
     : null;
 
 export type ToastType = 'info' | 'success' | 'error' | 'warning';

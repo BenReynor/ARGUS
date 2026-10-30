@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Check, Minus, X, Plus, Trash2, Users, User } from 'lucide-react';
 import { Button, Badge, Select } from './ui';
 import { GRUPOS_PERMISOS } from './RolesView';
+import { t } from '../i18n';
+import { nombreOficialPermiso } from '../permisos';
 import type { Channel, Member, Role } from '../types';
 
 type Estado = 'permitir' | 'heredar' | 'denegar';
@@ -21,11 +23,25 @@ const estadoDe = (e: Entrada, bit: number): Estado => {
   return e.allow & m ? 'permitir' : e.deny & m ? 'denegar' : 'heredar';
 };
 
-const ESTADOS: { valor: Estado; etiqueta: string; icono: any }[] = [
-  { valor: 'permitir', etiqueta: 'Permitir', icono: Check },
-  { valor: 'heredar', etiqueta: 'Heredar', icono: Minus },
-  { valor: 'denegar', etiqueta: 'Denegar', icono: X },
+const ESTADOS: { valor: Estado; icono: any }[] = [
+  { valor: 'permitir', icono: Check },
+  { valor: 'heredar', icono: Minus },
+  { valor: 'denegar', icono: X },
 ];
+
+const etiquetaEstado = (e: Estado): string =>
+  e === 'permitir' ? t('Allow') : e === 'heredar' ? t('Inherit') : t('Deny');
+
+const etiquetaGrupo = (g: string): string => {
+  switch (g) {
+    case 'General': return t('General');
+    case 'Miembros': return t('Members');
+    case 'Texto': return t('Text');
+    case 'Voz': return t('Voice');
+    case 'Avanzado': return t('Advanced');
+    default: return g;
+  }
+};
 
 export const PermisosCanal: React.FC<{
   canal: Channel;
@@ -49,9 +65,9 @@ export const PermisosCanal: React.FC<{
   useEffect(() => { setSel(null); }, [canal.id]);
 
   const nombreDe = (e: Entrada) => {
-    if (e.tipo === 0) return roles.find((r) => r.id === e.id)?.name ?? `Rol ${e.id}`;
+    if (e.tipo === 0) return roles.find((r) => r.id === e.id)?.name ?? t('Role {id}', { id: e.id });
     const m = miembros.find((x) => x.user_id === e.id);
-    return m ? m.nickname || m.username : `Miembro ${e.id}`;
+    return m ? m.nickname || m.username : t('Member {id}', { id: e.id });
   };
 
   const cambios = useMemo<CambiosPermisos>(() => {
@@ -99,7 +115,7 @@ export const PermisosCanal: React.FC<{
     try {
       await onGuardar(cambios);
     } catch (err) {
-      setError(typeof err === 'string' ? err : 'No se pudieron guardar los permisos');
+      setError(typeof err === 'string' ? err : t('Could not save the permissions'));
     } finally {
       setGuardando(false);
     }
@@ -112,19 +128,19 @@ export const PermisosCanal: React.FC<{
 
   const resumen = (e: Entrada) => {
     const p = cuentaBits(e.allow), d = cuentaBits(e.deny);
-    return p + d === 0 ? 'Todo heredado' : `${p} permitidos · ${d} denegados`;
+    return p + d === 0 ? t('All inherited') : t('{allowed} allowed · {denied} denied', { allowed: p, denied: d });
   };
 
   return (
-    <section className="permisos" aria-label="Permisos del canal">
-      <h4 className="permisos__titulo">Permisos del canal</h4>
+    <section className="permisos" aria-label={t('Channel permissions')}>
+      <h4 className="permisos__titulo">{t('Channel permissions')}</h4>
       {bloqueado && <span className="vista__nota">{motivoBloqueo}</span>}
 
       <div className="permisos__cuerpo">
         <div className="permisos__lista">
-          <div role="listbox" aria-label="Overwrites del canal" className="permisos__items">
+          <div role="listbox" aria-label={t('Channel overwrites')} className="permisos__items">
             {borrador.length === 0 && (
-              <span className="vista__nota">Sin overwrites: el canal hereda los permisos de su categoría y del servidor.</span>
+              <span className="vista__nota">{t('No overwrites: the channel inherits the permissions of its category and the server.')}</span>
             )}
             {borrador.map((e) => {
               const Icono = e.tipo === 0 ? Users : User;
@@ -137,46 +153,47 @@ export const PermisosCanal: React.FC<{
                       <span>{nombreDe(e)}</span>
                       <small className="num">{resumen(e)}</small>
                     </span>
-                    <Badge tono={e.tipo === 0 ? 'acento' : 'info'}>{e.tipo === 0 ? 'Rol' : 'Miembro'}</Badge>
+                    <Badge tono={e.tipo === 0 ? 'acento' : 'info'}>{e.tipo === 0 ? t('Role') : t('Member')}</Badge>
                   </button>
-                  <Button variante="ghost" tamano="sm" disabled={bloqueado} title={motivoBloqueo ?? 'Quitar overwrite'} aria-label={'Quitar overwrite de ' + nombreDe(e)} onClick={() => quitar(e)}>
+                  <Button variante="ghost" tamano="sm" disabled={bloqueado} title={motivoBloqueo ?? t('Remove overwrite')} aria-label={t('Remove the overwrite of {name}', { name: nombreDe(e) })} onClick={() => quitar(e)}>
                     <Trash2 size={12} />
                   </Button>
                 </div>
               );
             })}
           </div>
-          <Select etiqueta="Añadir rol" value="" disabled={bloqueado || rolesLibres.length === 0} onChange={(ev) => anadir(0, ev.target.value)}>
-            <option value="">{rolesLibres.length ? 'Elegir rol…' : 'No quedan roles'}</option>
+          <Select etiqueta={t('Add role')} value="" disabled={bloqueado || rolesLibres.length === 0} onChange={(ev) => anadir(0, ev.target.value)}>
+            <option value="">{rolesLibres.length ? t('Choose a role…') : t('No roles left')}</option>
             {rolesLibres.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
           </Select>
-          <Select etiqueta="Añadir miembro" value="" disabled={bloqueado || miembrosLibres.length === 0} onChange={(ev) => anadir(1, ev.target.value)}>
-            <option value="">{miembrosLibres.length ? 'Elegir miembro…' : 'No quedan miembros'}</option>
+          <Select etiqueta={t('Add member')} value="" disabled={bloqueado || miembrosLibres.length === 0} onChange={(ev) => anadir(1, ev.target.value)}>
+            <option value="">{miembrosLibres.length ? t('Choose a member…') : t('No members left')}</option>
             {miembrosLibres.map((m) => <option key={m.user_id} value={m.user_id}>{m.nickname || m.username}</option>)}
           </Select>
         </div>
 
         <div className="permisos__detalle">
           {!actual ? (
-            <span className="vista__nota"><Plus size={12} aria-hidden="true" /> Elige un rol o miembro de la lista, o añade uno, para editar sus permisos.</span>
+            <span className="vista__nota"><Plus size={12} aria-hidden="true" /> {t('Pick a role or member from the list, or add one, to edit their permissions.')}</span>
           ) : (
             GRUPOS_PERMISOS.map(({ grupo, permisos }) => (
               <fieldset key={grupo} className="permisos__grupo" disabled={bloqueado}>
-                <legend>{grupo}</legend>
-                {permisos.map(([bit, nombre]) => {
+                <legend>{etiquetaGrupo(grupo)}</legend>
+                {permisos.map(([bit, nombreEs]) => {
                   const estado = estadoDe(actual, bit);
+                  const nombre = nombreOficialPermiso(nombreEs);
                   return (
                     <div key={bit} className="permisos__fila">
                       <span>{nombre}</span>
-                      <div className="permisos__tres" role="radiogroup" aria-label={`${nombre} para ${nombreDe(actual)}`}>
-                        {ESTADOS.map(({ valor, etiqueta, icono: I }) => (
+                      <div className="permisos__tres" role="radiogroup" aria-label={t('{permission} for {name}', { permission: nombre, name: nombreDe(actual) })}>
+                        {ESTADOS.map(({ valor, icono: I }) => (
                           <button
                             key={valor}
                             type="button"
                             role="radio"
                             aria-checked={estado === valor}
-                            aria-label={etiqueta}
-                            title={etiqueta}
+                            aria-label={etiquetaEstado(valor)}
+                            title={etiquetaEstado(valor)}
                             className={`permisos__op permisos__op--${valor}${estado === valor ? ' permisos__op--on' : ''}`}
                             onClick={() => poner(bit, valor)}
                           >
@@ -195,9 +212,9 @@ export const PermisosCanal: React.FC<{
 
       {error && <span className="ui-campo__error" role="alert">{error}</span>}
       <div className="vista__etiquetas">
-        <Button disabled={bloqueado || totalCambios === 0} cargando={guardando} title={motivoBloqueo ?? undefined} onClick={guardar}>Guardar cambios</Button>
-        <Button variante="secundario" disabled={totalCambios === 0 || guardando} onClick={descartar}>Descartar</Button>
-        {totalCambios > 0 && <span className="vista__nota num">{totalCambios} {totalCambios === 1 ? 'cambio sin guardar' : 'cambios sin guardar'}</span>}
+        <Button disabled={bloqueado || totalCambios === 0} cargando={guardando} title={motivoBloqueo ?? undefined} onClick={guardar}>{t('Save changes')}</Button>
+        <Button variante="secundario" disabled={totalCambios === 0 || guardando} onClick={descartar}>{t('Discard')}</Button>
+        {totalCambios > 0 && <span className="vista__nota num">{totalCambios === 1 ? t('1 unsaved change') : t('{count} unsaved changes', { count: totalCambios })}</span>}
       </div>
     </section>
   );
