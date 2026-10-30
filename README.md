@@ -1,134 +1,95 @@
+<div align="center">
+
+<img src="src-tauri/icons/128x128.png" width="96" alt="Icono de ARGUS">
+
 # ARGUS
 
-Aplicación de escritorio para **administrar tus bots de Discord**: registra tus
-bots, elige con cuál trabajar y gestiona los servidores donde está (canales,
-roles, miembros, permisos y moderación), con el mapa del servidor actualizado en
-vivo. Con su servidor MCP, un asistente de IA (Claude Code u otro) puede manejar
-tus bots igual que tú desde la app.
+**Panel de escritorio para controlar tus bots de Discord… y dejar que una IA los maneje contigo**
 
-Tauri 2 · React + TypeScript · Rust · SQLite · [twilight](https://twilight.rs)
+Registra tus bots, elige con cuál trabajar y gestiona los servidores donde está:
+canales, roles, permisos, miembros y moderación, con el servidor actualizado en
+vivo. Con su servidor MCP, un asistente de IA como Claude Code puede hacer lo
+mismo que tú desde la app.
 
+[![CI](https://github.com/BenReynor/ARGUS/actions/workflows/ci.yml/badge.svg)](https://github.com/BenReynor/ARGUS/actions/workflows/ci.yml)
+· Linux · Windows (experimental) · Tauri 2 + React + Rust
+
+</div>
+
+> [!NOTE]
 > ARGUS trabaja con **bots propios** mediante la API oficial de Discord (token de
 > bot). No es un selfbot: automatizar cuentas de usuario viola los Términos de
 > Servicio de Discord.
 
----
+## Capturas
 
-## Qué hace
+| Ajustes → Apariencia (tema Discord) | El mismo panel con el tema Cyberpunk |
+|---|---|
+| ![Galería de temas](docs/capturas/temas.png) | ![Tema Cyberpunk](docs/capturas/tema_cyberpunk.png) |
 
-- **Varios bots:** registra tus bots con su token; ARGUS lee de Discord su nombre
-  y avatar oficiales. Eliges el bot activo en la barra lateral y, en la columna de
-  servidores, cualquiera de los servidores donde está.
-- **Control total del servidor** (lo que permitan los permisos del bot):
-  canales y categorías, roles y jerarquía, permisos por canal, moderación
-  (timeout, expulsar, banear), ajustes del servidor, registro de auditoría,
-  mensajes, invitaciones y webhooks. Las acciones destructivas piden confirmación.
-- **Mapa en vivo:** por el Gateway de Discord; los cambios hechos en Discord
-  aparecen al instante, sin recargar, y el mapa y su historial se guardan.
-- **Configuración por servidor:** cada servidor conserva sus propios ajustes en ARGUS.
-- **MCP propio (`argus-mcp`):** deja que Claude Code, Dédalo u otro cliente MCP
-  gestione Discord con tus bots (44 herramientas), incluso con la app cerrada.
-  Ver [`docs/MCP.md`](docs/MCP.md).
-- **10 temas** (Discord por defecto, minimal, cyberpunk, cálido, datos, anime,
-  manga, glass, retro y brutalista) con vista previa en Ajustes → Apariencia.
-- Pantalla de carga con barra de progreso al abrir.
+## Qué puedes hacer
 
-## Estado
+- **Varios bots en una app:** añade tus bots con su token; ARGUS lee de Discord su
+  nombre y avatar oficiales. Cambia de bot en la barra lateral y de servidor en la
+  columna de la izquierda.
+- **Control total del servidor** (todo lo que permitan los permisos del bot):
+  - canales y categorías: crear, editar, mover y borrar;
+  - roles: crear, editar, permisos y jerarquía;
+  - permisos de cada canal (overwrites);
+  - miembros: roles, timeout, expulsar y banear;
+  - ajustes del servidor y registro de auditoría;
+  - mensajes, DMs, invitaciones y webhooks.
 
-| Fase | Contenido | Estado |
-|---|---|---|
-| 0–3 · MVP | Fundamentos, bots genéricos, datos y acciones reales por REST, mapa en vivo por Gateway | ✅ |
-| 4 · Prueba real | Tests de integración contra un servidor de pruebas ([`docs/PRUEBA_REAL.md`](docs/PRUEBA_REAL.md)) + revisión manual | 🧪 falta la revisión manual |
-| 5–6 · Interfaz | Temas intercambiables, ventana estilo Discord, pulido visual y accesibilidad | ✅ |
-| 7 · Control total del servidor | Canales, roles, permisos, moderación, ajustes, auditoría, mensajes, invitaciones y webhooks | ✅ |
-| 8 · MCP de ARGUS | Binario `argus-mcp` con la misma lógica y permisos que la app | ✅ (falta probarlo con un cliente real) |
+  Las acciones destructivas piden confirmación, y lo que el bot no puede hacer
+  aparece desactivado con el motivo.
+- **Servidor en vivo:** ARGUS se conecta al Gateway de Discord; lo que cambia en
+  Discord (canales, roles, miembros que entran o salen) aparece al instante, sin
+  recargar, y queda un historial en **Logs**.
+- **Ajustes propios por servidor**, que se conservan al cambiar de uno a otro.
+- **Conecta una IA (MCP):** el binario `argus-mcp` ofrece 44 herramientas para que
+  Claude Code u otro cliente MCP gestione Discord con tus bots, incluso con ARGUS
+  cerrado.
+- **10 temas:** Discord (por defecto), minimal, cyberpunk, cálido, datos, anime,
+  manga, glass, retro y brutalista, con modo claro u oscuro donde lo hay.
 
-Siguiente, sin fecha: plantillas de servidor, personalidad del bot (respuestas con
-un modelo de lenguaje configurable), vigilancia con alertas, notificaciones y
-backup. El detalle está en [`CONTEXTO.md`](CONTEXTO.md) y el orden de trabajo en
-[`plan.md`](plan.md).
+## Instalación
 
 | Sistema | Estado |
 |---|---|
-| **Linux** | ✅ Desarrollo y uso real. |
-| **Windows** | 🧪 Experimental: el CI pasa los tests y genera el instalador, pero no se ha probado en un PC real. |
+| **Linux** | ✅ Se desarrolla y se usa aquí. |
+| **Windows** | 🧪 Experimental: los tests pasan y el instalador se genera en cada cambio, pero aún no se ha probado en un PC real. |
 
----
+### Windows
 
-## Requisitos
+1. Abre [Actions → CI](https://github.com/BenReynor/ARGUS/actions/workflows/ci.yml),
+   entra en la última ejecución correcta de `main` y descarga el artefacto
+   **argus-windows** (hace falta iniciar sesión en GitHub). Trae un `.msi` y un
+   instalador `.exe`; usa cualquiera de los dos.
+2. Como el instalador no está firmado, Windows muestra «Windows protegió tu PC»:
+   **Más información → Ejecutar de todas formas**.
 
-- **Rust** estable (probado con 1.99) y **Node** 22+
-- Linux: `libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev`
-- Windows: WebView2 (viene con Windows 10/11) y, para compilar, las Build Tools
-  de Visual Studio (C++)
-- Un bot de Discord creado en el [Developer Portal](https://discord.com/developers/applications)
-  e invitado a tu servidor con los permisos que vayas a usar
-  (Gestionar canales, Gestionar roles, Moderar miembros…).
+ARGUS usa WebView2, que ya viene con Windows 10 y 11. Si algo falla,
+[abre un issue](https://github.com/BenReynor/ARGUS/issues).
 
-## Desarrollo
+### Linux (desde el código)
+
+Necesitas **Rust** estable, **Node** 22+ y las librerías de WebKitGTK. En
+Debian/Ubuntu:
 
 ```bash
+sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
 git clone https://github.com/BenReynor/ARGUS.git
 cd ARGUS
 npm install
-npm run tauri dev        # app completa con recarga en caliente
-```
-
-Comprobaciones (las mismas que exige el gate de Dédalo):
-
-```bash
-cargo fmt   --manifest-path src-tauri/Cargo.toml --check
-cargo check --manifest-path src-tauri/Cargo.toml
-cargo test  --manifest-path src-tauri/Cargo.toml
-npm run build            # tsc + vite build
-```
-
-Los tests no usan la red: el cliente de Discord se apunta a un Discord falso local.
-El CI (`.github/workflows/ci.yml`) corre lo mismo en Linux y Windows en cada cambio.
-
-## Producción
-
-```bash
 npm run tauri build
-# binario:  src-tauri/target/release/argus
-# paquetes: src-tauri/target/release/bundle/ (.deb, .rpm, .AppImage; en Windows .msi y .exe)
 ```
 
-El paquete incluye `argus-mcp` junto al ejecutable de la app.
+Los paquetes quedan en `src-tauri/target/release/bundle/` (`.deb`, `.rpm` y
+`.AppImage`) e incluyen `argus-mcp`.
 
-### Windows (experimental)
-
-El CI pasa los tests en Windows y genera el instalador en cada cambio de `main`
-(GitHub → Actions → CI → artefacto **argus-windows**: `.msi` y `.exe`). Aún no
-se ha probado en un PC real. Como el instalador no está firmado, Windows muestra
-«Windows protegió tu PC»: **Más información → Ejecutar de todas formas**. Los
-datos se guardan en `%APPDATA%\argus\`. El lanzador `scripts/abrir-argus.sh`
-(que recompila desde `main`) es solo para Linux.
-
----
-
-## Uso
-
-1. **Ajustes → Bots → Añadir bot**: pega el token del bot (Developer Portal →
-   tu aplicación → Bot → Reset Token). ARGUS lo valida con Discord y muestra el
-   nombre y el avatar oficiales.
-2. Si el bot aún no está en tu servidor, pulsa **Invitar a un servidor**: abre
-   el enlace de Discord con los permisos básicos (ver canales, mensajes,
-   gestionar canales y roles, timeout, expulsar y banear). Para el control
-   total, dale después un rol con **Administrador** y súbelo en la jerarquía por
-   encima de los roles que deba gestionar.
-3. Elige el **bot activo** en la barra lateral y el **servidor** en la columna de
-   la izquierda. Las secciones Panel, Canales, Miembros, Roles, Servidor y Logs
-   trabajan sobre ese servidor.
-4. Si ARGUS avisa de que falta el *intent* de miembros, actívalo en el Developer
-   Portal (Bot → Privileged Gateway Intents → Server Members Intent).
-
-### Acceso directo en Linux (se actualiza solo)
-
-`scripts/abrir-argus.sh` abre ARGUS compilado desde la última versión de `main`.
-Si `main` cambió, recompila antes en una copia aparte del repo (así nunca
-empaqueta trabajo a medias de otra rama), con una ventana de espera que muestra
-el paso y el porcentaje. Úsalo como comando del acceso directo:
+**Alternativa que se actualiza sola:** `scripts/abrir-argus.sh` compila ARGUS
+desde la última versión de `main` (solo si cambió, con una ventana de progreso) y
+lo abre. Ponlo como comando de un acceso directo:
 
 ```ini
 [Desktop Entry]
@@ -138,30 +99,84 @@ Exec=/ruta/a/ARGUS/scripts/abrir-argus.sh
 Icon=argus
 ```
 
-Tras cada compilación instala el icono `argus` en el tema del usuario. Los datos
-del lanzador (binario, log de compilación) están en `~/.local/share/argus-app/`.
-`scripts/abrir-argus.sh --compilar` solo actualiza, sin abrir la app.
+Tras cada compilación instala el icono `argus` en tu tema de iconos. El binario y
+el log de compilación están en `~/.local/share/argus-app/`.
 
-## Seguridad
+## Primeros pasos
 
-- Los tokens se guardan **cifrados** (AES-GCM) en la base de datos local
-  (`~/.config/argus/`; en Windows `%APPDATA%\argus\`); nunca en texto plano ni en el almacenamiento del navegador.
-- Nada de la app está atado a un servidor, canal o bot concreto.
-- Las acciones destructivas piden confirmación.
+1. **Crea tu bot** en el [Developer Portal de Discord](https://discord.com/developers/applications):
+   *New Application* → **Bot** → *Reset Token* y copia el token. En esa misma
+   página activa **Server Members Intent** (Privileged Gateway Intents), para
+   que ARGUS pueda leer los miembros.
+2. En ARGUS, ve a **Config → Bots**, pega el token y pulsa **Añadir bot**. ARGUS
+   lo valida con Discord y muestra su nombre y avatar.
+3. Pulsa **Invitar a un servidor**: se abre la invitación de Discord con los
+   permisos básicos (ver canales, mensajes, gestionar canales y roles, timeout,
+   expulsar y banear). Para el **control total**, dale después al bot un rol con
+   **Administrador** y súbelo en la jerarquía por encima de los roles que deba
+   gestionar.
+4. Pulsa **Encender** para conectarlo y elige el servidor en la columna de la
+   izquierda. **Panel**, **Canales**, **Miembros**, **Roles**, **Servidor** y
+   **Logs** trabajan sobre ese servidor.
 
-## Documentación
+## Conectar un asistente de IA (MCP)
 
-- [`CONTEXTO.md`](CONTEXTO.md): visión, decisiones y estado (fuente principal)
-- [`plan.md`](plan.md): tareas por fase, cada una con su criterio de aceptación
-- [`ARCHITECTURE_MAP.md`](ARCHITECTURE_MAP.md): qué hay en cada archivo
-- [`docs/FICHA_TECNICA.md`](docs/FICHA_TECNICA.md): stack, datos y comandos
-- [`docs/AUDITORIA_COMANDOS.md`](docs/AUDITORIA_COMANDOS.md): estado de cada comando Tauri
-- [`docs/MCP.md`](docs/MCP.md): el servidor MCP `argus-mcp` y sus herramientas
-- [`docs/PRUEBA_REAL.md`](docs/PRUEBA_REAL.md): tests contra un servidor de Discord real
+En **Config → MCP** tienes la ruta de `argus-mcp` y los bloques listos para
+copiar. Con Claude Code:
 
-## Desarrollo con Dédalo
+```bash
+claude mcp add argus -- /ruta/a/argus-mcp
+```
+
+> [!WARNING]
+> El MCP puede hacer **todo lo que permitan los permisos del bot**, incluido
+> borrar canales o banear miembros. Conéctalo solo a clientes de confianza y
+> pruébalo primero en un servidor de pruebas.
+
+Lista de herramientas, otros clientes y solución de problemas:
+[`docs/MCP.md`](docs/MCP.md).
+
+## Privacidad y seguridad
+
+- Los tokens se guardan **cifrados** (AES-256-GCM) en una base de datos local
+  (`~/.config/argus/` en Linux, `%APPDATA%\argus\` en Windows). Nunca en texto
+  plano, en el almacenamiento del navegador ni en los logs.
+- ARGUS no tiene telemetría: solo habla con la API de Discord.
+- Nada está atado a un servidor, canal o bot concreto; sirve para cualquiera.
+
+## Estado y lo que viene
+
+Hecho: varios bots, datos y acciones reales, servidor en vivo, interfaz con
+temas, control total del servidor y el MCP. Falta la prueba manual final en un
+servidor real y probar Windows en un PC.
+
+Lo siguiente (sin fecha): plantillas para copiar la estructura de un servidor a
+otro, **personalidad del bot** (respuestas con un modelo de lenguaje
+configurable), vigilancia con alertas, notificaciones y copias de seguridad. Los
+detalles están en [`CONTEXTO.md`](CONTEXTO.md) y [`plan.md`](plan.md).
+
+## Desarrollo
+
+```bash
+npm install
+npm run tauri dev        # app con recarga en caliente
+
+# comprobaciones (las mismas que el CI)
+cargo fmt   --manifest-path src-tauri/Cargo.toml --check
+cargo check --manifest-path src-tauri/Cargo.toml
+cargo test  --manifest-path src-tauri/Cargo.toml
+npm run build            # tsc + vite build
+```
+
+Los tests no usan la red ni tokens: el cliente de Discord apunta a un Discord
+falso local. Hay tests opcionales contra un servidor real en
+[`docs/PRUEBA_REAL.md`](docs/PRUEBA_REAL.md). El CI corre todo en Linux y
+Windows y genera el instalador de Windows.
 
 El proyecto se desarrolla con [Dédalo](https://github.com/BenReynor/dedalo):
-`plan.md` usa su formato y cada tarea se verifica con el gate
-(cargo fmt/check/test, tsc y build). Las reglas para agentes están en
-[`AGENTS.md`](AGENTS.md).
+`plan.md` usa su formato y cada tarea pasa el mismo gate. Más documentación:
+
+- [`CONTEXTO.md`](CONTEXTO.md): visión y decisiones
+- [`ARCHITECTURE_MAP.md`](ARCHITECTURE_MAP.md): qué hay en cada archivo
+- [`docs/FICHA_TECNICA.md`](docs/FICHA_TECNICA.md): stack, datos y comandos
+- [`AGENTS.md`](AGENTS.md): reglas para agentes de IA que trabajen en el código
