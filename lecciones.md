@@ -36,3 +36,8 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
   Causa: nadie abría ni registraba el pool de SQLite (`app.manage`) y `get_pool` lo pedía igual; ningún test arranca la app completa.
   Prevención: todo estado que se pida con `app.state::<T>()` se registra con `.manage()`/`app.manage()` antes de usarlo; usa `try_state` y devuelve un error en vez de panic; no crees runtimes de tokio propios en `setup` (usa `tauri::async_runtime`).
   Prueba: `db::abrir_bd` tiene test; tras tocar main.rs, arrancar la app (`npm run tauri dev`) y comprobar que no se cierra.
+
+## 2026-10-30 01:04 — Tarea bloqueada: Traducir Canales
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: revisor_fail en la iteración 4: La tarea no nombra skill, así que no cargué ninguna. El diff cumple casi todo el criterio: los tres componentes usan `t()` para la UI, los permisos pasan por `permisos.ts` con nombres oficiales, y `es.ts` cubre las claves nuevas. Un grep de acentos en los tres componentes solo encuentra comentarios. Falta un texto visible en español: `ChannelsView.tsx` sigue con `addLog('[CANALES] ' + mensaje)`, y ese log se muestra en la vista de Logs aunque la interfaz esté en inglés. `ActividadCanal` sí traduce sus etiquetas de log, así que es un descuido del mismo tipo. Corregirlo es pequeño: envolverlo en `t('[CHANNELS] {message}', { message: mensaje })` y añadir la entrada en `es.ts`.
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
