@@ -380,7 +380,7 @@ Sintaxis (palabras clave en español o inglés, sin distinguir mayúsculas ni ti
 - [x] Analizar el plan estructurado (función pura)
   criterio: módulo `src-tauri/src/plan_estructurado.rs` con `analizar(texto) -> PlanEstructurado { roles, categorias (con sus canales), texto_libre, avisos }` que implementa la sintaxis de esta fase (palabras clave en español e inglés, mayúsculas y tildes indiferentes, comentarios `//`, rangos `{1..10}` y `{01..10}`, descripción literal o `generar:`, valores por defecto de la categoría, permisos ver/escribir/solo leer/ocultar a); las líneas que no encajan van a `texto_libre` (no se pierden) y los errores de una línea (rango inválido, color mal escrito) van a `avisos` con su número de línea; tests de cada regla, de un plan mixto (estructura + texto libre) y de un rango de 120 canales
 
-- [ ] Variables en el plan estructurado
+- [x] Variables en el plan estructurado
   criterio: `analizar` admite líneas `@var nombre = valor` (en cualquier parte del plan, antes de usarse) y sustituye `$nombre` en nombres, descripciones literales e indicaciones `generar:` (p. ej. `@var tema = medieval` → `- texto: taberna-{1..5} | descripción: generar: ambiente $tema`); una variable sin definir queda en `avisos` con su línea y el texto se deja tal cual; las variables se pueden combinar con rangos (`$area-{1..3}`); tests de definición, uso, variable indefinida y combinación con rangos
 
 - [ ] Compilar el plan estructurado a una propuesta (sin IA)
