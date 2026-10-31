@@ -306,7 +306,7 @@ Verificación manual (en tu servidor de pruebas, con el bot como Administrador):
 ## FASE 11 — El bot conversa en Discord
 Cuando alguien menciona al bot (`@Bot …`) o responde a un mensaje del bot en un servidor donde el usuario de ARGUS lo ha activado, el bot contesta con un agente de IA y un modelo elegidos para eso, **independientes del asistente de la FASE 10** (p. ej. un modelo gratis de opencode para conversar y Claude para construir). Reutiliza la detección de agentes y modelos de `asistente.rs`. El modelo que conversa **no tiene ninguna herramienta** (ni MCP, ni shell, ni archivos): solo devuelve texto. Funciona mientras ARGUS está abierto (el Gateway vive en la app). Solo se reacciona a menciones y respuestas al bot, por lo que no hace falta el intent privilegiado Message Content. Toda la UI nueva con `t()`. Los tests usan el Discord falso y agentes falsos, nunca uno real.
 
-- [ ] Ajustes de conversación por servidor
+- [x] Ajustes de conversación por servidor
   criterio: los ajustes propios de cada servidor (`GuildSettings` en db.rs, tipos TS sincronizados) usan el `personality_enabled` existente como interruptor y añaden, con `#[serde(default)]` para configuraciones guardadas sin ellos: `chat_agente` (claude|opencode), `chat_modelo`, `chat_personalidad` (texto libre: nombre, tono, rol, reglas), `chat_canales` (lista de IDs; vacía = todos), `chat_espera_s` (por usuario, por defecto 10) y `chat_contexto` (mensajes previos del canal que se le pasan, por defecto 10, máximo 30); tests de Rust de valores por defecto y de una configuración antigua sin estos campos
 
 - [ ] Decidir cuándo responder (función pura)
