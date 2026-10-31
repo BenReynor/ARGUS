@@ -303,9 +303,35 @@ Verificación manual (en tu servidor de pruebas, con el bot como Administrador):
 - Escribir un plan de servidor temático SCP con 3 categorías, 15 canales con descripción, 6 roles y permisos por canal; en Execute pedir «construye el plan», revisar la propuesta y pulsar Apply: todo creado en orden y con los permisos correctos.
 - Cerrar y abrir ARGUS: el plan y la conversación siguen ahí; New conversation empieza de cero.
 
+## FASE 11 — El bot conversa en Discord
+Cuando alguien menciona al bot (`@Bot …`) o responde a un mensaje del bot en un servidor donde el usuario de ARGUS lo ha activado, el bot contesta con un agente de IA y un modelo elegidos para eso, **independientes del asistente de la FASE 10** (p. ej. un modelo gratis de opencode para conversar y Claude para construir). Reutiliza la detección de agentes y modelos de `asistente.rs`. El modelo que conversa **no tiene ninguna herramienta** (ni MCP, ni shell, ni archivos): solo devuelve texto. Funciona mientras ARGUS está abierto (el Gateway vive en la app). Solo se reacciona a menciones y respuestas al bot, por lo que no hace falta el intent privilegiado Message Content. Toda la UI nueva con `t()`. Los tests usan el Discord falso y agentes falsos, nunca uno real.
+
+- [ ] Ajustes de conversación por servidor
+  criterio: los ajustes propios de cada servidor (`GuildSettings` en db.rs, tipos TS sincronizados) usan el `personality_enabled` existente como interruptor y añaden, con `#[serde(default)]` para configuraciones guardadas sin ellos: `chat_agente` (claude|opencode), `chat_modelo`, `chat_personalidad` (texto libre: nombre, tono, rol, reglas), `chat_canales` (lista de IDs; vacía = todos), `chat_espera_s` (por usuario, por defecto 10) y `chat_contexto` (mensajes previos del canal que se le pasan, por defecto 10, máximo 30); tests de Rust de valores por defecto y de una configuración antigua sin estos campos
+
+- [ ] Decidir cuándo responder (función pura)
+  criterio: una función pura recibe el mensaje (autor, si el autor es bot, canal, menciones, mensaje al que responde y su autor), el id del bot, los ajustes del servidor y la hora del último mensaje respondido a ese usuario, y devuelve si hay que responder: solo si `personality_enabled`, el autor no es un bot ni el propio bot, el mensaje menciona al bot o responde a un mensaje del bot, el canal está permitido y ha pasado `chat_espera_s`; nunca por `@everyone`/`@here` ni por la mención de un rol; tests de cada caso
+
+- [ ] Orden de chat sin herramientas y su prompt (funciones puras)
+  criterio: una función pura construye la orden para claude (`-p --output-format text --model <modelo> --strict-mcp-config` con una configuración MCP vacía y `--disallowedTools` con todas las herramientas integradas: Bash, Edit, Write, Read, Glob, Grep, NotebookEdit, WebFetch, WebSearch, Task, TodoWrite) y para opencode (`run --model <proveedor/modelo>` con `OPENCODE_CONFIG_CONTENT` que desactiva todas las herramientas y todos los MCP); directorio de trabajo temporal propio; otra función pura arma el prompt con la personalidad, el nombre del servidor y del canal, los últimos `chat_contexto` mensajes del canal (autor: texto) y el mensaje a responder, pidiendo contestar en el idioma de quien escribe, en menos de 1800 caracteres y sin mencionar a @everyone, @here ni roles; tests de los argumentos de los dos agentes (sin ninguna herramienta permitida) y del prompt
+
+- [ ] Responder en Discord
+  criterio: el Gateway añade los intents de mensajes de servidor (GUILD_MESSAGES) y, para cada mensaje en que la función anterior dice que hay que responder: muestra «escribiendo…» en el canal, lee los mensajes previos del canal, lanza el agente con un límite de 60 s, y responde como respuesta al mensaje original con `allowed_mentions` que solo permite mencionar al autor (nunca @everyone, @here ni roles); las respuestas de más de 2000 caracteres se parten; las respuestas se encolan por canal (una a la vez) y como mucho 3 agentes en paralelo en total; un error del agente (sin sesión, sin cuota, tiempo agotado) no responde nada en Discord y queda en Logs con el motivo; cada respuesta queda en Logs (servidor, canal, autor, modelo, duración); tests con el Discord falso y un agente falso (script que imprime una respuesta): se responde a una mención, no a un mensaje normal ni a un bot, se respeta la espera, y los allowed_mentions son los correctos
+
+- [ ] Configurar la conversación en la interfaz
+  criterio: en la sección AI Assistant hay una pestaña o bloque «Discord replies» para el servidor activo con: interruptor activar/desactivar, selector de agente (solo los instalados) y de modelo de ese agente (con los gratis de opencode bien visibles si el catálogo lo indica), personalidad (área de texto con un ejemplo de marcador), canales permitidos (selector múltiple con los canales de texto del servidor; ninguno = todos), espera por usuario y mensajes de contexto; un aviso de que el bot solo responde mientras ARGUS está abierto y de que las conversaciones se envían al proveedor del modelo; todo con `t()`; `npm run i18n:check` y `npm run build` pasan
+
+- [ ] Documentación de la conversación
+  criterio: docs/ASISTENTE.md (o un docs/CONVERSACION.md enlazado desde él) explica cómo activar las respuestas en un servidor, elegir agente y modelo (recomendando un modelo gratis de opencode para conversar), escribir la personalidad con un ejemplo, que solo responde a menciones y respuestas al bot, que solo funciona con ARGUS abierto y qué datos salen del PC; README.md y README.es.md lo mencionan en «What you can do» / «Qué puedes hacer»
+
+Verificación manual (en tu servidor de pruebas):
+- Activar las respuestas con opencode y un modelo gratis; mencionar al bot desde otra cuenta: responde con la personalidad elegida, en el idioma en que le hablas.
+- Responder a un mensaje del bot sin mencionarlo: también responde. Un mensaje normal o de otro bot: no responde.
+- Desactivar el interruptor: deja de responder. Cambiar a claude/sonnet: responde con ese modelo.
+
 ## Después del MVP (sin criterios todavía: se detallan al empezar cada bloque)
 - Plantillas: esquema, vista de plantillas, vista previa en árbol, aplicador ordenado (roles → categorías → canales → overwrites), validación de permisos, crear servidor nuevo desde plantilla.
-- Personalidad del bot: perfiles (prompt, modelo, canales, reglas), escuchar MESSAGE_CREATE, filtros (mención, canal, cooldown, ignorar bots), proveedor LLM configurable (Ollama / compatible OpenAI), memoria corta por canal, anti-spam, modo observador, comandos slash.
+- Personalidad del bot (lo básico está en la FASE 11): memoria larga por canal, modo observador, comandos slash, proveedores LLM sin CLI (Ollama / compatible OpenAI).
 - Vigilancia y logs: niveles y timestamps, eventos con filtros, vista timeline, alertas nativas, health check del Gateway, interacción opcional con otros bots con reglas anti-bucle.
 - Integraciones: Telegram, backup automático, agentes CLI (el MCP propio está en la FASE 8).
 - UX y rendimiento: listas virtualizadas, paginación de miembros en la UI, métricas, revisar CPU/RAM.
