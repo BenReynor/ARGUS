@@ -714,9 +714,43 @@ pub struct GuildSettings {
     /// Mensajes previos del canal que se le pasan (máximo 30).
     #[serde(default = "chat_contexto_defecto")]
     pub chat_contexto: u32,
+    /// IDs de usuarios a los que responde; vacía = todos.
+    #[serde(default)]
+    pub chat_usuarios: Vec<String>,
+    /// Permite dar órdenes al agente desde Discord.
+    #[serde(default)]
+    pub chat_ordenes: bool,
+    /// IDs de usuarios que pueden dar órdenes; vacía = nadie.
+    #[serde(default)]
+    pub chat_ordenes_usuarios: Vec<String>,
+    /// Pedir confirmación antes de ejecutar una orden.
+    #[serde(default = "ordenes_confirmar_defecto")]
+    pub chat_ordenes_confirmar: bool,
+    /// Agente que ejecuta las órdenes.
+    #[serde(default = "ordenes_agente_defecto")]
+    pub ordenes_agente: String,
+    /// Modelo que ejecuta las órdenes.
+    #[serde(default = "ordenes_modelo_defecto")]
+    pub ordenes_modelo: String,
 }
 
 pub const CHAT_CONTEXTO_MAX: u32 = 30;
+
+fn ordenes_confirmar_defecto() -> bool {
+    true
+}
+fn ordenes_agente_defecto() -> String {
+    "claude".into()
+}
+fn ordenes_modelo_defecto() -> String {
+    "sonnet".into()
+}
+
+/// True solo si las órdenes están activas y `autor` está en la lista permitida
+/// (con la lista vacía, nunca).
+pub fn ordenes_activas(ajustes: &GuildSettings, autor: &str) -> bool {
+    ajustes.chat_ordenes && ajustes.chat_ordenes_usuarios.iter().any(|u| u == autor)
+}
 
 fn chat_agente_defecto() -> String {
     "claude".into()
@@ -742,6 +776,12 @@ impl Default for GuildSettings {
             chat_canales: Vec::new(),
             chat_espera_s: chat_espera_defecto(),
             chat_contexto: chat_contexto_defecto(),
+            chat_usuarios: Vec::new(),
+            chat_ordenes: false,
+            chat_ordenes_usuarios: Vec::new(),
+            chat_ordenes_confirmar: ordenes_confirmar_defecto(),
+            ordenes_agente: ordenes_agente_defecto(),
+            ordenes_modelo: ordenes_modelo_defecto(),
         }
     }
 }
@@ -1095,6 +1135,45 @@ mod guild_settings_tests {
         assert_eq!(s.chat_agente, "claude");
         assert!(s.chat_canales.is_empty());
         assert_eq!((s.chat_espera_s, s.chat_contexto), (10, 10));
+    }
+
+    #[test]
+    fn los_ajustes_de_ordenes_y_usuarios_tienen_valores_por_defecto() {
+        let s = GuildSettings::default();
+        assert!(s.chat_usuarios.is_empty());
+        assert!(!s.chat_ordenes);
+        assert!(s.chat_ordenes_usuarios.is_empty());
+        assert!(s.chat_ordenes_confirmar);
+        assert_eq!(s.ordenes_agente, "claude");
+        assert_eq!(s.ordenes_modelo, "sonnet");
+    }
+
+    #[test]
+    fn configuracion_antigua_sin_campos_de_ordenes_se_lee_con_defectos() {
+        let antigua = "{\"notes\":\"n\",\"chat_agente\":\"opencode\",\"chat_contexto\":5}";
+        let s: GuildSettings = serde_json::from_str(antigua).unwrap();
+        assert_eq!(s.chat_agente, "opencode");
+        assert_eq!(s.chat_contexto, 5);
+        assert!(s.chat_usuarios.is_empty());
+        assert!(!s.chat_ordenes && s.chat_ordenes_confirmar);
+        assert!(s.chat_ordenes_usuarios.is_empty());
+        assert_eq!(
+            (s.ordenes_agente.as_str(), s.ordenes_modelo.as_str()),
+            ("claude", "sonnet")
+        );
+    }
+
+    #[test]
+    fn ordenes_activas_exige_interruptor_y_autor_en_la_lista() {
+        let mut s = GuildSettings::default();
+        assert!(!ordenes_activas(&s, "42"));
+        s.chat_ordenes = true;
+        assert!(!ordenes_activas(&s, "42"), "lista vacía: nunca");
+        s.chat_ordenes_usuarios = vec!["42".into()];
+        assert!(ordenes_activas(&s, "42"));
+        assert!(!ordenes_activas(&s, "43"));
+        s.chat_ordenes = false;
+        assert!(!ordenes_activas(&s, "42"));
     }
 
     #[test]

@@ -127,6 +127,15 @@ export interface GuildSettings {
   chat_espera_s: number;
   /** Mensajes previos que se pasan al agente (máximo 30). */
   chat_contexto: number;
+  /** IDs de usuarios a los que responde; vacía = todos. */
+  chat_usuarios: string[];
+  /** Permite dar órdenes desde Discord. */
+  chat_ordenes: boolean;
+  /** IDs que pueden dar órdenes; vacía = nadie. */
+  chat_ordenes_usuarios: string[];
+  chat_ordenes_confirmar: boolean;
+  ordenes_agente: 'claude' | 'opencode';
+  ordenes_modelo: string;
 }
 
 export interface Guild {
