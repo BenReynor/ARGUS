@@ -775,10 +775,16 @@ pub fn prompt_asistente(
     modo: ModoAsistente,
     servidor: (&str, &str),
     plan: &str,
+    contexto: &str,
     idioma: &str,
     mensaje: &str,
 ) -> String {
     let (id, nombre) = servidor;
+    let contexto = if contexto.trim().is_empty() {
+        "(The user has not written a context for this server yet.)"
+    } else {
+        contexto
+    };
     let lengua = if crate::i18n::normalizar(idioma) == "es" {
         "Spanish"
     } else {
@@ -799,6 +805,8 @@ call.\n\n\
 - You cannot modify anything: you only have read tools (list channels, roles, members, \
 permissions, settings, audit log, messages...). Never try to change the server yourself.\n\
 - Always reply in {lengua}, the language of the ARGUS interface.\n\n\
+## Server context (theme, tone, style; follow it in names and descriptions)\n\
+<context>\n{contexto}\n</context>\n\n\
 ## Server plan (written by the user)\n\
 <plan>\n{plan}\n</plan>\n"
     );
@@ -923,12 +931,22 @@ pub async fn enviar_al_asistente(
                 .await
                 .map_err(|e| e.to_string())?,
         };
+        let contexto = crate::db::leer_contexto(&pool, &bot_id, &gid)
+            .await
+            .map_err(|e| e.to_string())?;
         // Reanuda la sesión guardada; con otro agente se descarta.
         let previa = crate::db::leer_conversacion(&pool, &bot_id, &gid, Some(&agente))
             .await
             .map_err(|e| e.to_string())?;
         let sesion = previa.as_ref().and_then(|c| c.session_id.clone());
-        let prompt = prompt_asistente(modo, (&gid, &nombre_servidor), &plan, &idioma, &mensaje);
+        let prompt = prompt_asistente(
+            modo,
+            (&gid, &nombre_servidor),
+            &plan,
+            &contexto,
+            &idioma,
+            &mensaje,
+        );
         let ruta = buscar_binario(&agente, &carpetas_busqueda())
             .ok_or_else(|| format!("{agente} is not installed"))?;
         let mcp = crate::commands::ruta_del_mcp()?;
@@ -1037,6 +1055,40 @@ pub async fn guardar_plan_servidor(
     let r = async {
         let (bot, pool) = bot_y_pool(&app, &state).await?;
         crate::db::guardar_plan(&pool, &bot, &guild_id, &contenido)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    .await;
+    localizar_error(&state, r)
+}
+
+/// Contexto (Markdown) del servidor para el bot activo; vacío si no hay.
+#[tauri::command]
+pub async fn leer_contexto_servidor(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    guild_id: String,
+) -> Result<String, String> {
+    let r = async {
+        let (bot, pool) = bot_y_pool(&app, &state).await?;
+        crate::db::leer_contexto(&pool, &bot, &guild_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    .await;
+    localizar_error(&state, r)
+}
+
+#[tauri::command]
+pub async fn guardar_contexto_servidor(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    guild_id: String,
+    contenido: String,
+) -> Result<(), String> {
+    let r = async {
+        let (bot, pool) = bot_y_pool(&app, &state).await?;
+        crate::db::guardar_contexto(&pool, &bot, &guild_id, &contenido)
             .await
             .map_err(|e| e.to_string())
     }
@@ -1575,6 +1627,7 @@ mod tests_prompt {
             modo,
             ("123456789", "Mi Servidor"),
             "# Plan\n- categoría Staff\n- rol Moderators",
+            "Tema: piratas",
             idioma,
             "Construye el servidor",
         )
@@ -1582,6 +1635,15 @@ mod tests_prompt {
 
     fn validar(p: &Propuesta) -> crate::propuesta::Validacion {
         validar_acciones(p, &Nombres::default())
+    }
+
+    #[test]
+    fn el_prompt_incluye_el_contexto_del_servidor() {
+        let p = prompt(ModoAsistente::Execute, "en");
+        assert!(p.contains("## Server context"));
+        assert!(p.contains("Tema: piratas"));
+        let vacio = prompt_asistente(ModoAsistente::Read, ("1", "S"), "", "", "en", "hola");
+        assert!(vacio.contains("## Server context"));
     }
 
     #[test]

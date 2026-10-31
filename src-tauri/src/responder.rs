@@ -259,6 +259,8 @@ pub struct ContextoOrdenes {
     pub ruta_mcp: Arc<dyn Fn() -> Result<String, String> + Send + Sync>,
     /// Plan guardado del servidor (vacío si no hay).
     pub leer_plan: Arc<dyn Fn(u64) -> FuturoPlan + Send + Sync>,
+    /// Contexto guardado del servidor (vacío si no hay).
+    pub leer_contexto: Arc<dyn Fn(u64) -> FuturoPlan + Send + Sync>,
     /// Roles y canales conocidos del servidor, para validar.
     pub nombres: Arc<dyn Fn(u64) -> crate::propuesta::Nombres + Send + Sync>,
     /// Aplica la propuesta (ya con el servidor puesto): `ejecutar_propuesta`.
@@ -565,9 +567,11 @@ impl Conversador {
         }
         let previos = self.leer_previos(&canal, e.mensaje_id).await;
         let autorizado = crate::db::ordenes_activas(ajustes, &e.msg.autor_id.to_string());
+        let contexto = (self.ordenes.leer_contexto)(e.guild_id).await;
         let prompt = prompt_chat(
             &ajustes.chat_personalidad,
             &e.servidor,
+            &contexto,
             &e.canal,
             &previos,
             ajustes.chat_contexto as usize,
@@ -683,11 +687,13 @@ impl Conversador {
             .ok_or_else(|| format!("The AI agent «{agente}» is not installed"))?;
         let mcp = (self.ordenes.ruta_mcp)()?;
         let plan = (self.ordenes.leer_plan)(e.guild_id).await;
+        let contexto = (self.ordenes.leer_contexto)(e.guild_id).await;
         let gid = e.guild_id.to_string();
         let prompt = prompt_asistente(
             ModoAsistente::Execute,
             (&gid, &e.servidor),
             &plan,
+            &contexto,
             idioma,
             orden,
         );
@@ -884,6 +890,9 @@ mod tests {
             ordenes: ContextoOrdenes {
                 ruta_mcp: Arc::new(|| Ok("/opt/argus-mcp".to_string())),
                 leer_plan: Arc::new(|_| Box::pin(async { "PLAN-DEL-SERVIDOR".to_string() })),
+                leer_contexto: Arc::new(|_| {
+                    Box::pin(async { "CONTEXTO-DEL-SERVIDOR".to_string() })
+                }),
                 nombres: Arc::new(|_| crate::propuesta::Nombres::default()),
                 aplicar: Arc::new(|_| Box::pin(async { Ok(Vec::new()) })),
                 idioma: Arc::new(|| "en".to_string()),

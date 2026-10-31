@@ -145,6 +145,8 @@ pub fn run() {
             asistente::enviar_al_asistente,
             asistente::leer_plan_servidor,
             asistente::guardar_plan_servidor,
+            asistente::leer_contexto_servidor,
+            asistente::guardar_contexto_servidor,
             asistente::leer_conversacion,
             asistente::guardar_conversacion,
             asistente::nueva_conversacion,

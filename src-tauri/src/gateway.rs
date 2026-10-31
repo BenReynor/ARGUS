@@ -82,6 +82,7 @@ fn conversador(
     let app_idioma = app.clone();
     let app = app.clone();
     let pool_aplicar = pool.clone();
+    let pool_contexto = pool.clone();
     let ordenes = ContextoOrdenes {
         ruta_mcp: Arc::new(crate::commands::ruta_del_mcp),
         leer_plan: Arc::new(move |guild| {
@@ -91,6 +92,19 @@ fn conversador(
                     Some(p) => crate::db::leer_plan(&p, &bot_id.to_string(), &guild.to_string())
                         .await
                         .unwrap_or_default(),
+                    None => String::new(),
+                }
+            })
+        }),
+        leer_contexto: Arc::new(move |guild| {
+            let pool = pool_contexto.clone();
+            Box::pin(async move {
+                match pool {
+                    Some(p) => {
+                        crate::db::leer_contexto(&p, &bot_id.to_string(), &guild.to_string())
+                            .await
+                            .unwrap_or_default()
+                    }
                     None => String::new(),
                 }
             })

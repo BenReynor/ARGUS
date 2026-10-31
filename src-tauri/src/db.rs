@@ -874,6 +874,35 @@ pub async fn guardar_plan(
     Ok(())
 }
 
+pub async fn leer_contexto(pool: &SqlitePool, bot_id: &str, guild_id: &str) -> Result<String> {
+    let row =
+        sqlx::query("SELECT contenido FROM contexto_servidor WHERE bot_id = ? AND guild_id = ?")
+            .bind(bot_id)
+            .bind(guild_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row.map(|r| r.get("contenido")).unwrap_or_default())
+}
+
+pub async fn guardar_contexto(
+    pool: &SqlitePool,
+    bot_id: &str,
+    guild_id: &str,
+    contenido: &str,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO contexto_servidor (bot_id, guild_id, contenido, updated_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(bot_id, guild_id) DO UPDATE SET contenido = excluded.contenido, updated_at = excluded.updated_at",
+    )
+    .bind(bot_id)
+    .bind(guild_id)
+    .bind(contenido)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Conversación guardada. Si `agente` se indica y no es el de la conversación,
 /// esta se descarta (la sesión de un agente no sirve para otro) y devuelve `None`.
 pub async fn leer_conversacion(
@@ -978,6 +1007,26 @@ mod asistente_datos_tests {
         assert_eq!(leer_plan(&pool, "b1", "g1").await.unwrap(), "# Plan");
         guardar_plan(&pool, "b1", "g1", "# Nuevo").await.unwrap();
         assert_eq!(leer_plan(&pool, "b1", "g1").await.unwrap(), "# Nuevo");
+        pool.close().await;
+        let _ = std::fs::remove_file(ruta);
+    }
+
+    #[tokio::test]
+    async fn contexto_se_guarda_y_se_lee_por_servidor() {
+        let (pool, ruta) = pool_temporal("contexto").await;
+        assert_eq!(leer_contexto(&pool, "b1", "g1").await.unwrap(), "");
+        guardar_contexto(&pool, "b1", "g1", "Pirates")
+            .await
+            .unwrap();
+        guardar_contexto(&pool, "b1", "g2", "Space").await.unwrap();
+        guardar_contexto(&pool, "b2", "g1", "Farm").await.unwrap();
+        assert_eq!(leer_contexto(&pool, "b1", "g1").await.unwrap(), "Pirates");
+        assert_eq!(leer_contexto(&pool, "b1", "g2").await.unwrap(), "Space");
+        assert_eq!(leer_contexto(&pool, "b2", "g1").await.unwrap(), "Farm");
+        guardar_contexto(&pool, "b1", "g1", "Navy").await.unwrap();
+        assert_eq!(leer_contexto(&pool, "b1", "g1").await.unwrap(), "Navy");
+        // independiente del plan
+        assert_eq!(leer_plan(&pool, "b1", "g1").await.unwrap(), "");
         pool.close().await;
         let _ = std::fs::remove_file(ruta);
     }
