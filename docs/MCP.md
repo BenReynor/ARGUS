@@ -100,6 +100,7 @@ optional parameter.
 | `listar_baneos` | `guild_id?` | Banned users. |
 | `listar_invitaciones` | `guild_id?` | Active invites. |
 | `listar_webhooks` | `guild_id?` | Webhooks, without exposing their token. |
+| `listar_avisos` | `user_id?` (ID or name), `guild_id?` | Warning count per user and the latest warnings. |
 
 ### Messages
 
@@ -107,6 +108,7 @@ optional parameter.
 |---|---|---|
 | `enviar_mensaje` | `channel_id`, `contenido` (≤ 2000) | Sends a message to a channel. |
 | `enviar_dm` | `user_id`, `contenido` (≤ 2000) | Direct message to a user. |
+| `avisar` | `user_id` (ID or name), `motivo`, `mensaje_id?`, `dm?` (default true), `guild_id?` | Saves a warning; with `dm` sends the user the reason and their warning count (if the DM fails the warning is kept and the result says so). |
 | `borrar_mensaje` | `guild_id?`, `channel_id`, `message_id` | Deletes a message. |
 | `borrar_mensajes` | `guild_id?`, `channel_id`, `message_ids` (2–100, under 14 days old) | Bulk delete. |
 | `fijar_mensaje` | `guild_id?`, `channel_id`, `message_id` | Pins a message. |

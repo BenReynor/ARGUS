@@ -181,6 +181,30 @@ pub struct EnviarDmParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
+pub struct AvisarParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// ID del usuario o su nombre (usuario o apodo) en el servidor.
+    pub user_id: String,
+    /// Motivo del aviso.
+    pub motivo: String,
+    /// ID del mensaje que motiva el aviso (opcional).
+    pub mensaje_id: Option<String>,
+    /// Si es true (por defecto) se envía un DM al usuario con el motivo y sus avisos.
+    pub dm: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct ListarAvisosParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// ID o nombre de un usuario para ver solo sus avisos (opcional).
+    pub user_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
 pub struct MensajeParams {
     /// ID del servidor. Si se omite se usa el servidor activo.
     pub guild_id: Option<String>,
@@ -1032,6 +1056,111 @@ impl ArgusMcp {
         self.mensaje(texto)
     }
 
+    /// Resuelve un usuario dado por ID o por nombre (usuario o apodo, sin
+    /// distinguir mayúsculas) a su ID.
+    async fn resolver_usuario(&self, gid: &str, texto: &str) -> Result<String, String> {
+        let texto = texto.trim();
+        if texto.is_empty() {
+            return Err("The user is empty".to_string());
+        }
+        if texto.bytes().all(|b| b.is_ascii_digit()) {
+            return Ok(texto.to_string());
+        }
+        let miembros = commands::leer_miembros(&self.state, gid, self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        let b = texto.trim_start_matches('@').to_lowercase();
+        let coincide = |m: &Member| {
+            m.username.to_lowercase() == b
+                || m.nickname.as_deref().is_some_and(|n| n.to_lowercase() == b)
+        };
+        let halladas: Vec<&Member> = miembros.iter().filter(|m| coincide(m)).collect();
+        match halladas.as_slice() {
+            [m] => Ok(m.user_id.clone()),
+            [] => Err(format!("No member named «{texto}» in the server")),
+            _ => Err(format!(
+                "More than one member is named «{texto}»: use the user ID"
+            )),
+        }
+    }
+
+    pub async fn avisar_json(&self, p: &AvisarParams) -> Result<String, String> {
+        let gid = self.servidor_de(p.guild_id.as_deref()).await?;
+        let motivo = p.motivo.trim();
+        if motivo.is_empty() {
+            return Err("The warning needs a reason".to_string());
+        }
+        let user = self.resolver_usuario(&gid, &p.user_id).await?;
+        let mensaje_id = p
+            .mensaje_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|m| !m.is_empty());
+        let autor = self
+            .state
+            .get_active_bot()
+            .map(|b| b.id)
+            .unwrap_or_default();
+        let (aviso, total) =
+            crate::db::guardar_aviso(&self.pool, &gid, &user, motivo, mensaje_id, &autor)
+                .await
+                .map_err(|e| format!("Could not save the warning: {e}"))?;
+        let dm = if p.dm.unwrap_or(true) {
+            let texto = format!(
+                "{}\n{}",
+                self.tr(&format!("You have received a warning: {motivo}")),
+                self.tr(&format!("Warnings so far: {total}"))
+            );
+            match commands::enviar_dm(&self.state, &user, &texto, self.url()).await {
+                Ok(_) => json!({ "enviado": true }),
+                Err(e) => json!({
+                    "enviado": false,
+                    "error": self.tr(&self.limpiar(e)),
+                    "nota": self.tr("The warning was saved, but the direct message could not be sent"),
+                }),
+            }
+        } else {
+            json!({ "enviado": false, "omitido": true })
+        };
+        Ok(json!({
+            "mensaje": self.tr(&format!("Warning {total} saved for user {user}")),
+            "aviso": aviso,
+            "total_avisos": total,
+            "dm": dm,
+        })
+        .to_string())
+    }
+
+    pub async fn listar_avisos_json(
+        &self,
+        guild_id: Option<&str>,
+        user_id: Option<&str>,
+    ) -> Result<String, String> {
+        let gid = self.servidor_de(guild_id).await?;
+        let user = match user_id.map(str::trim).filter(|u| !u.is_empty()) {
+            Some(u) => Some(self.resolver_usuario(&gid, u).await?),
+            None => None,
+        };
+        let err = |e: anyhow::Error| format!("Could not read the warnings: {e}");
+        let recuento = crate::db::recuento_avisos(&self.pool, &gid, user.as_deref())
+            .await
+            .map_err(err)?;
+        let ultimos = crate::db::ultimos_avisos(&self.pool, &gid, user.as_deref(), 20)
+            .await
+            .map_err(err)?;
+        let total: i64 = recuento.iter().map(|(_, n)| n).sum();
+        let por_usuario: Vec<_> = recuento
+            .iter()
+            .map(|(u, n)| json!({ "user_id": u, "avisos": n }))
+            .collect();
+        Ok(json!({
+            "total": total,
+            "por_usuario": por_usuario,
+            "ultimos": ultimos,
+        })
+        .to_string())
+    }
+
     pub async fn borrar_mensaje_json(
         &self,
         guild_id: Option<&str>,
@@ -1599,6 +1728,7 @@ pub const HERRAMIENTAS_LECTURA: &[&str] = &[
     "listar_baneos",
     "listar_invitaciones",
     "listar_webhooks",
+    "listar_avisos",
 ];
 
 /// Herramientas que modifican algo (Discord o el servidor activo guardado).
@@ -1606,6 +1736,7 @@ pub const HERRAMIENTAS_ESCRITURA: &[&str] = &[
     "elegir_servidor",
     "enviar_mensaje",
     "enviar_dm",
+    "avisar",
     "borrar_mensaje",
     "borrar_mensajes",
     "fijar_mensaje",
@@ -1664,6 +1795,7 @@ pub fn validar_accion(nombre: &str, args: &serde_json::Value) -> Result<(), Stri
         "elegir_servidor" => ok::<ElegirServidorParams>(nombre, args),
         "enviar_mensaje" => ok::<EnviarMensajeParams>(nombre, args),
         "enviar_dm" => ok::<EnviarDmParams>(nombre, args),
+        "avisar" => ok::<AvisarParams>(nombre, args),
         "borrar_mensaje" | "fijar_mensaje" | "desfijar_mensaje" => {
             ok::<MensajeParams>(nombre, args)
         }
@@ -1701,6 +1833,7 @@ pub fn esquema_args(nombre: &str) -> Option<serde_json::Value> {
         "elegir_servidor" => de::<ElegirServidorParams>(),
         "enviar_mensaje" => de::<EnviarMensajeParams>(),
         "enviar_dm" => de::<EnviarDmParams>(),
+        "avisar" => de::<AvisarParams>(),
         "borrar_mensaje" | "fijar_mensaje" | "desfijar_mensaje" => de::<MensajeParams>(),
         "borrar_mensajes" => de::<BorrarMensajesParams>(),
         "crear_canal" => de::<CrearCanalParams>(),
@@ -1890,6 +2023,7 @@ impl ArgusMcp {
                 let p: EnviarDmParams = args_de(nombre, args)?;
                 self.enviar_dm_json(&p.user_id, &p.contenido).await
             }
+            "avisar" => self.avisar_json(&args_de(nombre, args)?).await,
             "borrar_mensaje" => {
                 let p: MensajeParams = args_de(nombre, args)?;
                 self.borrar_mensaje_json(p.guild_id.as_deref(), &p.channel_id, &p.message_id)
@@ -2408,6 +2542,29 @@ impl ArgusMcp {
         Parameters(p): Parameters<QuitarPermisoCanalParams>,
     ) -> Result<String, String> {
         let r = self.quitar_permiso_canal_json(&p).await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "avisar",
+        description = "Warns a member: saves the warning (reason, optional `mensaje_id`) and, unless `dm` is false, sends them a direct message with the reason and how many warnings they have. If the DM fails the warning is saved anyway and the result says so. `user_id` accepts an ID or a name. `guild_id` is optional."
+    )]
+    async fn avisar(&self, Parameters(p): Parameters<AvisarParams>) -> Result<String, String> {
+        let r = self.avisar_json(&p).await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "listar_avisos",
+        description = "Lists the warnings of the server: count per user and the latest warnings. `user_id` (ID or name) is optional and limits it to one user. `guild_id` is optional."
+    )]
+    async fn listar_avisos(
+        &self,
+        Parameters(p): Parameters<ListarAvisosParams>,
+    ) -> Result<String, String> {
+        let r = self
+            .listar_avisos_json(p.guild_id.as_deref(), p.user_id.as_deref())
+            .await;
         self.salida(r)
     }
 
@@ -3461,6 +3618,133 @@ mod tests {
     fn snowflake_hace_dias(dias: i64) -> String {
         let ms = chrono::Utc::now().timestamp_millis() - dias * 86_400_000;
         (((ms - 1_420_070_400_000) as u64) << 22).to_string()
+    }
+
+    fn avisar_a(user: &str, motivo: &str, dm: Option<bool>) -> AvisarParams {
+        AvisarParams {
+            guild_id: None,
+            user_id: user.into(),
+            motivo: motivo.into(),
+            mensaje_id: None,
+            dm,
+        }
+    }
+
+    #[tokio::test]
+    async fn avisar_guarda_cuenta_y_envia_dm_con_el_numero() {
+        let (_d, mcp, s) = mcp_con_servidor(TODO, true).await;
+        aceptar(
+            &s,
+            "POST",
+            "/api/v10/users/@me/channels",
+            200,
+            Some(json!({"id": "4242", "type": 1})),
+            2,
+        )
+        .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/channels/4242/messages"))
+            .and(wiremock::matchers::body_string_contains(
+                "Warnings so far: 2",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mensaje_discord("902", "4242")))
+            .expect(1)
+            .mount(&s)
+            .await;
+        aceptar(
+            &s,
+            "POST",
+            "/api/v10/channels/4242/messages",
+            200,
+            Some(mensaje_discord("901", "4242")),
+            1,
+        )
+        .await;
+        let r = v(mcp
+            .avisar_json(&avisar_a("1001", "spam", None))
+            .await
+            .unwrap());
+        assert_eq!(r["total_avisos"], 1);
+        assert_eq!(r["dm"]["enviado"], true);
+        let mut p = avisar_a("1001", "insultos", None);
+        p.mensaje_id = Some("301".into());
+        let r = v(mcp.avisar_json(&p).await.unwrap());
+        assert_eq!(r["total_avisos"], 2);
+        assert_eq!(r["aviso"]["mensaje_id"], "301");
+        assert_eq!(r["aviso"]["autor"], "123456789");
+        assert_eq!(
+            crate::db::contar_avisos(&mcp.pool, "555", "1001")
+                .await
+                .unwrap(),
+            2
+        );
+        assert!(mcp
+            .avisar_json(&avisar_a("1001", "  ", None))
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn avisar_con_dm_fallido_guarda_el_aviso_y_lo_informa() {
+        let (_d, mcp, s) = mcp_con_servidor(TODO, true).await;
+        aceptar(&s, "POST", "/api/v10/users/@me/channels", 403, None, 1).await;
+        let r = v(mcp
+            .avisar_json(&avisar_a("1002", "spam", Some(true)))
+            .await
+            .unwrap());
+        assert_eq!(r["total_avisos"], 1);
+        assert_eq!(r["dm"]["enviado"], false);
+        assert!(r["dm"]["error"].is_string());
+        assert_eq!(
+            crate::db::contar_avisos(&mcp.pool, "555", "1002")
+                .await
+                .unwrap(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn avisar_sin_dm_y_por_nombre_y_listar_avisos() {
+        let (_d, mcp, _s) = mcp_con_servidor(TODO, true).await;
+        // Por nombre de usuario y por apodo; sin DM no se llama a Discord para ello.
+        let r = v(mcp
+            .avisar_json(&avisar_a("Anita", "a", Some(false)))
+            .await
+            .unwrap());
+        assert_eq!(r["dm"]["omitido"], true);
+        mcp.ejecutar_accion(
+            "avisar",
+            json!({"user_id": "ana", "motivo": "b", "dm": false}),
+        )
+        .await
+        .unwrap();
+        mcp.ejecutar_accion(
+            "avisar",
+            json!({"user_id": "beto", "motivo": "c", "dm": false}),
+        )
+        .await
+        .unwrap();
+        let e = mcp
+            .avisar_json(&avisar_a("fantasma", "x", Some(false)))
+            .await
+            .unwrap_err();
+        assert!(e.contains("fantasma"), "{e}");
+
+        let l = v(mcp.listar_avisos_json(None, None).await.unwrap());
+        assert_eq!(l["total"], 3);
+        assert_eq!(l["por_usuario"][0]["user_id"], "1001");
+        assert_eq!(l["por_usuario"][0]["avisos"], 2);
+        assert_eq!(l["por_usuario"][1]["avisos"], 1);
+        assert_eq!(l["ultimos"][0]["motivo"], "c");
+        assert_eq!(l["ultimos"].as_array().unwrap().len(), 3);
+
+        let solo = v(mcp.listar_avisos_json(None, Some("Anita")).await.unwrap());
+        assert_eq!(solo["total"], 2);
+        assert_eq!(solo["por_usuario"].as_array().unwrap().len(), 1);
+        let nadie = v(mcp.listar_avisos_json(None, Some("1002")).await.unwrap());
+        assert_eq!(nadie["total"], 1);
+        let otro = v(mcp.listar_avisos_json(Some("999"), None).await.unwrap());
+        assert_eq!(otro["total"], 0);
     }
 
     #[tokio::test]

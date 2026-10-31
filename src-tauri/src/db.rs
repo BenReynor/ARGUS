@@ -969,6 +969,113 @@ pub async fn borrar_conversacion(pool: &SqlitePool, bot_id: &str, guild_id: &str
     Ok(())
 }
 
+/// Un aviso guardado a un miembro.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Aviso {
+    pub id: i64,
+    pub guild_id: String,
+    pub user_id: String,
+    pub motivo: String,
+    pub mensaje_id: Option<String>,
+    pub autor: String,
+    pub fecha: String,
+}
+
+/// Guarda un aviso y devuelve cuántos lleva ya el usuario (incluido este).
+pub async fn guardar_aviso(
+    pool: &SqlitePool,
+    guild_id: &str,
+    user_id: &str,
+    motivo: &str,
+    mensaje_id: Option<&str>,
+    autor: &str,
+) -> Result<(Aviso, i64)> {
+    let fecha = chrono::Utc::now().to_rfc3339();
+    let res = sqlx::query(
+        "INSERT INTO avisos (guild_id, user_id, motivo, mensaje_id, autor, fecha) VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(guild_id)
+    .bind(user_id)
+    .bind(motivo)
+    .bind(mensaje_id)
+    .bind(autor)
+    .bind(&fecha)
+    .execute(pool)
+    .await?;
+    let total = contar_avisos(pool, guild_id, user_id).await?;
+    let aviso = Aviso {
+        id: res.last_insert_rowid(),
+        guild_id: guild_id.into(),
+        user_id: user_id.into(),
+        motivo: motivo.into(),
+        mensaje_id: mensaje_id.map(String::from),
+        autor: autor.into(),
+        fecha,
+    };
+    Ok((aviso, total))
+}
+
+pub async fn contar_avisos(pool: &SqlitePool, guild_id: &str, user_id: &str) -> Result<i64> {
+    let row = sqlx::query("SELECT COUNT(*) AS n FROM avisos WHERE guild_id = ? AND user_id = ?")
+        .bind(guild_id)
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?;
+    Ok(row.get("n"))
+}
+
+/// Recuento de avisos por usuario del servidor (o solo de `user_id`), de más a menos.
+pub async fn recuento_avisos(
+    pool: &SqlitePool,
+    guild_id: &str,
+    user_id: Option<&str>,
+) -> Result<Vec<(String, i64)>> {
+    let rows = sqlx::query(
+        "SELECT user_id, COUNT(*) AS n FROM avisos WHERE guild_id = ? AND (? IS NULL OR user_id = ?)
+         GROUP BY user_id ORDER BY n DESC, user_id",
+    )
+    .bind(guild_id)
+    .bind(user_id)
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| (r.get("user_id"), r.get("n")))
+        .collect())
+}
+
+/// Últimos `limite` avisos del servidor (o solo de `user_id`), el más reciente primero.
+pub async fn ultimos_avisos(
+    pool: &SqlitePool,
+    guild_id: &str,
+    user_id: Option<&str>,
+    limite: i64,
+) -> Result<Vec<Aviso>> {
+    let rows = sqlx::query(
+        "SELECT id, guild_id, user_id, motivo, mensaje_id, autor, fecha FROM avisos
+         WHERE guild_id = ? AND (? IS NULL OR user_id = ?) ORDER BY id DESC LIMIT ?",
+    )
+    .bind(guild_id)
+    .bind(user_id)
+    .bind(user_id)
+    .bind(limite)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| Aviso {
+            id: r.get("id"),
+            guild_id: r.get("guild_id"),
+            user_id: r.get("user_id"),
+            motivo: r.get("motivo"),
+            mensaje_id: r.get("mensaje_id"),
+            autor: r.get("autor"),
+            fecha: r.get("fecha"),
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod asistente_datos_tests {
     use super::*;
