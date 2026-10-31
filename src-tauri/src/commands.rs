@@ -903,6 +903,19 @@ pub async fn leer_mensajes(
     crate::mensajes::fetch_channel_messages(&token, base_url, channel_id).await
 }
 
+/// Historial reciente de un canal (hasta `maximo` mensajes, paginando).
+pub async fn leer_historial(
+    state: &AppState,
+    guild_id: &str,
+    channel_id: &str,
+    maximo: usize,
+    base_url: Option<&str>,
+) -> Result<Vec<crate::mensajes::MensajeCanal>, String> {
+    exigir_permiso(state, guild_id, PERMISO_HISTORIAL, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::mensajes::fetch_channel_history(&token, base_url, channel_id, maximo).await
+}
+
 #[tauri::command]
 pub async fn delete_message(
     state: State<'_, AppState>,
