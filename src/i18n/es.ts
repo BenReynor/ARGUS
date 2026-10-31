@@ -537,6 +537,28 @@ export const es: Record<string, string> = {
   'Saving…': 'Guardando…',
   'Save settings': 'Guardar configuración',
 
+  // Respuestas en Discord (RespuestasDiscord.tsx)
+  'Assistant sections': 'Secciones del asistente',
+  'Discord replies': 'Respuestas en Discord',
+  'Could not load the Discord reply settings': 'No se pudieron cargar los ajustes de respuestas en Discord',
+  'Pick a server in the left column to set up its Discord replies.': 'Elige un servidor en la columna de la izquierda para configurar sus respuestas en Discord.',
+  'Discord reply settings saved': 'Ajustes de respuestas en Discord guardados',
+  'Could not save the Discord reply settings': 'No se pudieron guardar los ajustes de respuestas en Discord',
+  'The bot only replies while ARGUS is open.': 'El bot solo responde mientras ARGUS está abierto.',
+  'Conversations are sent to the model provider of the chosen agent.': 'Las conversaciones se envían al proveedor del modelo del agente elegido.',
+  'Reply on Discord when the bot is mentioned or replied to': 'Responder en Discord cuando mencionen al bot o respondan a un mensaje suyo',
+  'Free models': 'Modelos gratis',
+  'Other models': 'Otros modelos',
+  'free': 'gratis',
+  'Tip: a free opencode model is enough to chat.': 'Consejo: un modelo gratis de opencode basta para conversar.',
+  'Example: You are Luna, the friendly assistant of this server. Be brief and cheerful. Never give medical advice.': 'Ejemplo: Eres Luna, la asistente amable de este servidor. Sé breve y alegre. Nunca des consejos médicos.',
+  'Allowed channels': 'Canales permitidos',
+  'None selected = the bot replies in all channels.': 'Ninguno seleccionado = el bot responde en todos los canales.',
+  'This server has no text channels.': 'Este servidor no tiene canales de texto.',
+  'Wait per user (seconds)': 'Espera por usuario (segundos)',
+  'Context messages': 'Mensajes de contexto',
+  'Previous channel messages passed to the agent (max {max}).': 'Mensajes previos del canal que se pasan al agente (máximo {max}).',
+
   // Asistente IA (AsistenteView.tsx)
   'AI Assistant': 'Asistente IA',
   'Pick a server in the left column to write its plan and talk to the assistant.':

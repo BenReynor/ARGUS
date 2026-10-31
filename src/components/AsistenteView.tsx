@@ -11,6 +11,7 @@ import {
 import type { AccionPropuesta, AgenteIa, AvanceAccion, EstadoAccion, EventoPropuesta, ResumenPropuesta } from '../types';
 import { Badge, Button, Cargando, EstadoVacio, ErrorPanel, Input, Select } from './ui';
 import { t } from '../i18n';
+import { RespuestasDiscord } from './RespuestasDiscord';
 import './Asistente.css';
 
 type Modo = 'read' | 'execute';
@@ -55,7 +56,7 @@ const ordenar = (acciones: AccionPropuesta[]) =>
 
 const esErrorSinSesion = (m: string) => m.startsWith(t('The AI agent is not signed in. Sign in with its command line and try again'));
 
-export const AsistenteView: React.FC = () => {
+const ChatAsistente: React.FC = () => {
   const guildId = useActiveGuildId();
   const showNotification = useShowNotification();
 
@@ -533,5 +534,19 @@ const FilaAccion: React.FC<{ texto: string; avance?: AvanceAccion; activa: boole
         {avance && estado !== 'ok' && avance.mensaje && <small>{avance.mensaje}</small>}
       </span>
     </li>
+  );
+};
+
+export const AsistenteView: React.FC = () => {
+  const [pestana, setPestana] = useState<'chat' | 'discord'>('chat');
+  return (
+    <div className="vista vista--llena" style={{ padding: 0 }}>
+      <div className="pestanas" role="tablist" aria-label={t('Assistant sections')} style={{ margin: 0, padding: '0 var(--sp-3)' }}>
+        {([['chat', t('Chat')], ['discord', t('Discord replies')]] as ['chat' | 'discord', string][]).map(([id, etiqueta]) => (
+          <button key={id} role="tab" aria-selected={pestana === id} className="pestanas__tab" onClick={() => setPestana(id)}>{etiqueta}</button>
+        ))}
+      </div>
+      {pestana === 'chat' ? <ChatAsistente /> : <RespuestasDiscord />}
+    </div>
   );
 };
