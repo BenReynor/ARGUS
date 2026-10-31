@@ -84,6 +84,10 @@ actualizar() {
         fi
         npm run tauri build -- --no-bundle || return 1
         cp src-tauri/target/release/argus "$BIN.nuevo" && mv -f "$BIN.nuevo" "$BIN" || return 1
+        # argus-mcp va junto a la app: es el que usan el asistente IA y la
+        # ruta que muestra Ajustes → MCP. Sin copiarlo se quedaba desfasado.
+        cp src-tauri/target/release/argus-mcp "$DATOS/argus-mcp.nuevo" \
+            && mv -f "$DATOS/argus-mcp.nuevo" "$DATOS/argus-mcp" || return 1
         instalar_icono src-tauri/icons
         echo "$marca" > "$VERSION"
         echo "$((SECONDS - t0))" > "$DURACION"

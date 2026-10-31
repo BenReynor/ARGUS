@@ -291,8 +291,19 @@ pub fn orden_agente(
             a.push(modelo.into());
             a.push("--allowedTools".into());
             a.push(permitidas.join(","));
+            // Además de las integradas, las de escritura de argus-mcp: así el
+            // modelo ni siquiera las ve (no solo se le deniegan al usarlas).
+            let prohibidas: Vec<String> = CLAUDE_PROHIBIDAS
+                .iter()
+                .map(|h| h.to_string())
+                .chain(
+                    crate::mcp::HERRAMIENTAS_ESCRITURA
+                        .iter()
+                        .map(|h| format!("mcp__argus__{h}")),
+                )
+                .collect();
             a.push("--disallowedTools".into());
-            a.push(CLAUDE_PROHIBIDAS.join(","));
+            a.push(prohibidas.join(","));
             if let Some(id) = sesion {
                 a.push("--resume".into());
                 a.push(id.into());
@@ -697,9 +708,8 @@ pub fn prompt_asistente(
         "You are the assistant built into ARGUS, a desktop app to administer Discord servers \
 with the user's own bot. You reach the server through the ARGUS MCP tools.\n\n\
 ## Active server\n\
-The active server is \"{nombre}\" (id {id}). Before anything else, call the tool \
-`elegir_servidor` with guild_id \"{id}\". If that tool is not available, pass \
-guild_id \"{id}\" in every tool call.\n\n\
+The active server is \"{nombre}\" (id {id}). Pass guild_id \"{id}\" in every tool \
+call.\n\n\
 ## Rules\n\
 - You cannot modify anything: you only have read tools (list channels, roles, members, \
 permissions, settings, audit log, messages...). Never try to change the server yourself.\n\
@@ -1080,6 +1090,11 @@ mod tests_orden {
         ] {
             assert!(prohibidas.split(',').any(|x| x == t), "{t}");
         }
+        // Las de escritura de argus-mcp, prohibidas también: el modelo no las ve.
+        for e in HERRAMIENTAS_ESCRITURA {
+            let nombre = format!("mcp__argus__{e}");
+            assert!(prohibidas.split(',').any(|x| x == nombre), "{nombre}");
+        }
         assert!(o.directorio.starts_with(std::env::temp_dir()));
     }
 
@@ -1448,7 +1463,7 @@ mod tests_prompt {
         let p = prompt(ModoAsistente::Read, "en");
         assert!(p.contains("ARGUS"));
         assert!(p.contains("\"Mi Servidor\"") && p.contains("123456789"));
-        assert!(p.contains("`elegir_servidor` with guild_id \"123456789\""));
+        assert!(p.contains("Pass guild_id \"123456789\" in every tool call"));
         assert!(p.contains("- rol Moderators"), "plan completo");
         assert!(p.contains("cannot modify anything"));
         assert!(p.contains("reply in English"));
