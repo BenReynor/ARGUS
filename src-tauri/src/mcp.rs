@@ -1427,6 +1427,59 @@ fn miembro_json(m: &Member, roles: &[Role]) -> serde_json::Value {
     })
 }
 
+/// Herramientas que solo leen (no cambian nada en Discord ni en la BD). Son las
+/// únicas que se le dan a un agente de IA; el resto va por propuesta aprobada.
+pub const HERRAMIENTAS_LECTURA: &[&str] = &[
+    "estado",
+    "listar_servidores",
+    "mapa_servidor",
+    "listar_canales",
+    "listar_roles",
+    "listar_miembros",
+    "info_miembro",
+    "permisos_bot",
+    "info_servidor",
+    "ajustes_servidor",
+    "registro_auditoria",
+    "leer_mensajes",
+    "listar_baneos",
+    "listar_invitaciones",
+    "listar_webhooks",
+];
+
+/// Herramientas que modifican algo (Discord o el servidor activo guardado).
+pub const HERRAMIENTAS_ESCRITURA: &[&str] = &[
+    "elegir_servidor",
+    "enviar_mensaje",
+    "enviar_dm",
+    "borrar_mensaje",
+    "borrar_mensajes",
+    "fijar_mensaje",
+    "desfijar_mensaje",
+    "crear_canal",
+    "editar_canal",
+    "borrar_canal",
+    "ordenar_canales",
+    "crear_rol",
+    "editar_rol",
+    "borrar_rol",
+    "ordenar_roles",
+    "dar_rol",
+    "quitar_rol",
+    "permiso_canal",
+    "quitar_permiso_canal",
+    "expulsar",
+    "banear",
+    "desbanear",
+    "silenciar",
+    "cambiar_apodo",
+    "editar_servidor",
+    "crear_invitacion",
+    "borrar_invitacion",
+    "crear_webhook",
+    "borrar_webhook",
+];
+
 #[tool_router]
 impl ArgusMcp {
     #[tool(
@@ -3190,6 +3243,49 @@ mod tests {
         }
         let crear = tools.iter().find(|t| t.name == "crear_rol").unwrap();
         assert!(crear.input_schema["properties"]["permisos"].is_object());
+    }
+
+    #[test]
+    fn cada_herramienta_esta_en_exactamente_una_lista() {
+        let registradas: Vec<String> = ArgusMcp::tool_router()
+            .list_all()
+            .iter()
+            .map(|t| t.name.to_string())
+            .collect();
+        for n in &registradas {
+            let veces = HERRAMIENTAS_LECTURA.iter().filter(|x| **x == n).count()
+                + HERRAMIENTAS_ESCRITURA.iter().filter(|x| **x == n).count();
+            assert_eq!(veces, 1, "{n} debe estar en exactamente una lista");
+        }
+        for n in HERRAMIENTAS_LECTURA.iter().chain(HERRAMIENTAS_ESCRITURA) {
+            assert!(registradas.iter().any(|r| r == n), "{n} no está registrada");
+        }
+    }
+
+    #[test]
+    fn las_herramientas_de_lectura_no_modifican_nada() {
+        const PERMITIDAS: [&str; 5] = [
+            "estado",
+            "mapa_servidor",
+            "permisos_bot",
+            "ajustes_servidor",
+            "registro_auditoria",
+        ];
+        for n in HERRAMIENTAS_LECTURA {
+            let ok = PERMITIDAS.contains(n)
+                || *n == "listar_servidores"
+                || *n == "leer_mensajes"
+                || n.starts_with("listar_")
+                || n.starts_with("info_");
+            assert!(ok, "{n} no es una herramienta de lectura conocida");
+            assert!(
+                !HERRAMIENTAS_ESCRITURA.contains(n),
+                "{n} está en ambas listas"
+            );
+        }
+        for n in HERRAMIENTAS_ESCRITURA {
+            assert!(!HERRAMIENTAS_LECTURA.contains(n));
+        }
     }
 
     // ------------------------- moderación, servidor, invitaciones y webhooks
