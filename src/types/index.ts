@@ -245,6 +245,9 @@ export interface ResumenPlan { roles: number; categorias: number; canales: numbe
 export interface ResultadoConstruccion {
   propuesta: Propuesta; validacion: Validacion; desde_estructura: number; descripciones_ia: number; texto_libre: number; avisos: string[];
 }
+export interface LineaDiff { tipo: 'same' | 'added' | 'removed'; texto: string }
+export interface CambiosPlan { lineas: LineaDiff[]; anadidas: number; quitadas: number; avisos: string[] }
+export interface EventoPlan { plan: string }
 export type EstadoAccion ='ok' | 'error' | 'omitida';
 export interface AvanceAccion { indice: number; total: number; descripcion: string; estado: EstadoAccion; mensaje: string }
 export interface ResultadoAccion { indice: number; herramienta: string; descripcion: string; estado: EstadoAccion; mensaje: string }

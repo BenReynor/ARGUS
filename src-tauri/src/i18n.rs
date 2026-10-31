@@ -173,6 +173,8 @@ const CATALOGO_ES: &[(&str, &str)] = &[
     ("{agente} is not installed", "{agente} no está instalado"),
     ("Unknown AI agent: {otro}", "Agente de IA desconocido: {otro}"),
     ("No active server: choose one first", "No hay servidor activo: elige uno primero"),
+    ("The assistant did not include a plan in its answer", "El asistente no incluyó ningún plan en su respuesta"),
+    ("The assistant's plan is empty", "El plan del asistente está vacío"),
     ("The assistant did not include a proposal in its answer", "El asistente no incluyó ninguna propuesta en su respuesta"),
     ("The assistant's proposal is not valid JSON: {e}", "La propuesta del asistente no es un JSON válido: {e}"),
     ("The assistant's proposal has no actions", "La propuesta del asistente no tiene acciones"),

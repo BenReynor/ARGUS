@@ -148,6 +148,7 @@ pub fn run() {
             asistente::enviar_al_asistente,
             asistente::construir_desde_plan,
             asistente::resumir_plan,
+            asistente::comparar_plan,
             asistente::leer_plan_servidor,
             asistente::guardar_plan_servidor,
             asistente::leer_contexto_servidor,

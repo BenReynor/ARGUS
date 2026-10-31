@@ -617,6 +617,15 @@ export const es: Record<string, string> = {
   'Talk to the assistant': 'Habla con el asistente',
   'Read mode: ask about your server or your plan. The assistant cannot change anything.':
     'Modo Leer: pregunta sobre tu servidor o tu plan. El asistente no puede cambiar nada.',
+  'Plan': 'Plan',
+  'Plan mode: ask it to write or improve your plan. You review the changes and accept them.':
+    'Modo Plan: pídele que escriba o mejore tu plan. Tú revisas los cambios y los aceptas.',
+  'Plan changes': 'Cambios en el plan',
+  '+{added} / −{removed} lines': '+{added} / −{removed} líneas',
+  'The proposed plan is identical to the editor.': 'El plan propuesto es idéntico al del editor.',
+  'Apply to plan': 'Aplicar al plan',
+  'Undo': 'Deshacer',
+  'Could not compare the plans': 'No se pudieron comparar los planes',
   'Execute mode: ask it to build your plan. It proposes the changes and you approve them.':
     'Modo Ejecutar: pídele que construya tu plan. Propone los cambios y tú los apruebas.',
   'The AI agent is not signed in. Sign in with its command line and try again':

@@ -222,6 +222,8 @@ pub async fn listar_agentes_ia(state: tauri::State<'_, AppState>) -> Result<Vec<
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModoAsistente {
     Read,
+    /// Escribe el plan estructurado completo (bloque ```plan) a partir del plan del editor.
+    Plan,
     Execute,
 }
 
@@ -770,6 +772,21 @@ const EJEMPLO_PROPUESTA: &str = r##"{
   ]
 }"##;
 
+/// Manual resumido de la sintaxis del plan estructurado (lo que entiende `plan_estructurado`).
+pub const MANUAL_PLAN: &str = r##"### Plan syntax (one item per line; anything else is free text that ARGUS will not build)
+- `## Role: Name | color: #RRGGBB | permissions: ManageMessages, KickMembers | hoist | mentionable: no`
+  (roles are created in the order written, highest first; permission names are Discord's)
+- `## Category: Name | description: "text" | view: Role1, Role2 | write: Role | read only: Role | hide from: @everyone`
+- `- text: name | description: "text" | view: ... | write: ... | read only: ... | hide from: ...`
+  (channel types: text, voice, announcements, forum; channels belong to the last category above them,
+  so write them right after it)
+- Ranges: `- voice: Table-{01..05}` creates Table-01 … Table-05; `{n}` in a quoted description is the number.
+- Description: quoted text, or `description: generate: short hint` so ARGUS asks an AI to write it later.
+  A category description is the default for its channels.
+- Variables: `@var name = value`, used as `$name` in `##` and `-` lines.
+- Comments: `// comment`. Use `|` only to separate attributes (inside quotes it is literal).
+- The names in view/write/read only/hide from are role names; `@everyone` is allowed."##;
+
 /// Máximo de elementos por lista en los resúmenes compactos del prompt.
 const MAX_RESUMEN: usize = 40;
 /// Máximo de caracteres de cada resumen compacto.
@@ -918,7 +935,26 @@ permissions, settings, audit log, messages...). Never try to change the server y
 ## Server plan (written by the user)\n\
 <plan>\n{plan}\n</plan>\n"
     );
-    if modo == ModoAsistente::Execute {
+    if modo == ModoAsistente::Plan {
+        if !mapa.trim().is_empty() {
+            p.push_str(&format!(
+                "\n## Server map (compact snapshot of what exists now)\n<server_map>\n{}\n</server_map>\n",
+                mapa.trim_end()
+            ));
+        }
+        p.push_str(&format!(
+            "\n## Plan mode\n\
+Your job is to write the user's server plan. The text inside <plan> above is the CURRENT \
+content of the user's editor (they may have edited it by hand): start from it, keep everything \
+the user did not ask you to change, and apply the request. Use your read tools only if you need \
+details of the real server that are missing from the map. Do not propose actions.\n\n\
+Explain briefly what you changed, then END your answer with ONE ```plan block containing the \
+COMPLETE new plan (the whole document, not a fragment or a diff). ARGUS shows the user the \
+changes against their editor and builds from the plan they accept.\n\n\
+{manual}\n",
+            manual = MANUAL_PLAN,
+        ));
+    } else if modo == ModoAsistente::Execute {
         let analizado = crate::plan_estructurado::analizar(plan);
         if analizado.tiene_estructura() || !analizado.texto_libre.is_empty() {
             p.push_str(&format!(
@@ -987,6 +1023,124 @@ pub fn extraer_propuesta(respuesta: &str) -> Result<crate::propuesta::Propuesta,
     Ok(propuesta)
 }
 
+/// Extrae el plan completo del último bloque ```plan de la respuesta del agente.
+pub fn extraer_plan(respuesta: &str) -> Result<String, String> {
+    let minus = respuesta.to_ascii_lowercase();
+    let inicio = minus
+        .rfind("```plan")
+        .ok_or("The assistant did not include a plan in its answer")?;
+    let resto = &respuesta[inicio + "```plan".len()..];
+    // Lo que queda de la línea de apertura se descarta.
+    let resto = resto.split_once('\n').map_or("", |(_, r)| r);
+    let cuerpo = resto.find("```").map_or(resto, |i| &resto[..i]);
+    let cuerpo = cuerpo.trim_matches('\n').trim_end();
+    if cuerpo.trim().is_empty() {
+        return Err("The assistant's plan is empty".into());
+    }
+    Ok(cuerpo.to_string())
+}
+
+/// Una línea de la vista de cambios.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LineaDiff {
+    /// `same`, `added` o `removed`.
+    pub tipo: &'static str,
+    pub texto: String,
+}
+
+/// Diferencias por líneas (LCS) entre `antes` y `despues`.
+pub fn diferencias_lineas(antes: &str, despues: &str) -> Vec<LineaDiff> {
+    let a: Vec<&str> = antes.lines().collect();
+    let b: Vec<&str> = despues.lines().collect();
+    let mut pre = 0;
+    while pre < a.len() && pre < b.len() && a[pre] == b[pre] {
+        pre += 1;
+    }
+    let mut suf = 0;
+    while suf < a.len() - pre && suf < b.len() - pre && a[a.len() - 1 - suf] == b[b.len() - 1 - suf]
+    {
+        suf += 1;
+    }
+    let ma = &a[pre..a.len() - suf];
+    let mb = &b[pre..b.len() - suf];
+    let (n, m) = (ma.len(), mb.len());
+    // tabla[i][j] = longitud de la subsecuencia común de ma[i..] y mb[j..]
+    let mut tabla = vec![vec![0u32; m + 1]; n + 1];
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            tabla[i][j] = if ma[i] == mb[j] {
+                tabla[i + 1][j + 1] + 1
+            } else {
+                tabla[i + 1][j].max(tabla[i][j + 1])
+            };
+        }
+    }
+    let mk = |tipo, t: &str| LineaDiff {
+        tipo,
+        texto: t.to_string(),
+    };
+    let mut out: Vec<LineaDiff> = a[..pre].iter().map(|t| mk("same", t)).collect();
+    let (mut i, mut j) = (0, 0);
+    while i < n || j < m {
+        if i < n && j < m && ma[i] == mb[j] {
+            out.push(mk("same", ma[i]));
+            i += 1;
+            j += 1;
+        } else if i < n && (j >= m || tabla[i + 1][j] >= tabla[i][j + 1]) {
+            out.push(mk("removed", ma[i]));
+            i += 1;
+        } else {
+            out.push(mk("added", mb[j]));
+            j += 1;
+        }
+    }
+    out.extend(a[a.len() - suf..].iter().map(|t| mk("same", t)));
+    out
+}
+
+/// Vista de cambios del plan propuesto frente al del editor.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CambiosPlan {
+    pub lineas: Vec<LineaDiff>,
+    pub anadidas: usize,
+    pub quitadas: usize,
+    /// Avisos de `analizar` sobre la versión propuesta («línea: mensaje»).
+    pub avisos: Vec<String>,
+}
+
+pub fn cambios_de_plan(actual: &str, propuesto: &str, idioma: &str) -> CambiosPlan {
+    let lineas = diferencias_lineas(actual, propuesto);
+    let cuenta = |t: &str| lineas.iter().filter(|l| l.tipo == t).count();
+    let analizado = crate::plan_estructurado::analizar(propuesto);
+    CambiosPlan {
+        anadidas: cuenta("added"),
+        quitadas: cuenta("removed"),
+        avisos: analizado
+            .avisos
+            .iter()
+            .map(|a| format!("{}: {}", a.linea, crate::i18n::tr(idioma, &a.mensaje)))
+            .collect(),
+        lineas,
+    }
+}
+
+#[tauri::command]
+pub fn comparar_plan(
+    state: tauri::State<'_, AppState>,
+    actual: String,
+    propuesto: String,
+) -> CambiosPlan {
+    cambios_de_plan(&actual, &propuesto, &crate::i18n::idioma(&state))
+}
+
+pub const EVENTO_PLAN: &str = "asistente-plan";
+
+/// Plan propuesto por la IA en modo Plan (se emite como `asistente-plan`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct EventoPlan {
+    pub plan: String,
+}
+
 /// Propuesta ya validada que se emite como `asistente-propuesta`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EventoPropuesta {
@@ -1035,6 +1189,7 @@ pub async fn enviar_al_asistente(
     let r = async {
         let modo = match modo.as_str() {
             "read" | "Read" => ModoAsistente::Read,
+            "plan" | "Plan" => ModoAsistente::Plan,
             "execute" | "Execute" => ModoAsistente::Execute,
             _ => return Err(format!("Unknown assistant mode: {modo}")),
         };
@@ -1117,6 +1272,18 @@ pub async fn enviar_al_asistente(
                         Ok(ev) => {
                             if let Err(err) = app.emit(EVENTO_PROPUESTA, ev) {
                                 tracing::warn!("no se pudo emitir {EVENTO_PROPUESTA}: {err}");
+                            }
+                        }
+                        Err(mensaje) => emitir(EventoAsistente::Error { mensaje }),
+                    }
+                }
+                EventoAsistente::Fin { cancelado, .. }
+                    if modo == ModoAsistente::Plan && !cancelado && !con_error =>
+                {
+                    match extraer_plan(&respuesta) {
+                        Ok(plan) => {
+                            if let Err(err) = app.emit(EVENTO_PLAN, EventoPlan { plan }) {
+                                tracing::warn!("no se pudo emitir {EVENTO_PLAN}: {err}");
                             }
                         }
                         Err(mensaje) => emitir(EventoAsistente::Error { mensaje }),
@@ -1979,6 +2146,87 @@ mod tests_prompt {
         assert!(r.starts_with("- c1: c2, c3"));
         assert!(r.contains("more"));
         assert!(r.chars().count() <= MAX_RESUMEN_CHARS + 1);
+    }
+
+    #[test]
+    fn prompt_plan_incluye_el_plan_actual_el_manual_y_el_mapa() {
+        let p = prompt_asistente_con_mapa(
+            ModoAsistente::Plan,
+            ("1", "S"),
+            "## Category: Tabernas\n- text: barra",
+            "ctx",
+            "en",
+            "add 3 voice channels to Tabernas",
+            "- Tabernas: barra\nRoles: Mod\n",
+        );
+        assert!(p.contains("<plan>\n## Category: Tabernas\n- text: barra\n</plan>"));
+        assert!(p.contains("## Plan mode"));
+        assert!(p.contains("```plan"));
+        assert!(p.contains("Plan syntax"));
+        assert!(p.contains("{01..05}"));
+        assert!(p.contains("<server_map>"));
+        assert!(p.contains("add 3 voice channels to Tabernas"));
+        assert!(!p.contains("```json"), "Plan no pide propuesta de acciones");
+        // La sintaxis del manual la entiende el analizador.
+        let a = crate::plan_estructurado::analizar(
+            "## Category: C | description: generate: x\n- voice: Table-{01..05} | description: \"Mesa {n}\"",
+        );
+        assert!(a.avisos.is_empty(), "{:?}", a.avisos);
+        assert_eq!(a.categorias[0].canales.len(), 5);
+    }
+
+    #[test]
+    fn extrae_el_ultimo_bloque_plan() {
+        let r = "Hecho.\n```plan\nviejo\n```\nmejor:\n```plan\n## Role: A\n\n- text: x\n```\nfin";
+        assert_eq!(extraer_plan(r).unwrap(), "## Role: A\n\n- text: x");
+        // Sin cierre (respuesta cortada) toma hasta el final.
+        assert_eq!(extraer_plan("```PLAN\na\nb").unwrap(), "a\nb");
+    }
+
+    #[test]
+    fn extraer_plan_sin_bloque_o_vacio_da_error() {
+        assert!(extraer_plan("hola")
+            .unwrap_err()
+            .contains("did not include a plan"));
+        assert!(extraer_plan("```json\n{}\n```").is_err());
+        assert!(extraer_plan("```plan\n\n```")
+            .unwrap_err()
+            .contains("empty"));
+    }
+
+    fn marcas(d: &[LineaDiff]) -> Vec<String> {
+        d.iter()
+            .map(|l| {
+                let m = match l.tipo {
+                    "added" => '+',
+                    "removed" => '-',
+                    _ => ' ',
+                };
+                format!("{m}{}", l.texto)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn diferencias_marcan_anadidas_y_quitadas() {
+        let d = diferencias_lineas("a\nb\nc\nd", "a\nc\nx\nd\ny");
+        assert_eq!(marcas(&d), [" a", "-b", " c", "+x", " d", "+y"]);
+        assert_eq!(marcas(&diferencias_lineas("a\nb", "a\nb")), [" a", " b"]);
+        assert_eq!(marcas(&diferencias_lineas("", "a\nb")), ["+a", "+b"]);
+        assert_eq!(marcas(&diferencias_lineas("a\nb", "")), ["-a", "-b"]);
+        assert!(diferencias_lineas("", "").is_empty());
+    }
+
+    #[test]
+    fn cambios_cuentan_lineas_y_avisan_de_la_version_propuesta() {
+        let c = cambios_de_plan(
+            "## Category: A\n- text: x",
+            "## Category: A\n- text: y | bogus: 1\n- text: z",
+            "en",
+        );
+        assert_eq!((c.anadidas, c.quitadas), (2, 1));
+        assert_eq!(c.avisos.len(), 1, "{:?}", c.avisos);
+        assert!(c.avisos[0].starts_with("2: "), "{:?}", c.avisos);
     }
 
     #[test]

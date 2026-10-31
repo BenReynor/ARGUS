@@ -1,20 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
-import { Check, CircleDashed, Download, Hammer, Loader2, Square, TriangleAlert, Upload, X } from 'lucide-react';
+import { Check, CircleDashed, Download, Hammer, Loader2, Square, TriangleAlert, Undo2, Upload, X } from 'lucide-react';
 import { useActiveGuildId, useShowNotification } from '../store/useStore';
 import {
   listarAgentesIa, enviarAlAsistente, leerPlanServidor, guardarPlanServidor, leerConversacion,
-  guardarConversacion, nuevaConversacion, aplicarPropuesta, cancelarAsistente, resumirPlan, construirDesdePlan,
+  guardarConversacion, nuevaConversacion, aplicarPropuesta, cancelarAsistente, resumirPlan, construirDesdePlan, compararPlan, onAsistentePlan,
   onAsistenteEvento, onAsistentePropuesta, onAsistenteAccion, onAsistenteResumen,
 } from '../api/tauri';
-import type { AccionPropuesta, AgenteIa, AvanceAccion, EstadoAccion, EventoPropuesta, ResultadoConstruccion, ResumenPlan, ResumenPropuesta } from '../types';
+import type { AccionPropuesta, AgenteIa, AvanceAccion, CambiosPlan, EstadoAccion, EventoPropuesta, ResultadoConstruccion, ResumenPlan, ResumenPropuesta } from '../types';
 import { Badge, Button, Cargando, EstadoVacio, ErrorPanel, Input, Select } from './ui';
 import { t } from '../i18n';
 import { RespuestasDiscord } from './RespuestasDiscord';
 import './Asistente.css';
 
-type Modo = 'read' | 'execute';
+type Modo = 'read' | 'plan' | 'execute';
 interface Herramienta { id: string; nombre: string; ok: boolean | null }
 interface Mensaje { id: string; rol: 'user' | 'assistant'; texto: string; herramientas: Herramienta[]; error?: string }
 
@@ -86,6 +86,11 @@ const ChatAsistente: React.FC = () => {
   const [construyendo, setConstruyendo] = useState(false);
   // Origen de la propuesta mostrada cuando sale de «Build from plan» (se compara por referencia).
   const [construccion, setConstruccion] = useState<{ ev: EventoPropuesta; res: ResultadoConstruccion } | null>(null);
+
+  // Plan propuesto por la IA (modo Plan): vista de cambios frente al editor y plan previo para deshacer.
+  const [cambios, setCambios] = useState<{ propuesto: string; vista: CambiosPlan } | null>(null);
+  const [planPrevio, setPlanPrevio] = useState<string | null>(null);
+  const areaPlan = useRef<HTMLTextAreaElement>(null);
 
   const [ancho, setAncho] = useState(50);
   const contenedor = useRef<HTMLDivElement>(null);
@@ -203,6 +208,12 @@ const ChatAsistente: React.FC = () => {
         }
       }),
       onAsistentePropuesta((p) => { setPropuesta(p); setResumen(null); setAvances({}); setErrorAplicar(null); }),
+      onAsistentePlan((e) => {
+        // Se compara siempre con lo que haya en el editor en este momento.
+        compararPlan(refs.current.plan, e.plan)
+          .then((vista) => setCambios({ propuesto: e.plan, vista }))
+          .catch((err) => showNotification(mensajeError(err, t('Could not compare the plans')), 'error'));
+      }),
       onAsistenteAccion((a) => setAvances((v) => ({ ...v, [a.indice]: a }))),
       onAsistenteResumen((r) => { setResumen(r); setAplicando(false); }),
     ];
@@ -216,6 +227,7 @@ const ChatAsistente: React.FC = () => {
     if (!guildId || !contenido || enviando || !agente || !modelo) return;
     setTexto('');
     setSinSesion(false);
+    setCambios(null);
     setPropuesta(null);
     setResumen(null);
     setAvances({});
@@ -277,6 +289,30 @@ const ChatAsistente: React.FC = () => {
     } finally {
       setConstruyendo(false);
     }
+  };
+
+  // Sustituye el editor por el plan de la IA. Con execCommand se conserva el Ctrl+Z nativo del textarea.
+  const escribirEnEditor = (nuevo: string) => {
+    const area = areaPlan.current;
+    if (area) {
+      area.focus();
+      area.select();
+      if (document.execCommand('insertText', false, nuevo)) return;
+    }
+    cambiarPlan(nuevo);
+  };
+
+  const aplicarAlPlan = () => {
+    if (!cambios) return;
+    setPlanPrevio(plan);
+    escribirEnEditor(cambios.propuesto);
+    setCambios(null);
+  };
+
+  const deshacerPlan = () => {
+    if (planPrevio === null) return;
+    escribirEnEditor(planPrevio);
+    setPlanPrevio(null);
   };
 
   const detener = () => { void cancelarAsistente().catch(() => {}); };
@@ -399,12 +435,16 @@ const ChatAsistente: React.FC = () => {
                   {construyendo ? <Loader2 size={14} className="asistente__giro" /> : <Hammer size={14} />} {construyendo ? t('Building…') : t('Build from plan')}
                 </Button>
               )}
+              {planPrevio !== null && (
+                <Button variante="secundario" tamano="sm" onClick={deshacerPlan}><Undo2 size={14} /> {t('Undo')}</Button>
+              )}
               <Button variante="secundario" tamano="sm" onClick={() => { void importar(); }}><Upload size={14} /> {t('Import .md')}</Button>
               <Button variante="secundario" tamano="sm" onClick={() => { void exportar(); }}><Download size={14} /> {t('Export .md')}</Button>
             </div>
           </header>
           <textarea
             className="ui-control asistente__plan"
+            ref={areaPlan}
             value={plan}
             spellCheck={false}
             aria-label={t('Server plan')}
@@ -448,6 +488,7 @@ const ChatAsistente: React.FC = () => {
             )}
             <div className="asistente__modo" role="group" aria-label={t('Mode')}>
               <button type="button" className={modo === 'read' ? 'activo' : ''} aria-pressed={modo === 'read'} disabled={enviando} onClick={() => setModo('read')}>{t('Read')}</button>
+              <button type="button" className={modo === 'plan' ? 'activo' : ''} aria-pressed={modo === 'plan'} disabled={enviando} onClick={() => setModo('plan')}>{t('Plan')}</button>
               <button type="button" className={modo === 'execute' ? 'activo' : ''} aria-pressed={modo === 'execute'} disabled={enviando} onClick={() => setModo('execute')}>{t('Execute')}</button>
             </div>
             <Button variante="ghost" tamano="sm" disabled={enviando || aplicando || !hayMensajes} onClick={() => { void reiniciar(guildId); }}>{t('New conversation')}</Button>
@@ -459,7 +500,9 @@ const ChatAsistente: React.FC = () => {
                 titulo={t('Talk to the assistant')}
                 descripcion={modo === 'read'
                   ? t('Read mode: ask about your server or your plan. The assistant cannot change anything.')
-                  : t('Execute mode: ask it to build your plan. It proposes the changes and you approve them.')}
+                  : modo === 'plan'
+                    ? t('Plan mode: ask it to write or improve your plan. You review the changes and accept them.')
+                    : t('Execute mode: ask it to build your plan. It proposes the changes and you approve them.')}
               />
             )}
             {sinSesion && (
@@ -484,6 +527,34 @@ const ChatAsistente: React.FC = () => {
                 {m.error && <p className="asistente__error" role="alert">{m.error}</p>}
               </article>
             ))}
+
+            {cambios && (
+              <section className="asistente__cambios" aria-label={t('Plan changes')}>
+                <h4>{t('Plan changes')}</h4>
+                <p>{t('+{added} / −{removed} lines', { added: cambios.vista.anadidas, removed: cambios.vista.quitadas })}</p>
+                {cambios.vista.anadidas + cambios.vista.quitadas === 0 ? (
+                  <p>{t('The proposed plan is identical to the editor.')}</p>
+                ) : (
+                  <div className="asistente__diff" role="group" aria-label={t('Plan changes')}>
+                    {cambios.vista.lineas.map((l, i) => (
+                      <div key={i} className={l.tipo === 'added' ? 'anadida' : l.tipo === 'removed' ? 'quitada' : ''}>
+                        {l.tipo === 'added' ? '+ ' : l.tipo === 'removed' ? '− ' : '  '}{l.texto}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {cambios.vista.avisos.length > 0 && (
+                  <div className="asistente__aviso" role="note">
+                    <TriangleAlert size={16} />
+                    <span>{cambios.vista.avisos.map((a) => <span key={a} style={{ display: 'block' }}>{a}</span>)}</span>
+                  </div>
+                )}
+                <div className="asistente__acciones">
+                  <Button onClick={aplicarAlPlan} disabled={cambios.vista.anadidas + cambios.vista.quitadas === 0}>{t('Apply to plan')}</Button>
+                  <Button variante="secundario" onClick={() => setCambios(null)}>{t('Discard')}</Button>
+                </div>
+              </section>
+            )}
 
             {propuesta && (
               <section className="asistente__propuesta" aria-label={t('Proposal')}>
@@ -590,8 +661,8 @@ const ChatAsistente: React.FC = () => {
  */
 export function textoVisible(texto: string): string {
   return texto
-    .replace(/```json[\s\S]*?```/g, '')
-    .replace(/```json[\s\S]*$/, '')
+    .replace(/```(?:json|plan)[\s\S]*?```/gi, '')
+    .replace(/```(?:json|plan)[\s\S]*$/i, '')
     .trim();
 }
 
