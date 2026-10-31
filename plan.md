@@ -312,7 +312,7 @@ Cuando alguien menciona al bot (`@Bot …`) o responde a un mensaje del bot en u
 - [x] Decidir cuándo responder (función pura)
   criterio: una función pura recibe el mensaje (autor, si el autor es bot, canal, menciones, mensaje al que responde y su autor), el id del bot, los ajustes del servidor y la hora del último mensaje respondido a ese usuario, y devuelve si hay que responder: solo si `personality_enabled`, el autor no es un bot ni el propio bot, el mensaje menciona al bot o responde a un mensaje del bot, el canal está permitido y ha pasado `chat_espera_s`; nunca por `@everyone`/`@here` ni por la mención de un rol; tests de cada caso
 
-- [ ] Orden de chat sin herramientas y su prompt (funciones puras)
+- [x] Orden de chat sin herramientas y su prompt (funciones puras)
   criterio: una función pura construye la orden para claude (`-p --output-format text --model <modelo> --strict-mcp-config` con una configuración MCP vacía y `--disallowedTools` con todas las herramientas integradas: Bash, Edit, Write, Read, Glob, Grep, NotebookEdit, WebFetch, WebSearch, Task, TodoWrite) y para opencode (`run --model <proveedor/modelo>` con `OPENCODE_CONFIG_CONTENT` que desactiva todas las herramientas y todos los MCP); directorio de trabajo temporal propio; otra función pura arma el prompt con la personalidad, el nombre del servidor y del canal, los últimos `chat_contexto` mensajes del canal (autor: texto) y el mensaje a responder, pidiendo contestar en el idioma de quien escribe, en menos de 1800 caracteres y sin mencionar a @everyone, @here ni roles; tests de los argumentos de los dos agentes (sin ninguna herramienta permitida) y del prompt
 
 - [ ] Responder en Discord
