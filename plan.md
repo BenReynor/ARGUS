@@ -268,7 +268,7 @@ La función principal de ARGUS: montar servidores enormes en minutos. Dentro de 
 - [x] Herramientas MCP clasificadas en lectura y escritura
   criterio: `src-tauri/src/mcp.rs` (o un módulo nuevo que use) define en un solo sitio las listas `HERRAMIENTAS_LECTURA` y `HERRAMIENTAS_ESCRITURA` con el nombre de cada herramienta de argus-mcp; un test de Rust comprueba que cada herramienta registrada en el servidor MCP está en exactamente una de las dos listas y que ninguna de lectura modifica nada (las de lectura son las de estado, servidores, mapa, listar_*, info_*, permisos_bot, ajustes_servidor, registro_auditoria y leer_mensajes)
 
-- [ ] Ejecutar una acción por nombre con la lógica del MCP
+- [x] Ejecutar una acción por nombre con la lógica del MCP
   criterio: existe `ejecutar_accion(nombre, args: serde_json::Value)` (en `src-tauri/src/acciones.rs` o en mcp.rs) que, para cada herramienta de `HERRAMIENTAS_ESCRITURA`, deserializa los argumentos en sus params y llama a la misma función `*_json` que usa la herramienta MCP (mismos chequeos de permisos y jerarquía, mismos mensajes con i18n); rechaza con un error claro un nombre desconocido, una herramienta de lectura o argumentos inválidos; tests contra el Discord falso: crear_rol, crear_canal (con topic) y permiso_canal por nombre funcionan y un nombre inventado falla
 
 - [ ] Propuesta estructurada y su vista previa
