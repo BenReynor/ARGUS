@@ -114,15 +114,55 @@ fn parsear_modelos(salida: &str) -> Vec<String> {
     v
 }
 
+/// «Text file busy» (ETXTBSY): el binario se acaba de escribir (p. ej. opencode
+/// actualizándose) y otro proceso aún lo tiene abierto un instante. Es
+/// transitorio, así que lanzar el agente se reintenta unas pocas veces.
+fn es_texto_ocupado(e: &std::io::Error) -> bool {
+    cfg!(unix) && e.raw_os_error() == Some(26)
+}
+
+const REINTENTOS_LANZAR: u64 = 5;
+
+/// `cmd.spawn()` con reintentos ante ETXTBSY.
+pub(crate) async fn lanzar_agente(
+    cmd: &mut tokio::process::Command,
+) -> std::io::Result<tokio::process::Child> {
+    let mut intento = 0;
+    loop {
+        match cmd.spawn() {
+            Err(e) if es_texto_ocupado(&e) && intento < REINTENTOS_LANZAR => {
+                intento += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(20 * intento)).await;
+            }
+            r => return r,
+        }
+    }
+}
+
+/// `cmd.output()` con reintentos ante ETXTBSY (versión síncrona).
+fn salida_con_reintentos(cmd: &mut Command) -> std::io::Result<std::process::Output> {
+    let mut intento = 0;
+    loop {
+        match cmd.output() {
+            Err(e) if es_texto_ocupado(&e) && intento < REINTENTOS_LANZAR => {
+                intento += 1;
+                std::thread::sleep(std::time::Duration::from_millis(20 * intento));
+            }
+            r => return r,
+        }
+    }
+}
+
 fn modelos_opencode(ruta: &Path) -> Vec<String> {
     if let Some(m) = cache_modelos().lock().unwrap().get(ruta) {
         return m.clone();
     }
-    let salida = Command::new(ruta)
-        .arg("models")
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output();
+    let salida = salida_con_reintentos(
+        Command::new(ruta)
+            .arg("models")
+            .stdin(Stdio::null())
+            .stderr(Stdio::null()),
+    );
     let modelos = match salida {
         Ok(o) if o.status.success() => parsear_modelos(&String::from_utf8_lossy(&o.stdout)),
         Ok(o) => {
@@ -513,8 +553,8 @@ pub async fn ejecutar_orden(
         .kill_on_drop(true);
     #[cfg(unix)]
     cmd.process_group(0);
-    let mut hijo = cmd
-        .spawn()
+    let mut hijo = lanzar_agente(&mut cmd)
+        .await
         .map_err(|e| format!("Could not start the AI agent: {e}"))?;
     let pid = hijo.id();
     if let Some(mut stdin) = hijo.stdin.take() {

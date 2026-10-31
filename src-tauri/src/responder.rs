@@ -196,8 +196,8 @@ pub async fn ejecutar_texto(orden: &OrdenAgente, limite: Duration) -> Result<Str
         .kill_on_drop(true);
     #[cfg(unix)]
     cmd.process_group(0);
-    let mut hijo = cmd
-        .spawn()
+    let mut hijo = crate::asistente::lanzar_agente(&mut cmd)
+        .await
         .map_err(|e| format!("Could not start the AI agent: {e}"))?;
     let pid = hijo.id();
     if let Some(mut stdin) = hijo.stdin.take() {
