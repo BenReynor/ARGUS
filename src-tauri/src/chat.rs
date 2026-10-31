@@ -230,11 +230,14 @@ pub fn prompt_chat(
     };
     let regla_ordenes = if ordenes {
         "If the user asks for a change in the server (create, edit or delete channels, categories, \
-         roles or permissions, give roles...), reply briefly and end with one exact line \
-         `ORDEN: <the user's request, complete and on a single line>`."
+         roles or permissions, give roles...), reply briefly and end with one exact line, complete and on a single line: \
+         `ORDEN[estructura]: <the user's request>` when it changes the structure of the server \
+         (channels, categories, roles, permissions), or \
+         `ORDEN[moderacion]: <the user's request>` when it is about members or their messages \
+         (warn, mute, kick, ban, delete messages, give or remove a role to a member...)."
     } else {
         "You cannot make changes in the server; if asked, say so. \
-         Never write a line starting with `ORDEN:`."
+         Never write a line starting with `ORDEN:` or `ORDEN[`."
     };
     format!(
         "{personalidad}\n\n\
@@ -248,24 +251,60 @@ pub fn prompt_chat(
     )
 }
 
-/// Separa la respuesta del modelo en el texto visible y la orden (`ORDEN: ...`).
-/// Las líneas `ORDEN:` nunca forman parte del texto visible. Si el autor no
+/// Tipo de una orden de Discord: construir/cambiar la estructura o moderar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TipoOrden {
+    Estructura,
+    Moderacion,
+}
+
+/// Separa la respuesta del modelo en el texto visible y la orden con su tipo
+/// (`ORDEN[estructura]: ...`, `ORDEN[moderacion]: ...`; `ORDEN: ...` = estructura).
+/// Las líneas de orden nunca forman parte del texto visible. Si el autor no
 /// tiene `ordenes_activas`, la orden se descarta aunque el modelo la escriba.
-pub fn separar_orden(respuesta: &str, autorizado: bool) -> (String, Option<String>) {
+pub fn separar_orden_tipo(
+    respuesta: &str,
+    autorizado: bool,
+) -> (String, Option<(TipoOrden, String)>) {
     let mut visibles: Vec<&str> = Vec::new();
-    let mut orden: Option<String> = None;
+    let mut orden: Option<(TipoOrden, String)> = None;
     for linea in respuesta.lines() {
-        match linea.trim_start().strip_prefix("ORDEN:") {
-            Some(resto) => {
+        match marca_orden(linea.trim_start()) {
+            Some((tipo, resto)) => {
                 let resto = resto.trim();
                 if autorizado && orden.is_none() && !resto.is_empty() {
-                    orden = Some(resto.to_string());
+                    if let Some(tipo) = tipo {
+                        orden = Some((tipo, resto.to_string()));
+                    }
                 }
             }
             None => visibles.push(linea),
         }
     }
     (visibles.join("\n").trim().to_string(), orden)
+}
+
+/// Si la línea es una marca de orden devuelve (tipo, resto); el tipo es `None`
+/// cuando la marca lleva un tipo desconocido (la línea se oculta y se ignora).
+fn marca_orden(linea: &str) -> Option<(Option<TipoOrden>, &str)> {
+    let resto = linea.strip_prefix("ORDEN")?;
+    if let Some(r) = resto.strip_prefix(':') {
+        return Some((Some(TipoOrden::Estructura), r));
+    }
+    let r = resto.strip_prefix('[')?;
+    let (tipo, r) = r.split_once("]:")?;
+    let tipo = match tipo.trim().to_lowercase().as_str() {
+        "estructura" => Some(TipoOrden::Estructura),
+        "moderacion" | "moderación" => Some(TipoOrden::Moderacion),
+        _ => None,
+    };
+    Some((tipo, r))
+}
+
+/// Como `separar_orden_tipo`, pero solo devuelve el texto de la orden.
+pub fn separar_orden(respuesta: &str, autorizado: bool) -> (String, Option<String>) {
+    let (t, o) = separar_orden_tipo(respuesta, autorizado);
+    (t, o.map(|(_, texto)| texto))
 }
 
 #[cfg(test)]
@@ -526,7 +565,8 @@ mod tests {
     #[test]
     fn prompt_con_ordenes_pide_la_linea_orden() {
         let p = prompt_chat("P", "S", "", "c", &[], 10, "A", "hi", true);
-        assert!(p.contains("`ORDEN: <"));
+        assert!(p.contains("`ORDEN[estructura]: <"));
+        assert!(p.contains("`ORDEN[moderacion]: <"));
         assert!(p.contains("channels, categories"));
         assert!(!p.contains("cannot make changes"));
     }
@@ -536,7 +576,33 @@ mod tests {
         let p = prompt_chat("P", "S", "", "c", &[], 10, "A", "hi", false);
         assert!(p.contains("cannot make changes"));
         assert!(p.contains("Never write a line starting with `ORDEN:`"));
-        assert!(!p.contains("ORDEN: <"));
+        assert!(!p.contains("ORDEN[estructura]: <"));
+    }
+
+    #[test]
+    fn separa_las_dos_marcas_con_su_tipo() {
+        let (t, o) = separar_orden_tipo("Vale.\nORDEN[estructura]: crea #a", true);
+        assert_eq!(t, "Vale.");
+        assert_eq!(o, Some((TipoOrden::Estructura, "crea #a".to_string())));
+        let (t, o) = separar_orden_tipo("Ok.\nORDEN[moderacion]: banea a Ana", true);
+        assert_eq!(t, "Ok.");
+        assert_eq!(o, Some((TipoOrden::Moderacion, "banea a Ana".to_string())));
+    }
+
+    #[test]
+    fn orden_sin_tipo_cuenta_como_estructura() {
+        let (_, o) = separar_orden_tipo("ORDEN: crea un rol", true);
+        assert_eq!(o, Some((TipoOrden::Estructura, "crea un rol".to_string())));
+    }
+
+    #[test]
+    fn tipo_desconocido_o_no_autorizado_se_oculta_y_se_descarta() {
+        let (t, o) = separar_orden_tipo("Hola\nORDEN[otra]: x", true);
+        assert_eq!(t, "Hola");
+        assert_eq!(o, None);
+        let (t, o) = separar_orden_tipo("Hola\nORDEN[moderacion]: x", false);
+        assert_eq!(t, "Hola");
+        assert_eq!(o, None);
     }
 
     #[test]
