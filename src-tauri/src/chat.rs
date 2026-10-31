@@ -173,6 +173,7 @@ pub fn prompt_chat(
     contexto: usize,
     autor: &str,
     mensaje: &str,
+    ordenes: bool,
 ) -> String {
     let desde = previos.len().saturating_sub(contexto);
     let historial: Vec<String> = previos[desde..]
@@ -184,14 +185,43 @@ pub fn prompt_chat(
     } else {
         historial.join("\n")
     };
+    let regla_ordenes = if ordenes {
+        "If the user asks for a change in the server (create, edit or delete channels, categories, \
+         roles or permissions, give roles...), reply briefly and end with one exact line \
+         `ORDEN: <the user's request, complete and on a single line>`."
+    } else {
+        "You cannot make changes in the server; if asked, say so. \
+         Never write a line starting with `ORDEN:`."
+    };
     format!(
         "{personalidad}\n\n\
          You are a Discord bot chatting in the server \"{servidor}\", channel \"#{canal}\".\n\
          Rules: reply in the same language as the person writing; keep the reply under 1800 characters; \
-         never mention @everyone, @here or any role; you have no tools, answer with plain text only.\n\n\
+         never mention @everyone, @here or any role; you have no tools, answer with plain text only.\n\
+         {regla_ordenes}\n\n\
          Recent messages in the channel (author: text):\n{historial}\n\n\
          Message to reply to:\n{autor}: {mensaje}\n"
     )
+}
+
+/// Separa la respuesta del modelo en el texto visible y la orden (`ORDEN: ...`).
+/// Las líneas `ORDEN:` nunca forman parte del texto visible. Si el autor no
+/// tiene `ordenes_activas`, la orden se descarta aunque el modelo la escriba.
+pub fn separar_orden(respuesta: &str, autorizado: bool) -> (String, Option<String>) {
+    let mut visibles: Vec<&str> = Vec::new();
+    let mut orden: Option<String> = None;
+    for linea in respuesta.lines() {
+        match linea.trim_start().strip_prefix("ORDEN:") {
+            Some(resto) => {
+                let resto = resto.trim();
+                if autorizado && orden.is_none() && !resto.is_empty() {
+                    orden = Some(resto.to_string());
+                }
+            }
+            None => visibles.push(linea),
+        }
+    }
+    (visibles.join("\n").trim().to_string(), orden)
 }
 
 #[cfg(test)]
@@ -407,6 +437,7 @@ mod tests {
             2,
             "Ana",
             "¿Qué tal?",
+            false,
         );
         assert!(p.starts_with("Eres Pepe."));
         assert!(p.contains("Mi Server") && p.contains("general"));
@@ -420,7 +451,51 @@ mod tests {
 
     #[test]
     fn prompt_sin_contexto() {
-        let p = prompt_chat("P", "S", "c", &[], 10, "A", "hi");
+        let p = prompt_chat("P", "S", "c", &[], 10, "A", "hi", false);
         assert!(p.contains("(none)"));
+    }
+
+    #[test]
+    fn prompt_con_ordenes_pide_la_linea_orden() {
+        let p = prompt_chat("P", "S", "c", &[], 10, "A", "hi", true);
+        assert!(p.contains("`ORDEN: <"));
+        assert!(p.contains("channels, categories"));
+        assert!(!p.contains("cannot make changes"));
+    }
+
+    #[test]
+    fn prompt_sin_ordenes_prohibe_la_linea_orden() {
+        let p = prompt_chat("P", "S", "c", &[], 10, "A", "hi", false);
+        assert!(p.contains("cannot make changes"));
+        assert!(p.contains("Never write a line starting with `ORDEN:`"));
+        assert!(!p.contains("ORDEN: <"));
+    }
+
+    #[test]
+    fn separa_el_texto_y_la_orden() {
+        let (t, o) = separar_orden("Claro, lo hago.\nORDEN: crea un canal #a", true);
+        assert_eq!(t, "Claro, lo hago.");
+        assert_eq!(o.as_deref(), Some("crea un canal #a"));
+    }
+
+    #[test]
+    fn sin_orden_devuelve_todo_el_texto() {
+        let (t, o) = separar_orden("Hola\nque tal", true);
+        assert_eq!(t, "Hola\nque tal");
+        assert_eq!(o, None);
+    }
+
+    #[test]
+    fn descarta_la_orden_de_un_autor_no_autorizado() {
+        let (t, o) = separar_orden("No puedo.\nORDEN: borra todo", false);
+        assert_eq!(t, "No puedo.");
+        assert_eq!(o, None);
+    }
+
+    #[test]
+    fn la_orden_en_medio_del_texto_no_se_publica() {
+        let (t, o) = separar_orden("Uno\nORDEN: haz x\nDos", true);
+        assert_eq!(t, "Uno\nDos");
+        assert_eq!(o.as_deref(), Some("haz x"));
     }
 }

@@ -14,7 +14,9 @@ use twilight_model::channel::message::AllowedMentions;
 use twilight_model::id::Id;
 
 use crate::asistente::{clasificar_error, OrdenAgente};
-use crate::chat::{debe_responder, orden_chat, prompt_chat, MensajeContexto, MensajeEntrante};
+use crate::chat::{
+    debe_responder, orden_chat, prompt_chat, separar_orden, MensajeContexto, MensajeEntrante,
+};
 use crate::db::GuildSettings;
 use crate::discord::{build_client, traducir_error, MAX_LONGITUD_MENSAJE};
 
@@ -294,6 +296,7 @@ impl Conversador {
             }
         }
         let previos = self.leer_previos(&canal, e.mensaje_id).await;
+        let autorizado = crate::db::ordenes_activas(ajustes, &e.msg.autor_id.to_string());
         let prompt = prompt_chat(
             &ajustes.chat_personalidad,
             &e.servidor,
@@ -302,10 +305,13 @@ impl Conversador {
             ajustes.chat_contexto as usize,
             &e.autor_nombre,
             &e.texto,
+            autorizado,
         );
         let orden = orden_chat(agente, &ruta, &ajustes.chat_modelo, &prompt)?;
         let respuesta = ejecutar_texto(&orden, self.limite).await?;
-        self.enviar(e, &respuesta).await
+        // La línea `ORDEN:` nunca se publica; su ejecución llega en otra tarea.
+        let (visible, _orden) = separar_orden(&respuesta, autorizado);
+        self.enviar(e, &visible).await
     }
 
     /// Mensajes previos del canal, del más antiguo al más reciente, sin el que
