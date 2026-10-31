@@ -168,7 +168,7 @@ pub fn cancelar_asistente() {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ErrorValidacion {
-    /// Posición (desde 0) en la propuesta ya ordenada.
+    /// Posición (desde 0) de la acción en la propuesta recibida (sin ordenar).
     pub indice: usize,
     pub herramienta: String,
     pub mensaje: String,
@@ -218,18 +218,29 @@ fn es_categoria(args: &Value) -> bool {
 /// Deja las acciones en orden seguro sin cambiar el orden relativo dentro de
 /// cada grupo.
 pub fn ordenar_propuesta(p: &Propuesta) -> Propuesta {
+    Propuesta {
+        resumen: p.resumen.clone(),
+        acciones: orden_de_ejecucion(p)
+            .into_iter()
+            .map(|i| p.acciones[i].clone())
+            .collect(),
+    }
+}
+
+/// Posiciones de `p.acciones` en el orden en que se ejecutan. Los índices que
+/// se informan (avance, resultados, errores de validación) son siempre estas
+/// posiciones **originales**: la interfaz muestra las acciones con su propio
+/// orden y empareja cada fila por su posición en la propuesta recibida.
+pub fn orden_de_ejecucion(p: &Propuesta) -> Vec<usize> {
     let categorias: std::collections::HashSet<String> = p
         .acciones
         .iter()
         .filter(|a| a.herramienta == "crear_canal" && es_categoria(&a.args))
         .filter_map(|a| a.args.get("nombre").and_then(Value::as_str).map(clave))
         .collect();
-    let mut acciones = p.acciones.clone();
-    acciones.sort_by_key(|a| grupo(a, &categorias)); // estable
-    Propuesta {
-        resumen: p.resumen.clone(),
-        acciones,
-    }
+    let mut orden: Vec<usize> = (0..p.acciones.len()).collect();
+    orden.sort_by_key(|&i| grupo(&p.acciones[i], &categorias)); // estable
+    orden
 }
 
 /// Qué clase de cosa nombra un argumento.
@@ -389,14 +400,14 @@ impl Nombres {
 /// válidos y referencias por nombre que existen o se crean antes. Con ella sale
 /// la lista de cambios legible.
 pub fn validar_acciones(p: &Propuesta, existentes: &Nombres) -> Validacion {
-    let ordenada = ordenar_propuesta(p);
     let mut nombres = existentes.clone();
     let mut errores = Vec::new();
     let (mut crear_roles, mut editar_roles) = (0, 0);
     let (mut categorias, mut canales, mut editar_canales) = (0, 0, 0);
     let (mut permisos, mut miembros_roles, mut otras) = (0, 0, 0);
 
-    for (indice, a) in ordenada.acciones.iter().enumerate() {
+    for indice in orden_de_ejecucion(p) {
+        let a = &p.acciones[indice];
         let h = a.herramienta.as_str();
         let comprobada = nombres
             .resolver_args(h, &a.args)

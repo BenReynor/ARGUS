@@ -19,7 +19,7 @@ use crate::commands::{self, sincronizar_guilds, token_del_bot_activo};
 use crate::discord::{DatosCanal, DatosRol};
 use crate::i18n;
 use crate::propuesta::{
-    ordenar_propuesta, EstadoAccion, Nombres, Propuesta, ResultadoAccion, ResumenPropuesta,
+    orden_de_ejecucion, EstadoAccion, Nombres, Propuesta, ResultadoAccion, ResumenPropuesta,
 };
 use crate::state::{AppState, Channel, Guild, Member, Role};
 
@@ -1979,10 +1979,12 @@ impl ArgusMcp {
             .await
             .map_err(|e| self.limpiar(e))?;
         let mut nombres = Nombres::desde(&roles, &canales);
-        let ordenada = ordenar_propuesta(propuesta);
-        let total = ordenada.acciones.len();
+        let total = propuesta.acciones.len();
         let mut resultados = Vec::new();
-        for (indice, a) in ordenada.acciones.iter().enumerate() {
+        // `indice` es la posición original de la acción: la app empareja así
+        // cada resultado con su fila aunque el orden de ejecución sea otro.
+        for indice in orden_de_ejecucion(propuesta) {
+            let a = &propuesta.acciones[indice];
             if cancelar.load(Ordering::SeqCst) {
                 break;
             }
@@ -4935,8 +4937,13 @@ mod tests {
         assert_eq!(avisos.len(), 8);
         assert!(avisos
             .iter()
-            .enumerate()
-            .all(|(i, (t, idx, e))| *t == 8 && *idx == i && *e == EstadoAccion::Ok));
+            .all(|(t, _, e)| *t == 8 && *e == EstadoAccion::Ok));
+        // Cada avance lleva la posición ORIGINAL de su acción (la interfaz
+        // empareja así cada fila), en el orden en que se ejecutan.
+        let indices: Vec<usize> = avisos.iter().map(|(_, i, _)| *i).collect();
+        assert_eq!(indices, crate::propuesta::orden_de_ejecucion(&p));
+        assert_eq!(p.acciones[indices[0]].herramienta, "crear_rol");
+        assert_eq!(p.acciones[indices[2]].args["nombre"], "Comunidad");
         // Orden en Discord: roles, categoría, canales, permisos (los `expect`
         // de los mocks comprueban parent_id y los IDs de los roles creados).
         let orden: Vec<String> = s
