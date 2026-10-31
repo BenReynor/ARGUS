@@ -11,7 +11,7 @@ antes, y puedes pedírselo al asistente en el chat.
 - [Sintaxis](#sintaxis)
 - [Contexto del servidor](#contexto-del-servidor)
 - [Ejemplo: servidor temático de 10 categorías](#ejemplo-servidor-temático-de-10-categorías)
-- [Ejemplo: una categoría de 120 canales](#ejemplo-una-categoría-de-120-canales)
+- [Ejemplo: 120 canales con descripciones generadas](#ejemplo-120-canales-con-descripciones-generadas)
 - [Construir desde el plan](#construir-desde-el-plan)
 - [Ahorrar tokens](#ahorrar-tokens)
 - [Avisos del plan](#avisos-del-plan)
@@ -29,6 +29,7 @@ blanco se ignoran.
 
 ```
 ## Rol: Supervisor | color: #ffaa00 | permisos: ManageMessages, ModerateMembers
+## Rol: Director | color: #e74c3c | separado
 ```
 
 | Atributo | Inglés | Significado |
@@ -191,17 +192,29 @@ usan la IA, y los canales sin descripción propia heredan la de su categoría.
 > Nota: `{n}` solo funciona dentro de descripciones literales. Para nombres
 > numerados usa un rango (`Taberna-{1..3}`).
 
-## Ejemplo: una categoría de 120 canales
+## Ejemplo: 120 canales con descripciones generadas
+
+Discord permite como mucho **50 canales por categoría** y **500 por servidor**
+(las categorías cuentan para los 500). Para 120 canales, repártelos en tres
+categorías con rangos:
 
 ```
 @var zona = estación de metro abandonada
 
-## Categoría: Sectores | ver: Explorador | escribir: Explorador | descripción: generar: breve, atmosférica, sobre $zona
-- texto: sector-{001..120}
+## Rol: Explorador | color: #e0af68
+
+## Categoría: Sectores A | ver: Explorador | escribir: Explorador | descripción: generar: breve, atmosférica, sobre $zona
+- texto: sector-{001..040}
+
+## Categoría: Sectores B | ver: Explorador | escribir: Explorador | descripción: generar: breve, atmosférica, sobre $zona
+- texto: sector-{041..080}
+
+## Categoría: Sectores C | ver: Explorador | escribir: Explorador | descripción: generar: breve, atmosférica, sobre $zona
+- texto: sector-{081..120}
 ```
 
-Una línea crea **120 canales de texto** (`sector-001` … `sector-120`), visibles y
-con escritura solo para `Explorador`. Cada uno recibe **su propia descripción
+Así salen **120 canales de texto** (`sector-001` … `sector-120`), visibles y con
+escritura solo para `Explorador`. Cada uno recibe **su propia descripción
 generada** a partir de la indicación de la categoría.
 
 ARGUS compila la estructura en local (sin IA) y solo llama a la IA para escribir
@@ -209,14 +222,14 @@ las 120 descripciones: las pendientes van en **tandas de 40**, o sea 3 llamadas 
 agente, cada una sin herramientas. Si el agente falla o se deja alguna, la
 propuesta llega igualmente con esas descripciones vacías y un aviso.
 
-Ten en cuenta que Discord limita los canales por categoría (50) y por servidor
-(500), así que un diseño muy grande puede requerir dividirlo en varias categorías
-(`Sectores A`, `Sectores B`…). Comprueba los límites vigentes en Discord.
+Si una categoría pasaría de 50 canales (contando los que ya tiene), ARGUS crea
+los 50 primeros y avisa de cuántos omitió, para que Aplicar nunca falle a medias.
+También avisa si el servidor pasaría de 500.
 
 Si no quieres IA en absoluto, usa una descripción literal con el número:
 
 ```
-- texto: sector-{001..120} | descripción: "Sector {n} de la estación."
+- texto: sector-{001..040} | descripción: "Sector {n} de la estación."
 ```
 
 ## Construir desde el plan

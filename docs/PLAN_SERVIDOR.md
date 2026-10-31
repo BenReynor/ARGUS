@@ -11,7 +11,7 @@ as before: you can ask the assistant in the chat to build it.
 - [Syntax](#syntax)
 - [Server context](#server-context)
 - [Example: themed server with 10 categories](#example-themed-server-with-10-categories)
-- [Example: one category with 120 channels](#example-one-category-with-120-channels)
+- [Example: 120 channels with generated descriptions](#example-120-channels-with-generated-descriptions)
 - [Build from plan](#build-from-plan)
 - [Saving tokens](#saving-tokens)
 - [Plan warnings](#plan-warnings)
@@ -25,6 +25,7 @@ Keywords work in **English or Spanish**, ignoring upper/lower case and accents.
 
 ```
 ## Role: Supervisor | color: #ffaa00 | permissions: ManageMessages, ModerateMembers
+## Role: Director | color: #e74c3c | hoist
 ```
 
 | Attribute | Spanish | Meaning |
@@ -187,17 +188,29 @@ category's.
 > Note: `{n}` only works inside literal descriptions. Use a range
 > (`Tavern-{1..3}`) for numbered names.
 
-## Example: one category with 120 channels
+## Example: 120 channels with generated descriptions
+
+Discord allows at most **50 channels per category** and **500 per server**
+(categories count towards the 500). For 120 channels, split them into three
+categories with ranges:
 
 ```
 @var zone = abandoned subway station
 
-## Category: Sectors | view: Explorer | write: Explorer | description: generate: short, atmospheric, about $zone
-- text: sector-{001..120}
+## Role: Explorer | color: #e0af68
+
+## Category: Sectors A | view: Explorer | write: Explorer | description: generate: short, atmospheric, about $zone
+- text: sector-{001..040}
+
+## Category: Sectors B | view: Explorer | write: Explorer | description: generate: short, atmospheric, about $zone
+- text: sector-{041..080}
+
+## Category: Sectors C | view: Explorer | write: Explorer | description: generate: short, atmospheric, about $zone
+- text: sector-{081..120}
 ```
 
-One line gives **120 text channels** (`sector-001` … `sector-120`), all visible
-and writable only by `Explorer`. Each one gets its **own generated description**
+That gives **120 text channels** (`sector-001` … `sector-120`), all visible and
+writable only by `Explorer`. Each one gets its **own generated description**
 from the category's hint.
 
 ARGUS compiles the structure locally (no AI) and then makes the AI calls only to
@@ -205,14 +218,14 @@ write the 120 descriptions: the pending ones go in **batches of 40**, so it is 3
 calls to the agent, each without tools. If the agent fails or leaves some out, the
 proposal still arrives with those descriptions empty and a warning.
 
-Keep in mind that Discord itself limits the channels per category (50) and per
-server (500), so for a very large layout you may need to split it into several
-categories (`Sectors A`, `Sectors B`…). Check the current limits in Discord.
+If a category would go over 50 channels (counting the ones it already has),
+ARGUS creates the first 50 and warns how many it skipped, so Apply never fails
+halfway. It also warns when the server would go over 500.
 
 If you prefer no AI at all, use a literal description with the number:
 
 ```
-- text: sector-{001..120} | description: "Sector {n} of the station."
+- text: sector-{001..040} | description: "Sector {n} of the station."
 ```
 
 ## Build from plan

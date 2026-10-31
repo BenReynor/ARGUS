@@ -51,6 +51,11 @@ const CATALOGO_ES: &[(&str, &str)] = &[
     ("The descriptions were not written: the AI agent is not installed", "No se escribieron las descripciones: el agente de IA no está instalado"),
     ("Build from the structured plan: {n} actions", "Construir desde el plan estructurado: {n} acciones"),
     ("Line {linea}: {motivo}", "Línea {linea}: {motivo}"),
+    ("Line {linea}: channel «{canal}» is repeated in «{categoria}»; skipped", "Línea {linea}: el canal «{canal}» está repetido en «{categoria}»; se omite"),
+    ("Line {linea}: channel «{canal}» has the same name as another channel; its permissions may be applied to the wrong one", "Línea {linea}: el canal «{canal}» se llama igual que otro; sus permisos podrían aplicarse al equivocado"),
+    ("Role «{rol}» is not in the plan nor on the server; its permissions on «{canal}» were skipped", "El rol «{rol}» no está en el plan ni en el servidor; se omitieron sus permisos en «{canal}»"),
+    ("Category «{categoria}» can hold at most 50 channels (Discord's limit); {n} channels were skipped. Split them into several categories", "La categoría «{categoria}» admite como mucho 50 canales (límite de Discord); se omitieron {n} canales. Repártelos en varias categorías"),
+    ("The server would have {n} channels and categories; Discord allows at most 500, so Apply will stop when it reaches the limit", "El servidor tendría {n} canales y categorías; Discord permite como mucho 500, así que Aplicar se detendrá al llegar al límite"),
     ("Warnings:", "Avisos:"),
     ("…and {n} more warnings", "…y {n} avisos más"),
     ("The database is not available", "La base de datos no está disponible"),
@@ -415,6 +420,29 @@ mod tests {
         assert_eq!(tr("en", "Invalid token"), "Invalid token");
         assert_eq!(tr("", "Invalid token"), "Invalid token");
         assert_eq!(tr("fr", "Invalid token"), "Invalid token");
+    }
+
+    #[test]
+    fn los_avisos_del_plan_compilado_salen_en_espanol() {
+        assert_eq!(
+            tr(
+                "es",
+                "Line 4: channel «sala» is repeated in «Zona»; skipped"
+            ),
+            "Línea 4: el canal «sala» está repetido en «Zona»; se omite"
+        );
+        assert_eq!(
+            tr(
+                "es",
+                "Category «Grande» can hold at most 50 channels (Discord's limit); 70 channels were skipped. Split them into several categories"
+            ),
+            "La categoría «Grande» admite como mucho 50 canales (límite de Discord); se omitieron 70 canales. Repártelos en varias categorías"
+        );
+        assert!(tr(
+            "es",
+            "Role «Fantasma» is not in the plan nor on the server; its permissions on «x» were skipped"
+        )
+        .starts_with("El rol «Fantasma» no está"));
     }
 
     #[test]

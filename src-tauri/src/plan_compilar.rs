@@ -24,6 +24,10 @@ use crate::state::{Channel, Role};
 
 const TIPO_CATEGORIA: u8 = 4;
 const EVERYONE: &str = "@everyone";
+/// Límites de Discord: canales dentro de una categoría y canales del servidor
+/// (las categorías cuentan para los 500).
+const MAX_CANALES_POR_CATEGORIA: usize = 50;
+const MAX_CANALES_POR_SERVIDOR: usize = 500;
 
 /// Lo que ya hay en el servidor (roles y canales/categorías del mapa).
 #[derive(Debug, Clone, Copy)]
@@ -214,6 +218,16 @@ pub fn compilar(plan: &PlanEstructurado, existentes: &Existentes) -> Compilacion
             );
         }
         let mut vistos_en_cat: Vec<String> = Vec::new();
+        // Discord rechaza el canal 51 de una categoría: los que no caben se
+        // omiten con aviso para que Apply no falle a mitad de la construcción.
+        let mut ocupados = cat_existente.map_or(0, |ce| {
+            existentes
+                .canales
+                .iter()
+                .filter(|x| x.parent_id.as_deref() == Some(ce.id.as_str()))
+                .count()
+        });
+        let mut sobrantes = 0usize;
         for c in &cat.canales {
             let k = clave(&c.nombre);
             if vistos_en_cat.contains(&k) {
@@ -233,6 +247,11 @@ pub fn compilar(plan: &PlanEstructurado, existentes: &Existentes) -> Compilacion
             if ya_existe {
                 continue;
             }
+            if ocupados >= MAX_CANALES_POR_CATEGORIA {
+                sobrantes += 1;
+                continue;
+            }
+            ocupados += 1;
             // Los permisos se resuelven por nombre de canal: avisa si es ambiguo.
             let en_otro_sitio = nombres_vistos.contains(&k)
                 || existentes
@@ -277,6 +296,20 @@ pub fn compilar(plan: &PlanEstructurado, existentes: &Existentes) -> Compilacion
                 &roles_conocidos,
             );
         }
+        if sobrantes > 0 {
+            avisos.push(format!(
+                "Category «{}» can hold at most 50 channels (Discord's limit); {} channels were skipped. Split them into several categories",
+                cat.nombre, sobrantes
+            ));
+        }
+    }
+
+    let total = existentes.canales.len() + categorias_acc.len() + canales_acc.len();
+    if total > MAX_CANALES_POR_SERVIDOR {
+        avisos.push(format!(
+            "The server would have {} channels and categories; Discord allows at most 500, so Apply will stop when it reaches the limit",
+            total
+        ));
     }
 
     let base = acciones.len() + categorias_acc.len();
@@ -619,8 +652,12 @@ mod tests {
     }
 
     #[test]
-    fn una_categoria_de_120_canales_es_valida() {
-        let plan = analizar("## Categoría: Grande | ver: @everyone\n- texto: sala-{1..120} | descripción: generar: x");
+    fn ciento_veinte_canales_en_tres_categorias_es_valido() {
+        let plan = analizar(
+            "## Categoría: Salas A | ver: @everyone\n- texto: sala-{1..40} | descripción: generar: x\n\
+             ## Categoría: Salas B | ver: @everyone\n- texto: sala-{41..80} | descripción: generar: x\n\
+             ## Categoría: Salas C | ver: @everyone\n- texto: sala-{81..120} | descripción: generar: x",
+        );
         let (roles, canales) = servidor();
         let c = compilar(
             &plan,
@@ -629,9 +666,212 @@ mod tests {
                 canales: &canales,
             },
         );
+        assert!(c.avisos.is_empty(), "{:?}", c.avisos);
         assert_eq!(c.pendientes.len(), 120);
-        assert_eq!(acciones(&c, "crear_canal").len(), 121);
+        assert_eq!(acciones(&c, "crear_canal").len(), 123);
         let v = validar_acciones(&c.propuesta, &Nombres::desde(&roles, &canales));
         assert!(v.errores.is_empty(), "{:?}", v.errores);
+    }
+
+    #[test]
+    fn una_categoria_no_pasa_de_50_canales() {
+        let plan =
+            analizar("## Categoría: Grande\n- texto: sala-{1..120} | descripción: generar: x");
+        let (roles, canales) = servidor();
+        let c = compilar(
+            &plan,
+            &Existentes {
+                roles: &roles,
+                canales: &canales,
+            },
+        );
+        // La categoría y sus primeros 50 canales; los 70 restantes, con aviso.
+        assert_eq!(acciones(&c, "crear_canal").len(), 51);
+        assert_eq!(c.pendientes.len(), 50);
+        assert!(c
+            .avisos
+            .iter()
+            .any(|a| a.contains("«Grande»") && a.contains("70 channels were skipped")));
+        for p in &c.pendientes {
+            assert_eq!(c.propuesta.acciones[p.indice].herramienta, "crear_canal");
+        }
+    }
+
+    #[test]
+    fn el_limite_cuenta_los_canales_que_ya_hay_en_la_categoria() {
+        let plan = analizar("## Categoría: Llena\n- texto: nueva-{1..5}");
+        let (roles, _) = servidor();
+        let mut canales = vec![canal("700", "Llena", 4, None)];
+        for i in 0..48 {
+            canales.push(canal(
+                &format!("8{i:02}"),
+                &format!("vieja-{i}"),
+                0,
+                Some("700"),
+            ));
+        }
+        let c = compilar(
+            &plan,
+            &Existentes {
+                roles: &roles,
+                canales: &canales,
+            },
+        );
+        assert_eq!(acciones(&c, "crear_canal").len(), 2);
+        assert!(c
+            .avisos
+            .iter()
+            .any(|a| a.contains("3 channels were skipped")));
+    }
+
+    #[test]
+    fn avisa_si_el_servidor_pasaria_de_500_canales() {
+        let mut texto = String::new();
+        for i in 0..11 {
+            texto.push_str(&format!(
+                "## Categoría: Zona {i}\n- texto: sala-{{1..45}}\n"
+            ));
+        }
+        let plan = analizar(&texto);
+        let (roles, canales) = servidor();
+        let c = compilar(
+            &plan,
+            &Existentes {
+                roles: &roles,
+                canales: &canales,
+            },
+        );
+        assert!(
+            c.avisos
+                .iter()
+                .any(|a| a.contains("Discord allows at most 500")),
+            "{:?}",
+            c.avisos
+        );
+    }
+}
+
+/// Los ejemplos de la documentación y la plantilla de la app deben analizarse y
+/// compilarse sin avisos ni errores: es lo primero que copia un usuario.
+#[cfg(test)]
+mod tests_ejemplos {
+    use super::*;
+    use crate::plan_estructurado::analizar;
+    use crate::propuesta::{validar_acciones, Nombres};
+    use crate::state::Role;
+
+    const DOC_EN: &str = include_str!("../../docs/PLAN_SERVIDOR.md");
+    const DOC_ES: &str = include_str!("../../docs/PLAN_SERVIDOR.es.md");
+    const VISTA: &str = include_str!("../../src/components/AsistenteView.tsx");
+
+    /// Bloques de código con estructura (alguna línea `## `).
+    fn planes_de(doc: &str) -> Vec<String> {
+        let mut planes = Vec::new();
+        let mut dentro: Option<Vec<&str>> = None;
+        for l in doc.lines() {
+            if l.trim_start().starts_with("```") {
+                match dentro.take() {
+                    Some(b) => {
+                        if b.iter().any(|x| x.starts_with("## ")) {
+                            planes.push(b.join("\n"));
+                        }
+                    }
+                    None => dentro = Some(Vec::new()),
+                }
+            } else if let Some(b) = dentro.as_mut() {
+                b.push(l);
+            }
+        }
+        planes
+    }
+
+    /// Las líneas de la plantilla que no pasan por `t()` (las de estructura).
+    fn plantilla() -> String {
+        let i = VISTA
+            .find("const insertarPlantilla")
+            .expect("insertarPlantilla");
+        let cuerpo = &VISTA[i..];
+        let cuerpo = &cuerpo[..cuerpo.find("];").expect("fin de la plantilla")];
+        cuerpo
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with('\''))
+            .map(|l| l.trim_end_matches(',').trim_matches('\'').to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn rol(nombre: &str) -> Role {
+        Role {
+            id: "1".into(),
+            name: nombre.into(),
+            color: 0,
+            position: 0,
+            permissions: "0".into(),
+            permissions_bitfield: None,
+            member_count: 0,
+            mentionable: false,
+            hoist: false,
+        }
+    }
+
+    /// `@everyone` más los roles que el documento declara en cualquier bloque
+    /// (los fragmentos de sintaxis usan roles definidos en otro fragmento).
+    fn roles_del_documento(planes: &[String]) -> Vec<Role> {
+        let mut roles = vec![rol("@everyone")];
+        for p in planes {
+            roles.extend(analizar(p).roles.iter().map(|r| rol(&r.nombre)));
+        }
+        roles
+    }
+
+    fn comprobar(nombre: &str, texto: &str, roles: &[Role]) {
+        let plan = analizar(texto);
+        assert!(plan.tiene_estructura(), "{nombre}: sin estructura");
+        assert!(plan.avisos.is_empty(), "{nombre}: {:?}", plan.avisos);
+        assert!(
+            plan.texto_libre.is_empty(),
+            "{nombre}: {:?}",
+            plan.texto_libre
+        );
+        // Los roles del propio bloque se crean: no cuentan como existentes.
+        let propios: Vec<String> = plan.roles.iter().map(|r| clave(&r.nombre)).collect();
+        let roles: Vec<Role> = roles
+            .iter()
+            .filter(|r| !propios.contains(&clave(&r.name)))
+            .cloned()
+            .collect();
+        let c = compilar(
+            &plan,
+            &Existentes {
+                roles: &roles,
+                canales: &[],
+            },
+        );
+        assert!(c.avisos.is_empty(), "{nombre}: {:?}", c.avisos);
+        let v = validar_acciones(&c.propuesta, &Nombres::desde(&roles, &[]));
+        assert!(v.errores.is_empty(), "{nombre}: {:?}", v.errores);
+    }
+
+    #[test]
+    fn los_ejemplos_de_la_documentacion_compilan_sin_avisos() {
+        for (doc, texto) in [
+            ("PLAN_SERVIDOR.md", DOC_EN),
+            ("PLAN_SERVIDOR.es.md", DOC_ES),
+        ] {
+            let planes = planes_de(texto);
+            assert!(planes.len() >= 3, "{doc}: solo {} planes", planes.len());
+            let roles = roles_del_documento(&planes);
+            for (n, p) in planes.iter().enumerate() {
+                comprobar(&format!("{doc} bloque {n}"), p, &roles);
+            }
+        }
+    }
+
+    #[test]
+    fn la_plantilla_de_la_app_compila_sin_avisos() {
+        let p = plantilla();
+        assert!(p.contains("## Category: Staff"), "{p}");
+        comprobar("plantilla", &p, &[rol("@everyone")]);
     }
 }
