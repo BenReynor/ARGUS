@@ -332,7 +332,7 @@ Verificación manual (en tu servidor de pruebas):
 ## FASE 12 — Órdenes desde Discord y respuestas solo a ciertos usuarios
 Dos opciones nuevas por servidor en la pestaña «Discord replies». (1) **Responder solo a** ciertos miembros (vacío = a todos, como ahora). (2) **Órdenes desde Discord** (desactivado por defecto): cuando un usuario autorizado le pide al bot un cambio en el servidor, el modelo que conversa (que sigue **sin herramientas**) se la pasa al **asistente constructor** de la FASE 10, que prepara una propuesta con su propio agente y modelo; el bot la muestra en Discord y, si el mismo usuario responde «sí», ARGUS la aplica con la misma lógica que el botón Apply (`con_servidor` + `ejecutar_propuesta`) y cuenta el resultado. Solo pueden dar órdenes los usuarios de una lista explícita y obligatoria: nunca cualquiera del servidor. Toda la UI nueva con `t()`. Los tests usan el Discord falso y agentes falsos.
 
-- [ ] Ajustes de usuarios y órdenes por servidor
+- [x] Ajustes de usuarios y órdenes por servidor
   criterio: `GuildSettings` (db.rs y tipos TS) añade con `#[serde(default)]`: `chat_usuarios` (IDs a los que responde; vacío = todos), `chat_ordenes` (bool, por defecto false), `chat_ordenes_usuarios` (IDs que pueden dar órdenes), `chat_ordenes_confirmar` (bool, por defecto true), `ordenes_agente` (por defecto "claude") y `ordenes_modelo` (por defecto "sonnet"); una función `ordenes_activas(ajustes, autor)` devuelve true solo si `chat_ordenes` está activo y el autor está en `chat_ordenes_usuarios` (con la lista vacía, nunca); tests de Rust de valores por defecto, de una configuración antigua sin estos campos y de `ordenes_activas`
 
 - [ ] Responder solo a ciertos usuarios
