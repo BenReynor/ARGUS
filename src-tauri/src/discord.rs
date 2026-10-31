@@ -156,8 +156,41 @@ pub fn traducir_respuesta(status: u16, cuerpo: &[u8]) -> String {
             }
         }
         _ if texto.is_empty() => format!("Discord responded with an error ({status})"),
-        _ => format!("Discord responded with an error ({status}): {texto}"),
+        _ => {
+            // «Invalid Form Body» (50035) trae el motivo real en `errors`.
+            let texto = match json
+                .as_ref()
+                .and_then(|j| primer_error_de_campo(j.get("errors")?, ""))
+            {
+                Some(detalle) => format!("{texto} ({detalle})"),
+                None => texto.to_string(),
+            };
+            format!("Discord responded with an error ({status}): {texto}")
+        }
     }
+}
+
+/// Primer `campo: mensaje` del árbol `errors` de un error 50035 de Discord
+/// (p. ej. `type: Value must be one of {0, 2, 4}`); antes se descartaba.
+fn primer_error_de_campo(v: &serde_json::Value, ruta: &str) -> Option<String> {
+    let obj = v.as_object()?;
+    if let Some(m) = obj
+        .get("_errors")
+        .and_then(|e| e.get(0))
+        .and_then(|e| e.get("message"))
+        .and_then(|m| m.as_str())
+    {
+        let campo = if ruta.is_empty() { "body" } else { ruta };
+        return Some(format!("{campo}: {m}"));
+    }
+    obj.iter().find_map(|(k, hijo)| {
+        let r = if ruta.is_empty() {
+            k.clone()
+        } else {
+            format!("{ruta}.{k}")
+        };
+        primer_error_de_campo(hijo, &r)
+    })
 }
 
 /// Convierte un error de twilight-http en un mensaje en español. Lo usan todas
@@ -746,6 +779,30 @@ pub async fn create_guild_channel(
     // Un canal creado por la API NO hereda los permisos de su categoría (eso lo
     // hace la app de Discord al crearlo a mano). Se copian, como un canal
     // «sincronizado»: sin esto, una categoría privada tenía canales visibles.
+    // Los canales de anuncios solo existen en servidores con Comunidad: sin
+    // esto Discord responde un «Invalid Form Body» que no explica nada.
+    if tipo == 5 {
+        // Solo hace falta `features`: se lee como JSON genérico (el modelo
+        // completo de twilight es frágil ante campos que faltan o cambian).
+        let cuerpo = client
+            .guild(gid)
+            .await
+            .map_err(traducir_error)?
+            .bytes()
+            .await
+            .map_err(|e| format!("Invalid response from Discord: {e}"))?;
+        let guild: serde_json::Value = serde_json::from_slice(&cuerpo)
+            .map_err(|e| format!("Invalid response from Discord: {e}"))?;
+        let comunidad = guild["features"]
+            .as_array()
+            .is_some_and(|f| f.iter().any(|x| x == "COMMUNITY"));
+        if !comunidad {
+            return Err(
+                "Announcement channels need Community enabled on the server (Server Settings → Enable Community); use a text channel instead"
+                    .to_string(),
+            );
+        }
+    }
     let permisos_padre = match padre {
         Some(pid) => client
             .channel(pid)
@@ -1830,6 +1887,27 @@ mod tests {
                 "https://discord.com/oauth2/authorize?client_id=42&scope=bot%20applications.commands&permissions={}",
                 esperado.bits()
             )
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests_detalle_error {
+    use super::traducir_respuesta;
+
+    #[test]
+    fn invalid_form_body_incluye_el_campo_y_el_motivo() {
+        let cuerpo = br#"{"code": 50035, "message": "Invalid Form Body",
+            "errors": {"type": {"_errors": [{"code": "BASE_TYPE_CHOICES",
+            "message": "Value must be one of {0, 2, 4}."}]}}}"#;
+        assert_eq!(
+            traducir_respuesta(400, cuerpo),
+            "Discord responded with an error (400): Invalid Form Body (type: Value must be one of {0, 2, 4}.)"
+        );
+        // Sin `errors`, como antes.
+        assert_eq!(
+            traducir_respuesta(400, br#"{"message": "Bad"}"#),
+            "Discord responded with an error (400): Bad"
         );
     }
 }

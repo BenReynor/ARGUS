@@ -54,6 +54,22 @@ fn canal_json(id: &str, nombre: &str, tipo: u8, padre: Option<&str>) -> serde_js
     })
 }
 
+/// El servidor 555 con la Comunidad activada (para canales de anuncios).
+async fn mock_comunidad(server: &MockServer) {
+    Mock::given(method("GET"))
+        .and(path("/api/v10/guilds/555"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "555", "name": "S", "owner_id": "9",
+            "roles": [], "emojis": [], "features": ["COMMUNITY"], "afk_timeout": 300,
+            "default_message_notifications": 0, "explicit_content_filter": 0,
+            "mfa_level": 0, "nsfw_level": 0, "premium_tier": 0,
+            "system_channel_flags": 0, "verification_level": 0
+        })))
+        .with_priority(1)
+        .mount(server)
+        .await;
+}
+
 /// Simula los permisos del bot: un rol con los bits dados.
 async fn mock_permisos(server: &MockServer, bits: u64) {
     Mock::given(method("GET"))
@@ -104,6 +120,7 @@ async fn mock_lista(server: &MockServer, canales: serde_json::Value) {
 #[tokio::test]
 async fn crea_canal_con_todos_los_campos_y_actualiza_el_mapa() {
     let server = MockServer::start().await;
+    mock_comunidad(&server).await;
     mock_permisos(&server, GESTIONAR_CANALES).await;
     // La categoría 5 es privada (oculta a @everyone y visible para el rol 7):
     // el canal nuevo nace con esos mismos permisos, como en la app de Discord.
@@ -357,4 +374,30 @@ async fn datos_invalidos_se_rechazan_sin_llamar_a_discord() {
     };
     let e = crear_canal(&state, "555", &lento, b).await.unwrap_err();
     assert!(e.contains("lowmode"), "{e}");
+}
+
+#[tokio::test]
+async fn anuncios_sin_comunidad_avisa_sin_intentar_crear() {
+    let server = MockServer::start().await;
+    mock_permisos(&server, GESTIONAR_CANALES).await; // servidor sin COMMUNITY
+    Mock::given(method("POST"))
+        .and(path("/api/v10/guilds/555/channels"))
+        .respond_with(ResponseTemplate::new(400))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let state = estado("token-an");
+    let addr = server.address().to_string();
+    let datos = DatosCanal {
+        name: Some("avisos".into()),
+        channel_type: Some(5),
+        parent_id: None,
+        topic: None,
+        nsfw: None,
+        rate_limit_per_user: None,
+    };
+    let e = crear_canal(&state, "555", &datos, Some(&addr))
+        .await
+        .unwrap_err();
+    assert!(e.contains("Community"), "{e}");
 }

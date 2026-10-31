@@ -96,6 +96,7 @@ const CATALOGO_ES: &[(&str, &str)] = &[
     ("Invalid response from Discord: {e}", "Respuesta de Discord inválida: {e}"),
     ("Enable «Server Members Intent» in the Developer Portal → Bot", "Activa «Server Members Intent» en el Developer Portal → Bot"),
     ("Invalid token", "Token inválido"),
+    ("Announcement channels need Community enabled on the server (Server Settings → Enable Community); use a text channel instead", "Los canales de anuncios necesitan la Comunidad activada en el servidor (Ajustes del servidor → Activar Comunidad); usa un canal de texto"),
     ("The bot is missing the permission «{p}»", "Al bot le falta el permiso «{p}»"),
     ("The bot is missing the permission «{permiso}»", "Al bot le falta el permiso «{permiso}»"),
     ("The bot is missing a permission to do this on the server", "Al bot le falta un permiso para hacer esto en el servidor"),
