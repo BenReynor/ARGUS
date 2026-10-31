@@ -398,7 +398,7 @@ Sintaxis (palabras clave en español o inglés, sin distinguir mayúsculas ni ti
 - [x] Construir desde un archivo enviado por Discord
   criterio: con las órdenes de Discord activadas para el autor (FASE 12), si su mensaje al bot adjunta un archivo `.md` o `.txt` (máximo 200 KB), ARGUS lo descarga, lo analiza con `analizar` y lo compila con `compilar` **sin IA** (las descripciones `generar:` solo usan la llamada barata), y responde con el resumen de cambios y los avisos de línea; el resto es el flujo de confirmación de la FASE 12 («sí» del mismo autor → aplicar); un archivo sin estructura se rechaza con un mensaje que enlaza al manual; un autor sin órdenes activadas no puede usarlo; tests con el Discord falso (archivo válido, con avisos, sin estructura, demasiado grande, autor no autorizado)
 
-- [ ] Pestaña de contexto y personalidad
+- [x] Pestaña de contexto y personalidad
   criterio: la sección AI Assistant tiene una pestaña «Context & personality» con dos editores: el contexto del servidor (Markdown, guardado automático, Import/Export .md, con un texto de ejemplo como marcador) y la personalidad del bot (el mismo campo `chat_personalidad` de «Discord replies», que allí pasa a mostrarse como un resumen con enlace a esta pestaña); todo con `t()`; `npm run i18n:check` y `npm run build` pasan
 
 - [ ] Manual y plantilla en la app
