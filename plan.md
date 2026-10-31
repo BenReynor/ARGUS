@@ -383,7 +383,7 @@ Sintaxis (palabras clave en español o inglés, sin distinguir mayúsculas ni ti
 - [x] Variables en el plan estructurado
   criterio: `analizar` admite líneas `@var nombre = valor` (en cualquier parte del plan, antes de usarse) y sustituye `$nombre` en nombres, descripciones literales e indicaciones `generar:` (p. ej. `@var tema = medieval` → `- texto: taberna-{1..5} | descripción: generar: ambiente $tema`); una variable sin definir queda en `avisos` con su línea y el texto se deja tal cual; las variables se pueden combinar con rangos (`$area-{1..3}`); tests de definición, uso, variable indefinida y combinación con rangos
 
-- [ ] Compilar el plan estructurado a una propuesta (sin IA)
+- [x] Compilar el plan estructurado a una propuesta (sin IA)
   criterio: función pura `compilar(plan, existentes) -> Propuesta` que genera crear_rol, crear_canal (categorías y canales con su `categoria_id` por nombre) y permiso_canal según las reglas de permisos de esta fase (ver → @everyone sin ViewChannel y los roles con ViewChannel; escribir → además SendMessages, o Connect y Speak en voz; solo leer → ViewChannel y ReadMessageHistory permitidos y SendMessages denegado; ocultar a → ViewChannel denegado), sin repetir lo que ya existe con el mismo nombre (roles por nombre; canales por nombre dentro de su categoría); las descripciones `generar:` quedan marcadas como pendientes; tests con el mapa de ejemplo y contra `validar_acciones` (la propuesta compilada es válida)
 
 - [ ] Escribir las descripciones con una sola llamada barata
