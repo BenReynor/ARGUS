@@ -377,7 +377,7 @@ Sintaxis (palabras clave en español o inglés, sin distinguir mayúsculas ni ti
 - [x] Contexto del servidor
   criterio: migración con una tabla de contexto por (bot_id, guild_id) y comandos `leer_contexto_servidor`/`guardar_contexto_servidor`; el prompt del asistente constructor incluye el contexto (sección «Server context») y el del chat de Discord también, recortado a 1500 caracteres; tests de Rust de guardar/leer por servidor y de que ambos prompts lo incluyen
 
-- [ ] Analizar el plan estructurado (función pura)
+- [x] Analizar el plan estructurado (función pura)
   criterio: módulo `src-tauri/src/plan_estructurado.rs` con `analizar(texto) -> PlanEstructurado { roles, categorias (con sus canales), texto_libre, avisos }` que implementa la sintaxis de esta fase (palabras clave en español e inglés, mayúsculas y tildes indiferentes, comentarios `//`, rangos `{1..10}` y `{01..10}`, descripción literal o `generar:`, valores por defecto de la categoría, permisos ver/escribir/solo leer/ocultar a); las líneas que no encajan van a `texto_libre` (no se pierden) y los errores de una línea (rango inválido, color mal escrito) van a `avisos` con su número de línea; tests de cada regla, de un plan mixto (estructura + texto libre) y de un rango de 120 canales
 
 - [ ] Variables en el plan estructurado
