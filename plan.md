@@ -350,7 +350,7 @@ Dos opciones nuevas por servidor en la pestaña «Discord replies». (1) **Respo
 - [x] Opciones en la interfaz
   criterio: en la pestaña «Discord replies»: «Reply only to» con un selector múltiple de miembros del servidor (buscador por nombre, chips con avatar y nombre; vacío = todos); un bloque «Orders from Discord» con el interruptor (desactivado y con una explicación mientras no haya usuarios autorizados), el selector múltiple de usuarios que pueden dar órdenes, «Ask for confirmation before applying» (activado por defecto), y agente y modelo del constructor (solo los instalados; por defecto claude/sonnet); un aviso de que las órdenes modifican el servidor de verdad y quedan en Logs; todo con `t()`; `npm run i18n:check` y `npm run build` pasan
 
-- [ ] Documentación
+- [x] Documentación
   criterio: docs/ASISTENTE.md (en inglés) explica «Reply only to» y «Orders from Discord»: quién puede dar órdenes, el flujo con confirmación y sin ella, que el modelo que conversa sigue sin herramientas y que la propuesta la prepara el constructor y la aplica ARGUS, y un ejemplo («@Bot crea un canal de voz llamado Reuniones en Comunidad» → propuesta → «sí» → hecho); README.md y README.es.md lo mencionan en «What you can do» / «Qué puedes hacer»
 
 Verificación manual (en tu servidor de pruebas, con ARGUS abierto y el bot encendido):
