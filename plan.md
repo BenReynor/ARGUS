@@ -309,7 +309,7 @@ Cuando alguien menciona al bot (`@Bot …`) o responde a un mensaje del bot en u
 - [x] Ajustes de conversación por servidor
   criterio: los ajustes propios de cada servidor (`GuildSettings` en db.rs, tipos TS sincronizados) usan el `personality_enabled` existente como interruptor y añaden, con `#[serde(default)]` para configuraciones guardadas sin ellos: `chat_agente` (claude|opencode), `chat_modelo`, `chat_personalidad` (texto libre: nombre, tono, rol, reglas), `chat_canales` (lista de IDs; vacía = todos), `chat_espera_s` (por usuario, por defecto 10) y `chat_contexto` (mensajes previos del canal que se le pasan, por defecto 10, máximo 30); tests de Rust de valores por defecto y de una configuración antigua sin estos campos
 
-- [ ] Decidir cuándo responder (función pura)
+- [x] Decidir cuándo responder (función pura)
   criterio: una función pura recibe el mensaje (autor, si el autor es bot, canal, menciones, mensaje al que responde y su autor), el id del bot, los ajustes del servidor y la hora del último mensaje respondido a ese usuario, y devuelve si hay que responder: solo si `personality_enabled`, el autor no es un bot ni el propio bot, el mensaje menciona al bot o responde a un mensaje del bot, el canal está permitido y ha pasado `chat_espera_s`; nunca por `@everyone`/`@here` ni por la mención de un rol; tests de cada caso
 
 - [ ] Orden de chat sin herramientas y su prompt (funciones puras)
