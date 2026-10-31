@@ -13,6 +13,11 @@ pub const IDIOMA_DEFECTO: &str = "en";
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
     // <CATALOGO>
+    ("[CHAT] Replied in {servidor} #{canal} to {autor} with {modelo} in {ms} ms", "[CHAT] Respondido en {servidor} #{canal} a {autor} con {modelo} en {ms} ms"),
+    ("[WARN] No reply in {servidor} #{canal} to {autor}: {motivo}", "[WARN] Sin respuesta en {servidor} #{canal} a {autor}: {motivo}"),
+    ("The AI agent took too long to reply", "El agente de IA tardó demasiado en responder"),
+    ("The AI agent returned an empty reply", "El agente de IA devolvió una respuesta vacía"),
+    ("The AI agent «{agente}» is not installed", "El agente de IA «{agente}» no está instalado"),
     ("Roles to create: {n}", "Roles a crear: {n}"),
     ("Roles to edit: {n}", "Roles a editar: {n}"),
     ("Categories to create: {n}", "Categorías a crear: {n}"),

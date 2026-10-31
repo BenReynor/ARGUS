@@ -475,7 +475,7 @@ impl Lector {
 }
 
 /// Mata el proceso y todo su grupo.
-fn matar_grupo(pid: u32) {
+pub(crate) fn matar_grupo(pid: u32) {
     #[cfg(unix)]
     let r = Command::new("kill")
         .args(["-KILL", "--", &format!("-{pid}")])

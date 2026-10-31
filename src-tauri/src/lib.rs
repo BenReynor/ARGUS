@@ -18,6 +18,7 @@ pub mod mcp;
 pub mod mensajes;
 pub mod persistencia;
 pub mod propuesta;
+pub mod responder;
 pub mod state;
 pub mod sync;
 #[cfg(test)]

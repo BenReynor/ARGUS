@@ -10,12 +10,83 @@ use tokio::sync::Notify;
 use twilight_gateway::{Intents, Shard, ShardId};
 use twilight_model::gateway::event::Event;
 
+use crate::chat::MensajeEntrante;
 use crate::mapa::{aplicar_evento, ResumenCambio};
+use crate::responder::{Conversador, Coordinador, Entrada, LIMITE_AGENTE};
 use crate::state::ServerMap;
 
-/// Intents que ARGUS necesita: servidores/canales/roles y miembros.
+/// Intents que ARGUS necesita: servidores/canales/roles, miembros y mensajes de
+/// servidor (para responder a menciones).
 pub fn intents() -> Intents {
-    Intents::GUILDS | Intents::GUILD_MEMBERS
+    Intents::GUILDS | Intents::GUILD_MEMBERS | Intents::GUILD_MESSAGES
+}
+
+/// Convierte un mensaje de servidor en la entrada del conversador. `None` si no
+/// es de un servidor. Los nombres salen de los mapas (o un valor genérico).
+pub fn entrada_de(
+    m: &twilight_model::channel::Message,
+    mapas: &Mutex<HashMap<String, ServerMap>>,
+) -> Option<Entrada> {
+    let guild = m.guild_id?;
+    let (servidor, canal) = {
+        let mapas = mapas.lock().unwrap();
+        let mapa = mapas.get(&guild.to_string());
+        (
+            mapa.map(|x| x.guild.name.clone())
+                .unwrap_or_else(|| guild.to_string()),
+            mapa.and_then(|x| {
+                x.channels
+                    .iter()
+                    .find(|c| c.id == m.channel_id.to_string())
+                    .map(|c| c.name.clone())
+            })
+            .unwrap_or_else(|| m.channel_id.to_string()),
+        )
+    };
+    Some(Entrada {
+        msg: MensajeEntrante {
+            autor_id: m.author.id.get(),
+            autor_es_bot: m.author.bot,
+            canal_id: m.channel_id.get(),
+            menciones: m.mentions.iter().map(|u| u.id.get()).collect(),
+            responde_a_autor: m.referenced_message.as_ref().map(|r| r.author.id.get()),
+        },
+        mensaje_id: m.id.get(),
+        guild_id: guild.get(),
+        texto: m.content.clone(),
+        autor_nombre: m
+            .author
+            .global_name
+            .clone()
+            .unwrap_or_else(|| m.author.name.clone()),
+        servidor,
+        canal,
+    })
+}
+
+/// Crea el conversador de un bot: sus avisos van a Logs (evento `bot-log`).
+fn conversador(app: &AppHandle, token: &str, bot_id: u64) -> Conversador {
+    let app = app.clone();
+    Conversador {
+        token: token.to_string(),
+        base_url: None,
+        bot_id,
+        coord: Arc::new(Coordinador::default()),
+        limite: LIMITE_AGENTE,
+        registro: Arc::new(move |texto| {
+            let lang = app
+                .try_state::<crate::state::AppState>()
+                .map(|s| crate::i18n::idioma(&s))
+                .unwrap_or_else(|| crate::i18n::IDIOMA_DEFECTO.to_string());
+            let texto = crate::i18n::tr(&lang, &texto);
+            if let Err(e) = app.emit("bot-log", texto) {
+                tracing::warn!("No se pudo emitir bot-log: {e}");
+            }
+        }),
+        buscar_agente: Arc::new(|nombre| {
+            crate::asistente::buscar_binario(nombre, &crate::asistente::carpetas_busqueda())
+        }),
+    }
 }
 
 /// Aplica un evento a todos los mapas (cada uno ignora los de otros servidores).
@@ -80,8 +151,13 @@ pub fn lanzar(
     mapas: Arc<Mutex<HashMap<String, ServerMap>>>,
     estado: Arc<Mutex<crate::state::BotStatus>>,
     pool: Option<sqlx::SqlitePool>,
+    bot_id: String,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
+        let conversador = bot_id
+            .parse::<u64>()
+            .ok()
+            .map(|id| conversador(&app, &token, id));
         let notify = Arc::new(Notify::new());
         let app_estado = app.clone();
         let _avisos = AbortAlSoltar(tokio::spawn(avisar_con_debounce(
@@ -96,6 +172,24 @@ pub fn lanzar(
         loop {
             match shard.next_event().await {
                 Ok(evento) => {
+                    if let (Event::MessageCreate(m), Some(conv), Some(pool)) =
+                        (&evento, &conversador, &pool)
+                    {
+                        if let Some(entrada) = entrada_de(m, &mapas) {
+                            let (conv, pool, bot_id) = (conv.clone(), pool.clone(), bot_id.clone());
+                            tokio::spawn(async move {
+                                let guild = entrada.guild_id.to_string();
+                                match crate::db::get_guild_settings(&pool, &bot_id, &guild).await {
+                                    Ok(ajustes) => {
+                                        conv.atender(entrada, &ajustes).await;
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!("No se pudieron leer los ajustes: {e}")
+                                    }
+                                }
+                            });
+                        }
+                    }
                     let cambios = aplicar_a_mapas(&mapas, &evento);
                     for (guild_id, cambio) in &cambios {
                         tracing::info!("Mapa actualizado: {}", cambio.tipo);
@@ -135,8 +229,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn intents_son_guilds_y_miembros() {
-        assert_eq!(intents(), Intents::GUILDS | Intents::GUILD_MEMBERS);
+    fn intents_son_guilds_miembros_y_mensajes() {
+        assert_eq!(
+            intents(),
+            Intents::GUILDS | Intents::GUILD_MEMBERS | Intents::GUILD_MESSAGES
+        );
+        assert!(!intents().contains(Intents::MESSAGE_CONTENT));
     }
 
     #[tokio::test]

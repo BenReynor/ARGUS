@@ -17,7 +17,7 @@ import { aplicarTema } from './temas';
 import { setIdioma, t } from './i18n';
 import { pasoCarga, finCarga } from './carga';
 import { useBotStatus, useShowNotification } from './store/useStore';
-import { getConfig, getBotStatus, refreshServerMap, getServerMap, onMapUpdated, onSyncProgress, onBotStatusChange } from './api/tauri';
+import { getConfig, getBotStatus, refreshServerMap, getServerMap, onMapUpdated, onSyncProgress, onBotStatusChange, onLog } from './api/tauri';
 
 function App() {
   const setConfig = useStore((s) => s.setConfig);
@@ -73,6 +73,7 @@ function App() {
         if (p.step >= p.total) recargarMapa();
       }),
       onBotStatusChange(setBotStatus),
+      onLog((texto) => useStore.getState().addLog(texto)),
     ];
 
     return () => {
