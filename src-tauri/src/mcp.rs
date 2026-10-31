@@ -1480,6 +1480,137 @@ pub const HERRAMIENTAS_ESCRITURA: &[&str] = &[
     "borrar_webhook",
 ];
 
+fn args_de<T: serde::de::DeserializeOwned>(
+    nombre: &str,
+    args: serde_json::Value,
+) -> Result<T, String> {
+    serde_json::from_value(args).map_err(|e| format!("Invalid arguments for «{nombre}»: {e}"))
+}
+
+impl ArgusMcp {
+    /// Ejecuta una herramienta de escritura por nombre con la misma lógica que
+    /// el MCP (permisos, jerarquía y mensajes). Rechaza nombres desconocidos,
+    /// herramientas de lectura y argumentos inválidos.
+    pub async fn ejecutar_accion(
+        &self,
+        nombre: &str,
+        args: serde_json::Value,
+    ) -> Result<String, String> {
+        let r = self.despachar_accion(nombre, args).await;
+        self.salida(r)
+    }
+
+    async fn despachar_accion(
+        &self,
+        nombre: &str,
+        args: serde_json::Value,
+    ) -> Result<String, String> {
+        if !HERRAMIENTAS_ESCRITURA.contains(&nombre) {
+            return Err(if HERRAMIENTAS_LECTURA.contains(&nombre) {
+                format!("«{nombre}» is a read-only tool, not an action")
+            } else {
+                format!("Unknown action: «{nombre}»")
+            });
+        }
+        match nombre {
+            "elegir_servidor" => {
+                let p: ElegirServidorParams = args_de(nombre, args)?;
+                self.elegir_servidor_json(&p.guild_id).await
+            }
+            "enviar_mensaje" => {
+                let p: EnviarMensajeParams = args_de(nombre, args)?;
+                self.enviar_mensaje_json(&p.channel_id, &p.contenido).await
+            }
+            "enviar_dm" => {
+                let p: EnviarDmParams = args_de(nombre, args)?;
+                self.enviar_dm_json(&p.user_id, &p.contenido).await
+            }
+            "borrar_mensaje" => {
+                let p: MensajeParams = args_de(nombre, args)?;
+                self.borrar_mensaje_json(p.guild_id.as_deref(), &p.channel_id, &p.message_id)
+                    .await
+            }
+            "borrar_mensajes" => {
+                let p: BorrarMensajesParams = args_de(nombre, args)?;
+                self.borrar_mensajes_json(p.guild_id.as_deref(), &p.channel_id, &p.message_ids)
+                    .await
+            }
+            "fijar_mensaje" | "desfijar_mensaje" => {
+                let p: MensajeParams = args_de(nombre, args)?;
+                self.fijar_mensaje_json(
+                    p.guild_id.as_deref(),
+                    &p.channel_id,
+                    &p.message_id,
+                    nombre == "fijar_mensaje",
+                )
+                .await
+            }
+            "crear_canal" => self.crear_canal_json(&args_de(nombre, args)?).await,
+            "editar_canal" => self.editar_canal_json(&args_de(nombre, args)?).await,
+            "borrar_canal" => {
+                let p: CanalParams = args_de(nombre, args)?;
+                self.borrar_canal_json(p.guild_id.as_deref(), &p.channel_id)
+                    .await
+            }
+            "ordenar_canales" => {
+                let p: OrdenarParams = args_de(nombre, args)?;
+                self.ordenar_canales_json(p.guild_id.as_deref(), &p.posiciones)
+                    .await
+            }
+            "crear_rol" => self.crear_rol_json(&args_de(nombre, args)?).await,
+            "editar_rol" => self.editar_rol_json(&args_de(nombre, args)?).await,
+            "borrar_rol" => {
+                let p: RolParams = args_de(nombre, args)?;
+                self.borrar_rol_json(p.guild_id.as_deref(), &p.role_id)
+                    .await
+            }
+            "ordenar_roles" => {
+                let p: OrdenarParams = args_de(nombre, args)?;
+                self.ordenar_roles_json(p.guild_id.as_deref(), &p.posiciones)
+                    .await
+            }
+            "dar_rol" | "quitar_rol" => {
+                let p: RolMiembroParams = args_de(nombre, args)?;
+                self.cambiar_rol_json(
+                    p.guild_id.as_deref(),
+                    &p.user_id,
+                    &p.role_id,
+                    nombre == "dar_rol",
+                )
+                .await
+            }
+            "permiso_canal" => self.permiso_canal_json(&args_de(nombre, args)?).await,
+            "quitar_permiso_canal" => {
+                let p: QuitarPermisoCanalParams = args_de(nombre, args)?;
+                self.quitar_permiso_canal_json(&p).await
+            }
+            "expulsar" => self.expulsar_json(&args_de(nombre, args)?).await,
+            "banear" => self.banear_json(&args_de(nombre, args)?).await,
+            "desbanear" => {
+                let p: ExpulsarParams = args_de(nombre, args)?;
+                self.desbanear_json(p.guild_id.as_deref(), &p.user_id, p.motivo.as_deref())
+                    .await
+            }
+            "silenciar" => self.silenciar_json(&args_de(nombre, args)?).await,
+            "cambiar_apodo" => self.cambiar_apodo_json(&args_de(nombre, args)?).await,
+            "editar_servidor" => self.editar_servidor_json(&args_de(nombre, args)?).await,
+            "crear_invitacion" => self.crear_invitacion_json(&args_de(nombre, args)?).await,
+            "borrar_invitacion" => {
+                let p: BorrarInvitacionParams = args_de(nombre, args)?;
+                self.borrar_invitacion_json(p.guild_id.as_deref(), &p.codigo)
+                    .await
+            }
+            "crear_webhook" => self.crear_webhook_json(&args_de(nombre, args)?).await,
+            "borrar_webhook" => {
+                let p: BorrarWebhookParams = args_de(nombre, args)?;
+                self.borrar_webhook_json(p.guild_id.as_deref(), &p.webhook_id)
+                    .await
+            }
+            _ => Err(format!("Unknown action: «{nombre}»")),
+        }
+    }
+}
+
 #[tool_router]
 impl ArgusMcp {
     #[tool(
@@ -3688,5 +3819,83 @@ mod tests {
         assert!(banear.input_schema["properties"]["motivo"].is_object());
         let silenciar = tools.iter().find(|t| t.name == "silenciar").unwrap();
         assert!(silenciar.input_schema["properties"]["minutos"].is_object());
+    }
+
+    #[tokio::test]
+    async fn ejecutar_accion_usa_la_logica_del_mcp() {
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_CANALES | GESTIONAR_ROLES, true).await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "Mods", "permissions": "9216"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(rol("1000", "Mods", 1, 9216)))
+            .expect(1)
+            .mount(&s)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "avisos", "type": 0, "topic": "t"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"id": "20", "type": 0, "guild_id": "555", "name": "avisos", "position": 4}),
+            ))
+            .expect(1)
+            .mount(&s)
+            .await;
+        Mock::given(method("PUT"))
+            .and(path("/api/v10/channels/11/permissions/700"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"allow": "9216", "deny": "2048", "type": 0}),
+            ))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&s)
+            .await;
+
+        let r = v(mcp
+            .ejecutar_accion(
+                "crear_rol",
+                json!({"nombre": "Mods", "permisos": ["ManageMessages", "ViewChannel"]}),
+            )
+            .await
+            .unwrap());
+        assert_eq!(r["rol"]["id"], "1000");
+        let r = v(mcp
+            .ejecutar_accion("crear_canal", json!({"nombre": "avisos", "tema": "t"}))
+            .await
+            .unwrap());
+        assert_eq!(r["canal"]["id"], "20");
+        let r = mcp
+            .ejecutar_accion(
+                "permiso_canal",
+                json!({"channel_id": "11", "target_id": "700", "tipo": "rol",
+                       "permitir": ["ManageMessages", "ViewChannel"], "denegar": "2048"}),
+            )
+            .await
+            .unwrap();
+        assert!(r.contains("updated"));
+
+        // Nombre inventado, herramienta de lectura y argumentos inválidos.
+        let e = mcp.ejecutar_accion("inventada", json!({})).await;
+        assert!(e.unwrap_err().contains("Unknown action"));
+        let e = mcp.ejecutar_accion("listar_roles", json!({})).await;
+        assert!(e.unwrap_err().contains("read-only"));
+        let e = mcp.ejecutar_accion("crear_rol", json!({"color": 1})).await;
+        assert!(e.unwrap_err().contains("Invalid arguments"));
+    }
+
+    #[tokio::test]
+    async fn ejecutar_accion_respeta_los_permisos() {
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_MENSAJES, true).await;
+        prohibir_cambios(&s).await;
+        let e = mcp
+            .ejecutar_accion("crear_canal", json!({"nombre": "x"}))
+            .await;
+        assert_eq!(
+            e.unwrap_err(),
+            "The bot is missing the permission «Manage Channels»"
+        );
     }
 }
