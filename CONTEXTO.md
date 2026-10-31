@@ -43,6 +43,22 @@ en vivo y, más adelante, darle personalidad y automatismos.
 - Pendiente: la verificación manual de la FASE 4 en el servidor de pruebas y
   probar `argus-mcp` con un cliente MCP real; Windows solo está probado en CI.
 
+## Asistente IA (FASE 10): la función principal
+
+Construir servidores enormes en minutos: el usuario escribe el **plan del
+servidor** (Markdown, uno por servidor) y habla con un agente por línea de
+comandos (`claude` u `opencode`, modelo a elegir) en un chat dentro de ARGUS.
+
+- El agente solo se conecta a `argus-mcp` y **solo tiene herramientas de
+  lectura**. En modo Read conversa; en modo Execute devuelve una **propuesta
+  estructurada** (lista de acciones de las herramientas de escritura).
+- **El usuario aprueba** la propuesta (Apply) y es **ARGUS quien la ejecuta**,
+  en orden (roles → categorías → canales → permisos → roles de miembros), con
+  la misma lógica y chequeos que las herramientas MCP. Lo ejecutado es
+  exactamente lo aprobado.
+- Plan y conversación se guardan por servidor; la sesión del agente se reanuda.
+- El token del bot nunca se pasa al agente: argus-mcp lo lee de la BD.
+
 ## Después del MVP (visión, sin criterios todavía)
 
 Cada bloque se convierte en tareas con `criterio:` cuando le toque.
