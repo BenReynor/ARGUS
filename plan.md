@@ -414,7 +414,7 @@ Verificación manual:
 ## FASE 14 — Asistente de moderación: órdenes, avisos, búsquedas y análisis
 Separar **construir** el servidor de **gestionarlo**. Nueva pestaña **Moderation** en la sección AI Assistant: un chat con su propia conversación por servidor, centrado en miembros y mensajes, que usa el mismo motor que el constructor (agente solo con herramientas de lectura; en Execute devuelve una propuesta que el usuario aprueba y ARGUS aplica). Sirve para órdenes («expulsa a X», «silencia a Y una hora», «borra los mensajes de Z en #general»), **avisos** (warnings, que Discord no tiene: ARGUS los registra y se los manda por DM al usuario), **búsquedas** («¿alguien dijo X? ponle un aviso») y **análisis** sin tocar nada («lee #juicio y dime quién es inocente o culpable», citando las pruebas). Toda la UI nueva con `t()`. Tests con el Discord falso y agentes falsos.
 
-- [ ] Buscar mensajes (herramienta de lectura)
+- [x] Buscar mensajes (herramienta de lectura)
   criterio: nueva herramienta MCP de lectura `buscar_mensajes` (en `HERRAMIENTAS_LECTURA`) con `texto` (sin distinguir mayúsculas ni tildes), `canales` opcional (IDs o nombres; por defecto todos los de texto que el bot puede leer), `autor` opcional y `limite_por_canal` (por defecto 100, máximo 500); como los bots no pueden usar la búsqueda de Discord, lee el historial reciente de cada canal y filtra en local; devuelve las coincidencias (canal, autor con id y nombre, id del mensaje, enlace, fecha y fragmento) y cuántos mensajes revisó por canal; tests contra el Discord falso (coincidencias en dos canales, filtro por autor, sin resultados, límite)
 
 - [ ] Avisos (warnings)
