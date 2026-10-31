@@ -17,10 +17,12 @@ use twilight_model::id::Id;
 
 use crate::asistente::{clasificar_error, OrdenAgente};
 use crate::chat::{
-    debe_responder, orden_chat, prompt_chat, separar_orden, MensajeContexto, MensajeEntrante,
+    confirmacion_de, debe_responder, orden_chat, prompt_chat, separar_orden, Confirmacion,
+    MensajeContexto, MensajeEntrante,
 };
 use crate::db::GuildSettings;
 use crate::discord::{build_client, traducir_error, MAX_LONGITUD_MENSAJE};
+use crate::propuesta::{con_servidor, EstadoAccion, Propuesta, ResultadoAccion, ResumenPropuesta};
 
 /// Agentes simultáneos en total.
 pub const MAX_AGENTES: usize = 3;
@@ -35,6 +37,42 @@ pub struct Coordinador {
     ultimas: Mutex<HashMap<(u64, u64), u64>>,
     /// Servidores con un constructor de propuestas en marcha.
     constructores: Mutex<HashSet<u64>>,
+    /// Propuestas esperando el «sí» de su autor, por (servidor, canal, autor).
+    pendientes: Mutex<HashMap<(u64, u64, u64), Pendiente>>,
+    /// Servidores donde se está aplicando una propuesta.
+    aplicando: Mutex<HashSet<u64>>,
+    /// Cuánto vive una propuesta pendiente.
+    caducidad: Duration,
+}
+
+/// Tiempo que una propuesta espera el «sí».
+pub const CADUCIDAD_PROPUESTA: Duration = Duration::from_secs(300);
+
+/// Una propuesta publicada que espera confirmación.
+pub struct Pendiente {
+    propuesta: Propuesta,
+    /// Mensaje del bot que la publicó.
+    mensaje_id: u64,
+    creada: Instant,
+}
+
+/// Qué hay pendiente para una clave (se retira al consultarlo).
+pub enum EstadoPendiente {
+    Ninguna,
+    Caducada,
+    Vigente(Pendiente),
+}
+
+/// Reserva de «aplicando» de un servidor: se libera al soltarla.
+pub struct GuardiaAplicacion {
+    coord: Arc<Coordinador>,
+    guild: u64,
+}
+
+impl Drop for GuardiaAplicacion {
+    fn drop(&mut self) {
+        self.coord.aplicando.lock().unwrap().remove(&self.guild);
+    }
 }
 
 /// Reserva del constructor de un servidor: se libera al soltarla.
@@ -57,12 +95,73 @@ impl Default for Coordinador {
 
 impl Coordinador {
     pub fn nuevo(max_agentes: usize) -> Self {
+        Self::con_caducidad(max_agentes, CADUCIDAD_PROPUESTA)
+    }
+
+    pub fn con_caducidad(max_agentes: usize, caducidad: Duration) -> Self {
         Self {
             canales: Mutex::new(HashMap::new()),
             agentes: Arc::new(Semaphore::new(max_agentes)),
             ultimas: Mutex::new(HashMap::new()),
             constructores: Mutex::new(HashSet::new()),
+            pendientes: Mutex::new(HashMap::new()),
+            aplicando: Mutex::new(HashSet::new()),
+            caducidad,
         }
+    }
+
+    /// Guarda una propuesta pendiente (sustituye la anterior de la misma clave)
+    /// y olvida las caducadas.
+    pub fn guardar_pendiente(&self, clave: (u64, u64, u64), propuesta: Propuesta, mensaje_id: u64) {
+        let mut p = self.pendientes.lock().unwrap();
+        p.retain(|_, v| v.creada.elapsed() < self.caducidad);
+        p.insert(
+            clave,
+            Pendiente {
+                propuesta,
+                mensaje_id,
+                creada: Instant::now(),
+            },
+        );
+    }
+
+    /// Retira la propuesta pendiente de la clave.
+    pub fn sacar_pendiente(&self, clave: (u64, u64, u64)) -> EstadoPendiente {
+        match self.pendientes.lock().unwrap().remove(&clave) {
+            None => EstadoPendiente::Ninguna,
+            Some(p) if p.creada.elapsed() >= self.caducidad => EstadoPendiente::Caducada,
+            Some(p) => EstadoPendiente::Vigente(p),
+        }
+    }
+
+    /// ¿Hay en ese canal una propuesta vigente de otro autor publicada en `mensaje`?
+    fn es_de_otro(&self, guild: u64, canal: u64, autor: u64, mensaje: Option<u64>) -> bool {
+        let Some(mensaje) = mensaje else {
+            return false;
+        };
+        self.pendientes.lock().unwrap().iter().any(|(k, v)| {
+            k.0 == guild
+                && k.1 == canal
+                && k.2 != autor
+                && v.mensaje_id == mensaje
+                && v.creada.elapsed() < self.caducidad
+        })
+    }
+
+    /// Marca el servidor como «aplicando»; `None` si ya se está aplicando algo.
+    pub fn tomar_aplicacion(self: &Arc<Self>, guild: u64) -> Option<GuardiaAplicacion> {
+        self.aplicando
+            .lock()
+            .unwrap()
+            .insert(guild)
+            .then(|| GuardiaAplicacion {
+                coord: self.clone(),
+                guild,
+            })
+    }
+
+    pub fn esta_aplicando(&self, guild: u64) -> bool {
+        self.aplicando.lock().unwrap().contains(&guild)
     }
 
     /// Reserva el constructor del servidor; `None` si ya hay uno en marcha.
@@ -146,6 +245,7 @@ pub enum Resultado {
 type Registro = Arc<dyn Fn(String) + Send + Sync>;
 type BuscarAgente = Arc<dyn Fn(&str) -> Option<PathBuf> + Send + Sync>;
 type FuturoPlan = Pin<Box<dyn Future<Output = String> + Send>>;
+type FuturoAplicar = Pin<Box<dyn Future<Output = Result<Vec<ResultadoAccion>, String>> + Send>>;
 
 /// Tiempo máximo del constructor de propuestas (lee el servidor con varias herramientas).
 pub const LIMITE_CONSTRUCTOR: Duration = Duration::from_secs(600);
@@ -161,6 +261,8 @@ pub struct ContextoOrdenes {
     pub leer_plan: Arc<dyn Fn(u64) -> FuturoPlan + Send + Sync>,
     /// Roles y canales conocidos del servidor, para validar.
     pub nombres: Arc<dyn Fn(u64) -> crate::propuesta::Nombres + Send + Sync>,
+    /// Aplica la propuesta (ya con el servidor puesto): `ejecutar_propuesta`.
+    pub aplicar: Arc<dyn Fn(Propuesta) -> FuturoAplicar + Send + Sync>,
     /// Idioma de la interfaz.
     pub idioma: Arc<dyn Fn() -> String + Send + Sync>,
 }
@@ -307,6 +409,9 @@ impl Conversador {
 
     /// Decide, encola y responde. No devuelve error: lo que falle queda en Logs.
     pub async fn atender(&self, e: Entrada, ajustes: &GuildSettings) -> Resultado {
+        if let Some(r) = self.confirmacion(&e).await {
+            return r;
+        }
         let ahora = ahora_s();
         let ultima = self.coord.ultima(e.guild_id, e.msg.autor_id);
         if !debe_responder(&e.msg, self.bot_id, ajustes, ultima, ahora) {
@@ -344,6 +449,98 @@ impl Conversador {
             }
             Err(m) => Resultado::Error(m),
         }
+    }
+
+    /// Trata «sí»/«no» sobre una propuesta pendiente de este autor en este canal.
+    /// `None` si el mensaje no tiene que ver (sigue el flujo normal).
+    async fn confirmacion(&self, e: &Entrada) -> Option<Resultado> {
+        if e.msg.autor_es_bot {
+            return None;
+        }
+        let accion = confirmacion_de(&e.texto)?;
+        let clave = (e.guild_id, e.msg.canal_id, e.msg.autor_id);
+        let idioma = (self.ordenes.idioma)();
+        match self.coord.sacar_pendiente(clave) {
+            EstadoPendiente::Ninguna => {
+                // El «sí» de otra persona a la propuesta de alguien no hace nada.
+                self.coord
+                    .es_de_otro(
+                        e.guild_id,
+                        e.msg.canal_id,
+                        e.msg.autor_id,
+                        e.msg.responde_a_mensaje,
+                    )
+                    .then_some(Resultado::Ignorado)
+            }
+            // Una propuesta caducada no hace nada.
+            EstadoPendiente::Caducada => Some(Resultado::Ignorado),
+            EstadoPendiente::Vigente(p) => match accion {
+                Confirmacion::Descartar => {
+                    self.log(format!(
+                        "[ORDER] Proposal discarded by {} in {} #{}",
+                        e.autor_nombre, e.servidor, e.canal
+                    ));
+                    let aviso = crate::i18n::tr(&idioma, "Proposal discarded");
+                    self.avisar(e, &aviso).await;
+                    Some(Resultado::Respondido)
+                }
+                Confirmacion::Aplicar => {
+                    let Some(guardia) = self.coord.tomar_aplicacion(e.guild_id) else {
+                        // Otra propuesta se está aplicando: esta sigue esperando.
+                        self.coord
+                            .guardar_pendiente(clave, p.propuesta, p.mensaje_id);
+                        let aviso = crate::i18n::tr(&idioma, MOTIVO_APLICANDO);
+                        self.avisar(e, &aviso).await;
+                        return Some(Resultado::Respondido);
+                    };
+                    self.aplicar_propuesta(e, p.propuesta, &idioma).await;
+                    drop(guardia);
+                    Some(Resultado::Respondido)
+                }
+            },
+        }
+    }
+
+    /// Avisa en el canal; un fallo solo queda en el log técnico.
+    async fn avisar(&self, e: &Entrada, texto: &str) {
+        if let Err(err) = self.enviar(e, texto).await {
+            tracing::warn!("No se pudo avisar en el canal: {err}");
+        }
+    }
+
+    /// Aplica la propuesta (el llamador ya reservó el servidor) y publica el resultado.
+    async fn aplicar_propuesta(&self, e: &Entrada, propuesta: Propuesta, idioma: &str) {
+        let propuesta = con_servidor(&propuesta, &e.guild_id.to_string());
+        let total = propuesta.acciones.len();
+        self.log(format!(
+            "[ORDER] Applying the proposal of {} in {} #{}: {} actions",
+            e.autor_nombre, e.servidor, e.canal, total
+        ));
+        let inicio = Instant::now();
+        let texto = match (self.ordenes.aplicar)(propuesta).await {
+            Ok(resultados) => {
+                let r = ResumenPropuesta::de(total, resultados);
+                self.log(format!(
+                    "[ORDER] Applied the proposal of {} in {} #{}: {} done, {} with errors in {} ms",
+                    e.autor_nombre,
+                    e.servidor,
+                    e.canal,
+                    r.hechas,
+                    r.fallidas + r.omitidas,
+                    inicio.elapsed().as_millis()
+                ));
+                texto_resultado(&r, idioma)
+            }
+            Err(motivo) => {
+                let motivo = crate::i18n::tr(idioma, &motivo);
+                self.log(format!(
+                    "[WARN] Could not apply the proposal in {} #{} for {}: {}",
+                    e.servidor, e.canal, e.autor_nombre, motivo
+                ));
+                crate::i18n::tr(idioma, &format!("I could not apply the proposal: {motivo}"))
+            }
+        };
+        self.avisar(e, &texto).await;
     }
 
     /// Responde al mensaje y devuelve la orden detectada, si la hay.
@@ -394,6 +591,11 @@ impl Conversador {
             "[ORDER] Order from {} in {} #{}: {}",
             e.autor_nombre, e.servidor, e.canal, orden
         ));
+        // Mientras se aplica una propuesta, no se acepta otra orden en el servidor.
+        if self.coord.esta_aplicando(e.guild_id) {
+            self.fallo_orden(e, &idioma, MOTIVO_APLICANDO).await;
+            return;
+        }
         let Some(_guardia) = self.coord.tomar_constructor(e.guild_id) else {
             let motivo = "Another proposal is already being prepared in this server";
             self.fallo_orden(e, &idioma, motivo).await;
@@ -415,14 +617,28 @@ impl Conversador {
                 let texto =
                     texto_propuesta(&ev, ajustes.chat_ordenes_confirmar, &idioma, MAX_PROPUESTA);
                 match self.enviar(e, &texto).await {
-                    Ok(()) => self.log(format!(
-                        "[ORDER] Proposal for {} in {} #{}: {} actions in {} ms",
-                        e.autor_nombre,
-                        e.servidor,
-                        e.canal,
-                        ev.propuesta.acciones.len(),
-                        inicio.elapsed().as_millis()
-                    )),
+                    Ok(mensaje_id) => {
+                        self.log(format!(
+                            "[ORDER] Proposal for {} in {} #{}: {} actions in {} ms",
+                            e.autor_nombre,
+                            e.servidor,
+                            e.canal,
+                            ev.propuesta.acciones.len(),
+                            inicio.elapsed().as_millis()
+                        ));
+                        if ajustes.chat_ordenes_confirmar {
+                            self.coord.guardar_pendiente(
+                                (e.guild_id, e.msg.canal_id, e.msg.autor_id),
+                                ev.propuesta,
+                                mensaje_id,
+                            );
+                        } else if let Some(guardia) = self.coord.tomar_aplicacion(e.guild_id) {
+                            self.aplicar_propuesta(e, ev.propuesta, &idioma).await;
+                            drop(guardia);
+                        } else {
+                            self.fallo_orden(e, &idioma, MOTIVO_APLICANDO).await;
+                        }
+                    }
                     Err(err) => self.log(format!(
                         "[WARN] Could not prepare the proposal in {} #{} for {}: {}",
                         e.servidor, e.canal, e.autor_nombre, err
@@ -516,17 +732,20 @@ impl Conversador {
         }
     }
 
-    async fn enviar(&self, e: &Entrada, respuesta: &str) -> Result<(), String> {
+    /// Publica la respuesta y devuelve el id del primer mensaje publicado (0 si
+    /// Discord no lo devolvió legible).
+    async fn enviar(&self, e: &Entrada, respuesta: &str) -> Result<u64, String> {
         let client = build_client(&self.token, self.base_url.as_deref());
         let cid = Id::new_checked(e.msg.canal_id).ok_or("Invalid channel ID")?;
         let mid = Id::new_checked(e.mensaje_id).ok_or("Invalid message ID")?;
+        let mut primero = 0;
         for (i, trozo) in partir_mensaje(respuesta, MAX_LONGITUD_MENSAJE)
             .iter()
             .enumerate()
         {
             // Solo el primer trozo avisa al autor.
             let permitidas = menciones_permitidas(e.msg.autor_id, i == 0);
-            client
+            let publicado = client
                 .create_message(cid)
                 .reply(mid)
                 .fail_if_not_exists(false)
@@ -535,9 +754,54 @@ impl Conversador {
                 .map_err(|err| format!("Invalid message: {err}"))?
                 .await
                 .map_err(traducir_error)?;
+            if i == 0 {
+                primero = publicado
+                    .model()
+                    .await
+                    .map(|m| m.id.get())
+                    .unwrap_or_default();
+            }
         }
-        Ok(())
+        Ok(primero)
     }
+}
+
+/// Motivo cuando ya se está aplicando una propuesta en el servidor.
+const MOTIVO_APLICANDO: &str = "A proposal is being applied in this server";
+/// Errores que se listan al publicar el resultado.
+const MAX_ERRORES: usize = 10;
+
+/// Resultado de aplicar: «Hecho: N cambios, M con error» y los errores.
+pub fn texto_resultado(r: &ResumenPropuesta, idioma: &str) -> String {
+    let fallos = r.fallidas + r.omitidas;
+    let mut texto = crate::i18n::tr(
+        idioma,
+        &format!("Done: {} changes, {} with errors", r.hechas, fallos),
+    );
+    let con_error: Vec<&ResultadoAccion> = r
+        .resultados
+        .iter()
+        .filter(|x| x.estado != EstadoAccion::Ok)
+        .collect();
+    for x in con_error.iter().take(MAX_ERRORES) {
+        let mensaje: String = x.mensaje.chars().take(200).collect();
+        texto.push_str(&format!("\n• {}: {}", x.descripcion, mensaje));
+    }
+    if con_error.len() > MAX_ERRORES {
+        texto.push('\n');
+        texto.push_str(&crate::i18n::tr(
+            idioma,
+            &format!("…and {} more errors", con_error.len() - MAX_ERRORES),
+        ));
+    }
+    if r.canceladas > 0 {
+        texto.push('\n');
+        texto.push_str(&crate::i18n::tr(
+            idioma,
+            &format!("{} actions were not attempted", r.canceladas),
+        ));
+    }
+    texto
 }
 
 /// Texto que se publica: resumen y cambios agrupados (como mucho `max` caracteres;
@@ -621,6 +885,7 @@ mod tests {
                 ruta_mcp: Arc::new(|| Ok("/opt/argus-mcp".to_string())),
                 leer_plan: Arc::new(|_| Box::pin(async { "PLAN-DEL-SERVIDOR".to_string() })),
                 nombres: Arc::new(|_| crate::propuesta::Nombres::default()),
+                aplicar: Arc::new(|_| Box::pin(async { Ok(Vec::new()) })),
                 idioma: Arc::new(|| "en".to_string()),
             },
         };
@@ -856,7 +1121,8 @@ EOF"#;
         );
         c.atender(entrada(1, true), &ajustes_ordenes(false)).await;
         let t = textos(&envios(&server).await);
-        assert_eq!(t.len(), 3, "{t:?}");
+        // Aviso, propuesta (sin pedir el «sí») y el resultado de aplicarla.
+        assert_eq!(t.len(), 4, "{t:?}");
         assert!(!t[2].contains("Reply **yes**"));
     }
 
@@ -922,6 +1188,252 @@ EOF"#;
         assert!(!dir.join("stdin.txt").exists());
         drop(guardia);
         assert!(c.coord.tomar_constructor(555).is_some());
+    }
+
+    type Aplicadas = Arc<Mutex<Vec<Propuesta>>>;
+
+    /// Sustituye el aplicador por uno falso que anota lo recibido y devuelve un
+    /// resultado correcto por acción.
+    fn aplicador_falso(c: &mut Conversador) -> Aplicadas {
+        let aplicadas: Aplicadas = Arc::new(Mutex::new(Vec::new()));
+        let a = aplicadas.clone();
+        c.ordenes.aplicar = Arc::new(move |p| {
+            a.lock().unwrap().push(p.clone());
+            Box::pin(async move {
+                Ok(p.acciones
+                    .iter()
+                    .enumerate()
+                    .map(|(indice, x)| ResultadoAccion {
+                        indice,
+                        herramienta: x.herramienta.clone(),
+                        descripcion: x.descripcion.clone(),
+                        estado: EstadoAccion::Ok,
+                        mensaje: "ok".into(),
+                    })
+                    .collect())
+            })
+        });
+        aplicadas
+    }
+
+    /// Mensaje de confirmación: responde a la propuesta publicada (id 600).
+    fn confirmar(autor: u64, texto: &str) -> Entrada {
+        let mut e = entrada(autor, false);
+        e.mensaje_id = 700;
+        e.texto = texto.into();
+        e.msg.responde_a_mensaje = Some(600);
+        e
+    }
+
+    /// Prepara una propuesta del autor 1 con confirmación y devuelve cuántos
+    /// mensajes se publicaron hasta ahora.
+    async fn con_propuesta_pendiente(c: &Conversador, server: &MockServer) -> usize {
+        let r = c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
+        assert_eq!(r, Resultado::Respondido);
+        let n = envios(server).await.len();
+        assert_eq!(n, 3);
+        n
+    }
+
+    #[tokio::test]
+    async fn el_si_del_autor_aplica_la_propuesta_una_sola_vez() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (mut c, logs) = conversador(
+            &server,
+            agente_con_orden("conf-aplica", PROPUESTA_OK),
+            LIMITE_AGENTE,
+        );
+        let aplicadas = aplicador_falso(&mut c);
+        let antes = con_propuesta_pendiente(&c, &server).await;
+        assert!(aplicadas.lock().unwrap().is_empty());
+
+        let r = c.atender(confirmar(1, "Sí"), &ajustes_ordenes(true)).await;
+        assert_eq!(r, Resultado::Respondido);
+        {
+            let a = aplicadas.lock().unwrap();
+            assert_eq!(a.len(), 1);
+            assert_eq!(a[0].acciones[0].herramienta, "crear_rol");
+            assert_eq!(a[0].acciones[0].args["guild_id"], "555");
+        }
+        let env = envios(&server).await;
+        let t = textos(&env);
+        assert_eq!(t.len(), antes + 1, "{t:?}");
+        assert_eq!(t[antes], "Done: 1 changes, 0 with errors");
+        assert_eq!(env[antes]["message_reference"]["message_id"], "700");
+
+        // Ya aplicada: un segundo «sí» no hace nada.
+        let r = c.atender(confirmar(1, "sí"), &ajustes_ordenes(true)).await;
+        assert_eq!(r, Resultado::Ignorado);
+        assert_eq!(aplicadas.lock().unwrap().len(), 1);
+        assert_eq!(envios(&server).await.len(), antes + 1);
+        assert!(logs
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|l| l.starts_with("[ORDER] Applied the proposal of Ana")));
+    }
+
+    #[tokio::test]
+    async fn el_si_de_otra_persona_no_hace_nada() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (mut c, _) = conversador(
+            &server,
+            agente_con_orden("conf-otro", PROPUESTA_OK),
+            LIMITE_AGENTE,
+        );
+        let aplicadas = aplicador_falso(&mut c);
+        let antes = con_propuesta_pendiente(&c, &server).await;
+
+        // Sin mención y con ella (respuesta al bot): se ignora igual.
+        let r = c.atender(confirmar(2, "sí"), &ajustes_ordenes(true)).await;
+        assert_eq!(r, Resultado::Ignorado);
+        let mut con_mencion = confirmar(2, "yes");
+        con_mencion.msg.menciones = vec![BOT];
+        con_mencion.msg.responde_a_autor = Some(BOT);
+        let r = c.atender(con_mencion, &ajustes_ordenes(true)).await;
+        assert_eq!(r, Resultado::Ignorado);
+        assert!(aplicadas.lock().unwrap().is_empty());
+        assert_eq!(envios(&server).await.len(), antes);
+
+        // La propuesta sigue esperando a su autor.
+        c.atender(confirmar(1, "ok"), &ajustes_ordenes(true)).await;
+        assert_eq!(aplicadas.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn una_propuesta_caducada_no_se_aplica() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (mut c, _) = conversador(
+            &server,
+            agente_con_orden("conf-caduca", PROPUESTA_OK),
+            LIMITE_AGENTE,
+        );
+        c.coord = Arc::new(Coordinador::con_caducidad(3, Duration::from_millis(300)));
+        let aplicadas = aplicador_falso(&mut c);
+        let antes = con_propuesta_pendiente(&c, &server).await;
+        tokio::time::sleep(Duration::from_millis(400)).await;
+
+        let r = c.atender(confirmar(1, "sí"), &ajustes_ordenes(true)).await;
+        assert_eq!(r, Resultado::Ignorado);
+        assert!(aplicadas.lock().unwrap().is_empty());
+        assert_eq!(envios(&server).await.len(), antes);
+        // Y ya no queda nada que confirmar.
+        let r = c.atender(confirmar(1, "sí"), &ajustes_ordenes(true)).await;
+        assert_eq!(r, Resultado::Ignorado);
+        assert!(aplicadas.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn cancelar_descarta_la_propuesta() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (mut c, _) = conversador(
+            &server,
+            agente_con_orden("conf-cancela", PROPUESTA_OK),
+            LIMITE_AGENTE,
+        );
+        let aplicadas = aplicador_falso(&mut c);
+        let antes = con_propuesta_pendiente(&c, &server).await;
+
+        let r = c
+            .atender(confirmar(1, "cancelar"), &ajustes_ordenes(true))
+            .await;
+        assert_eq!(r, Resultado::Respondido);
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), antes + 1);
+        assert_eq!(t[antes], "Proposal discarded");
+
+        let r = c.atender(confirmar(1, "sí"), &ajustes_ordenes(true)).await;
+        assert_eq!(r, Resultado::Ignorado);
+        assert!(aplicadas.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn sin_confirmacion_se_aplica_directamente_tras_prepararla() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (mut c, _) = conversador(
+            &server,
+            agente_con_orden("conf-directa", PROPUESTA_OK),
+            LIMITE_AGENTE,
+        );
+        let aplicadas = aplicador_falso(&mut c);
+        c.atender(entrada(1, true), &ajustes_ordenes(false)).await;
+        assert_eq!(aplicadas.lock().unwrap().len(), 1);
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), 4, "{t:?}");
+        assert!(!t[2].contains("Reply **yes**"));
+        assert_eq!(t[3], "Done: 1 changes, 0 with errors");
+        // Nada queda pendiente.
+        let r = c.atender(confirmar(1, "sí"), &ajustes_ordenes(false)).await;
+        assert_eq!(r, Resultado::Ignorado);
+        assert_eq!(aplicadas.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn mientras_se_aplica_no_se_acepta_otra_orden_en_el_servidor() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let agente = agente_con_orden("conf-ocupado", PROPUESTA_OK);
+        let dir = agente.parent().unwrap().to_path_buf();
+        let (mut c, _) = conversador(&server, agente, LIMITE_AGENTE);
+        let aplicadas = aplicador_falso(&mut c);
+        let antes = con_propuesta_pendiente(&c, &server).await;
+        let _ = std::fs::remove_file(dir.join("stdin.txt"));
+
+        let guardia = c.coord.tomar_aplicacion(555).expect("libre");
+        // Otra orden: se rechaza sin lanzar el constructor.
+        let otra = entrada(3, true);
+        let varios = GuildSettings {
+            chat_ordenes_usuarios: vec!["1".into(), "3".into()],
+            ..ajustes_ordenes(true)
+        };
+        c.atender(otra, &varios).await;
+        // Un «sí» mientras tanto avisa y la propuesta sigue pendiente.
+        c.atender(confirmar(1, "sí"), &varios).await;
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), antes + 3, "{t:?}");
+        assert_eq!(t[antes], "Voy a prepararlo.");
+        assert_eq!(
+            t[antes + 1],
+            "I could not prepare the proposal: A proposal is being applied in this server"
+        );
+        assert_eq!(t[antes + 2], "A proposal is being applied in this server");
+        assert!(!dir.join("stdin.txt").exists());
+        assert!(aplicadas.lock().unwrap().is_empty());
+
+        drop(guardia);
+        c.atender(confirmar(1, "sí"), &ajustes_ordenes(true)).await;
+        assert_eq!(aplicadas.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn el_resultado_cuenta_y_lista_los_errores() {
+        let r = |i: usize, estado: EstadoAccion, m: &str| ResultadoAccion {
+            indice: i,
+            herramienta: "crear_rol".into(),
+            descripcion: format!("Create {i}"),
+            estado,
+            mensaje: m.into(),
+        };
+        let resumen = ResumenPropuesta::de(
+            3,
+            vec![
+                r(0, EstadoAccion::Ok, "hecho"),
+                r(1, EstadoAccion::Error, "Missing permission"),
+                r(2, EstadoAccion::Omitida, "No role named X"),
+            ],
+        );
+        let t = texto_resultado(&resumen, "en");
+        assert_eq!(
+            t,
+            "Done: 1 changes, 2 with errors\n• Create 1: Missing permission\n• Create 2: No role named X"
+        );
+        let es = texto_resultado(&resumen, "es");
+        assert!(es.starts_with("Hecho: 1 cambios, 2 con error\n"), "{es}");
     }
 
     #[test]

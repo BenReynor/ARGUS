@@ -15,6 +15,35 @@ pub struct MensajeEntrante {
     pub menciones: Vec<u64>,
     /// Autor del mensaje al que responde, si es una respuesta.
     pub responde_a_autor: Option<u64>,
+    /// Id del mensaje al que responde, si es una respuesta.
+    pub responde_a_mensaje: Option<u64>,
+}
+
+/// Lo que el usuario contesta a una propuesta pendiente.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Confirmacion {
+    Aplicar,
+    Descartar,
+}
+
+/// «sí», «si», «yes», «ok» o «aplicar» aplican; «no» o «cancelar» descartan.
+/// Se ignoran mayúsculas, puntuación alrededor y las menciones (`<@id>`).
+pub fn confirmacion_de(texto: &str) -> Option<Confirmacion> {
+    let limpio: Vec<&str> = texto
+        .split_whitespace()
+        .filter(|p| !p.starts_with("<@"))
+        .collect();
+    if limpio.len() != 1 {
+        return None;
+    }
+    let palabra = limpio[0]
+        .trim_matches(|c: char| !c.is_alphanumeric())
+        .to_lowercase();
+    match palabra.as_str() {
+        "sí" | "si" | "yes" | "ok" | "aplicar" => Some(Confirmacion::Aplicar),
+        "no" | "cancelar" => Some(Confirmacion::Descartar),
+        _ => None,
+    }
 }
 
 /// Devuelve true si el bot debe responder. `ultima_respuesta_s` es la hora
@@ -243,6 +272,19 @@ mod tests {
             canal_id: 10,
             menciones: vec![BOT],
             ..Default::default()
+        }
+    }
+
+    #[test]
+    fn confirmacion_reconoce_las_palabras_y_nada_mas() {
+        for t in ["sí", "Si", "YES", "ok!", " <@900> sí. ", "aplicar"] {
+            assert_eq!(confirmacion_de(t), Some(Confirmacion::Aplicar), "{t}");
+        }
+        for t in ["no", "Cancelar", "<@900> no"] {
+            assert_eq!(confirmacion_de(t), Some(Confirmacion::Descartar), "{t}");
+        }
+        for t in ["", "sí pero cambia el nombre", "quizá", "hola"] {
+            assert_eq!(confirmacion_de(t), None, "{t}");
         }
     }
 

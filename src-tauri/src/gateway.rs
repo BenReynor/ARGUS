@@ -52,6 +52,11 @@ pub fn entrada_de(
             canal_id: m.channel_id.get(),
             menciones: m.mentions.iter().map(|u| u.id.get()).collect(),
             responde_a_autor: m.referenced_message.as_ref().map(|r| r.author.id.get()),
+            responde_a_mensaje: m
+                .reference
+                .as_ref()
+                .and_then(|r| r.message_id)
+                .map(|i| i.get()),
         },
         mensaje_id: m.id.get(),
         guild_id: guild.get(),
@@ -76,6 +81,7 @@ fn conversador(
 ) -> Conversador {
     let app_idioma = app.clone();
     let app = app.clone();
+    let pool_aplicar = pool.clone();
     let ordenes = ContextoOrdenes {
         ruta_mcp: Arc::new(crate::commands::ruta_del_mcp),
         leer_plan: Arc::new(move |guild| {
@@ -95,6 +101,14 @@ fn conversador(
                 .get(&guild.to_string())
                 .map(|m| crate::propuesta::Nombres::desde(&m.roles, &m.channels))
                 .unwrap_or_default()
+        }),
+        aplicar: Arc::new(move |propuesta| {
+            let pool = pool_aplicar.clone();
+            Box::pin(async move {
+                let pool = pool.ok_or_else(|| "The database is not available".to_string())?;
+                let mcp = crate::mcp::ArgusMcp::nuevo(pool, None).await?;
+                mcp.ejecutar_propuesta(&propuesta).await
+            })
         }),
         idioma: Arc::new(move || {
             app_idioma
