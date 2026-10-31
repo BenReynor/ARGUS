@@ -338,9 +338,81 @@ fn con_numero(d: &Descripcion, numero: Option<&str>) -> Descripcion {
     }
 }
 
+fn es_inicio_nombre(c: char) -> bool {
+    c.is_alphabetic() || c == '_'
+}
+
+fn es_resto_nombre(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+/// Interpreta `@var nombre = valor`. `None` si la línea no es una definición;
+/// `Some(Err)` si lo es pero está mal escrita.
+fn definicion_var(linea: &str) -> Option<Result<(String, String), String>> {
+    let resto = linea.strip_prefix("@var")?;
+    if !resto.is_empty() && !resto.starts_with(char::is_whitespace) {
+        return None;
+    }
+    let Some((nombre, valor)) = resto.split_once('=') else {
+        return Some(Err("Invalid variable: use «@var name = value»".into()));
+    };
+    let nombre = nombre.trim();
+    let mut chars = nombre.chars();
+    let valido = chars.next().is_some_and(es_inicio_nombre) && chars.all(es_resto_nombre);
+    if !valido {
+        return Some(Err(format!("Invalid variable name «{nombre}»")));
+    }
+    let mut valor = valor.trim();
+    for (a, b) in [('"', '"'), ('“', '”')] {
+        if valor.len() >= a.len_utf8() + b.len_utf8() && valor.starts_with(a) && valor.ends_with(b)
+        {
+            valor = &valor[a.len_utf8()..valor.len() - b.len_utf8()];
+            break;
+        }
+    }
+    Some(Ok((nombre.to_string(), valor.to_string())))
+}
+
+/// Sustituye `$nombre` por su valor. Las variables sin definir se dejan tal cual
+/// y su nombre se añade a `indefinidas`.
+fn sustituir_vars(
+    texto: &str,
+    vars: &std::collections::HashMap<String, String>,
+    indefinidas: &mut Vec<String>,
+) -> String {
+    let mut out = String::with_capacity(texto.len());
+    let mut resto = texto;
+    while let Some(i) = resto.find('$') {
+        out.push_str(&resto[..i]);
+        let tras = &resto[i + 1..];
+        if !tras.chars().next().is_some_and(es_inicio_nombre) {
+            out.push('$');
+            resto = tras;
+            continue;
+        }
+        let fin = tras
+            .char_indices()
+            .find(|(_, c)| !es_resto_nombre(*c))
+            .map_or(tras.len(), |(j, _)| j);
+        let nombre = &tras[..fin];
+        match vars.get(nombre) {
+            Some(v) => out.push_str(v),
+            None => {
+                indefinidas.push(nombre.to_string());
+                out.push('$');
+                out.push_str(nombre);
+            }
+        }
+        resto = &tras[fin..];
+    }
+    out.push_str(resto);
+    out
+}
+
 /// Analiza el texto del plan. Nunca falla: lo que no encaja va a `texto_libre`.
 pub fn analizar(texto: &str) -> PlanEstructurado {
     let mut plan = PlanEstructurado::default();
+    let mut vars: std::collections::HashMap<String, String> = std::collections::HashMap::new();
 
     for (idx, cruda) in texto.lines().enumerate() {
         let n_linea = idx + 1;
@@ -350,6 +422,32 @@ pub fn analizar(texto: &str) -> PlanEstructurado {
         }
         let libre = cruda.trim_end().to_string();
         let mut avisos: Vec<String> = Vec::new();
+
+        if let Some(def) = definicion_var(linea) {
+            match def {
+                Ok((nombre, valor)) => {
+                    vars.insert(nombre, valor);
+                }
+                Err(m) => {
+                    plan.texto_libre.push(libre);
+                    plan.avisos.push(Aviso {
+                        linea: n_linea,
+                        mensaje: m,
+                    });
+                }
+            }
+            continue;
+        }
+
+        let estructura = linea.starts_with("##") || linea.starts_with("- ");
+        let mut indefinidas = Vec::new();
+        let sustituida;
+        let linea = if estructura && linea.contains('$') {
+            sustituida = sustituir_vars(linea, &vars, &mut indefinidas);
+            sustituida.trim()
+        } else {
+            linea
+        };
 
         let aceptada = if let Some(resto) = linea.strip_prefix("##") {
             cabecera(resto.trim(), n_linea, &mut plan, &mut avisos)
@@ -361,6 +459,10 @@ pub fn analizar(texto: &str) -> PlanEstructurado {
 
         if !aceptada {
             plan.texto_libre.push(libre);
+        } else {
+            for nombre in indefinidas {
+                avisos.push(format!("Undefined variable «${nombre}»"));
+            }
         }
         plan.avisos.extend(avisos.into_iter().map(|mensaje| Aviso {
             linea: n_linea,
@@ -840,6 +942,72 @@ Añade también algo para eventos, ya veremos.
             Some(Descripcion::Generar("épica".into()))
         );
         assert!(p.categorias[1].canales[0].descripcion.is_none());
+    }
+
+    #[test]
+    fn variable_definida_y_usada_en_descripciones_y_nombres() {
+        let c = una_cat(
+            "@var tema = medieval\n## Categoría: Zona $tema\n- texto: taberna-{1..5} | descripción: generar: ambiente $tema\n- texto: libro | descripción: \"Estilo $tema\"",
+        );
+        assert_eq!(c.nombre, "Zona medieval");
+        assert_eq!(c.canales.len(), 6);
+        assert_eq!(
+            c.canales[0].descripcion,
+            Some(Descripcion::Generar("ambiente medieval".into()))
+        );
+        assert_eq!(
+            c.canales[5].descripcion,
+            Some(Descripcion::Literal("Estilo medieval".into()))
+        );
+    }
+
+    #[test]
+    fn variable_en_cualquier_parte_se_aplica_solo_a_lo_posterior() {
+        let p = analizar("## Categoría: C\n- texto: a-$x\n@var x = uno\n- texto: b-$x");
+        assert_eq!(p.avisos.len(), 1);
+        assert_eq!(p.avisos[0].linea, 2);
+        let n: Vec<_> = p.categorias[0]
+            .canales
+            .iter()
+            .map(|c| c.nombre.as_str())
+            .collect();
+        assert_eq!(n, ["a-$x", "b-uno"]);
+        assert!(p.texto_libre.is_empty());
+    }
+
+    #[test]
+    fn variable_indefinida_avisa_con_su_linea_y_se_deja_tal_cual() {
+        let p = analizar("## Categoría: C\n- texto: sala-$nada | descripción: \"Hola $otra\"");
+        assert_eq!(p.avisos.len(), 2);
+        assert!(p.avisos.iter().all(|a| a.linea == 2));
+        assert!(p.avisos[0].mensaje.contains("$nada"));
+        assert_eq!(p.categorias[0].canales[0].nombre, "sala-$nada");
+        assert_eq!(
+            p.categorias[0].canales[0].descripcion,
+            Some(Descripcion::Literal("Hola $otra".into()))
+        );
+    }
+
+    #[test]
+    fn variables_combinadas_con_rangos() {
+        let c = una_cat(
+            "@var area = norte\n@var d = zona\n## Categoría: C\n- voz: $area-{1..3} | descripción: \"$d {n}\"",
+        );
+        let n: Vec<_> = c.canales.iter().map(|c| c.nombre.as_str()).collect();
+        assert_eq!(n, ["norte-1", "norte-2", "norte-3"]);
+        assert_eq!(
+            c.canales[1].descripcion,
+            Some(Descripcion::Literal("zona 2".into()))
+        );
+    }
+
+    #[test]
+    fn var_mal_escrita_avisa_y_dolar_suelto_no_es_variable() {
+        let p = analizar("@var 1x = a\n@var sin igual\n## Categoría: C\n- texto: cuesta-$5");
+        assert_eq!(p.avisos.len(), 2);
+        assert_eq!(p.avisos[0].linea, 1);
+        assert_eq!(p.avisos[1].linea, 2);
+        assert_eq!(p.categorias[0].canales[0].nombre, "cuesta-$5");
     }
 
     #[test]

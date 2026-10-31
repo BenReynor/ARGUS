@@ -13,6 +13,9 @@ pub const IDIOMA_DEFECTO: &str = "en";
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
     // <CATALOGO>
+    ("Undefined variable «{nombre}»", "Variable sin definir «{nombre}»"),
+    ("Invalid variable: use «@var name = value»", "Variable no válida: usa «@var nombre = valor»"),
+    ("Invalid variable name «{nombre}»", "Nombre de variable no válido «{nombre}»"),
     ("Invalid color «{valor}» (use #RRGGBB)", "Color no válido «{valor}» (usa #RRGGBB)"),
     ("Invalid range «{texto}»: use two whole numbers, the first not greater than the second", "Rango no válido «{texto}»: usa dos números enteros, el primero no mayor que el segundo"),
     ("Range «{texto}» is too large (maximum {max} items)", "El rango «{texto}» es demasiado grande (máximo {max} elementos)"),
