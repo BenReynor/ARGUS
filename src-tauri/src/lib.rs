@@ -6,6 +6,7 @@ use tauri::{
 use tauri_plugin_log::{Target, TargetKind};
 
 pub mod asistente;
+pub mod chat;
 pub mod commands;
 pub mod crypto;
 pub mod db;
