@@ -247,6 +247,29 @@ pub struct OrdenAgente {
     pub env: Vec<(String, String)>,
     pub stdin: String,
     pub directorio: PathBuf,
+    /// Archivos que se escriben en `directorio` antes de lanzar (nombre, contenido):
+    /// opencode v2 ignora OPENCODE_CONFIG_CONTENT y lee su `opencode.json` de ahí.
+    pub archivos: Vec<(String, String)>,
+}
+
+/// Agente de opencode que ARGUS define para el asistente y el chat.
+pub const OPENCODE_AGENTE_ASISTENTE: &str = "argus-asistente";
+
+/// Escribe los archivos de la orden en su carpeta, cada uno de forma atómica
+/// (temporal + renombrar): varias respuestas del chat pueden lanzarse a la vez.
+pub(crate) fn preparar_directorio(orden: &OrdenAgente) -> Result<(), String> {
+    std::fs::create_dir_all(&orden.directorio)
+        .map_err(|e| format!("Could not prepare the AI agent folder: {e}"))?;
+    for (nombre, contenido) in &orden.archivos {
+        let destino = orden.directorio.join(nombre);
+        let temporal = orden
+            .directorio
+            .join(format!(".{nombre}.{}.tmp", std::process::id()));
+        std::fs::write(&temporal, contenido)
+            .and_then(|_| std::fs::rename(&temporal, &destino))
+            .map_err(|e| format!("Could not prepare the AI agent folder: {e}"))?;
+    }
+    Ok(())
 }
 
 /// Carpeta de trabajo propia del agente (no se crea aquí).
@@ -267,6 +290,7 @@ pub fn orden_agente(
     prompt: &str,
 ) -> Result<OrdenAgente, String> {
     let ruta_mcp_s = ruta_mcp.to_string_lossy().into_owned();
+    let mut archivos = Vec::new();
     let (args, env) = match agente {
         "claude" => {
             let mcp = serde_json::json!({
@@ -276,11 +300,17 @@ pub fn orden_agente(
                 .iter()
                 .map(|h| format!("mcp__argus__{h}"))
                 .collect();
+            // `--tools ""` quita TODAS las integradas (también las que Claude Code
+            // añada en el futuro: Cron, RemoteTrigger, SendMessage…) y
+            // `--disable-slash-commands` las skills; quedan solo las MCP permitidas.
             let mut a: Vec<String> = [
                 "-p",
                 "--output-format",
                 "stream-json",
                 "--verbose",
+                "--tools",
+                "",
+                "--disable-slash-commands",
                 "--strict-mcp-config",
                 "--mcp-config",
             ]
@@ -318,13 +348,29 @@ pub fn orden_agente(
             for t in crate::mcp::HERRAMIENTAS_ESCRITURA {
                 tools.insert(format!("argus_{t}"), false.into());
             }
+            // Todo denegado y, después, solo las de lectura de ARGUS (en opencode
+            // gana la última regla que coincide). Cubre las integradas (read,
+            // grep, execute…) y los MCP del usuario, que opencode mezcla.
+            let mut permisos = serde_json::Map::new();
+            permisos.insert("*".into(), "deny".into());
+            for h in crate::mcp::HERRAMIENTAS_LECTURA {
+                permisos.insert(format!("argus_{h}"), "allow".into());
+            }
             let cfg = serde_json::json!({
                 "mcp": { "argus": { "type": "local", "command": [ruta_mcp_s], "enabled": true } },
                 "tools": tools,
+                "agent": { OPENCODE_AGENTE_ASISTENTE: {
+                    "description": "ARGUS assistant: reads the Discord server, never changes it",
+                    "mode": "primary",
+                    "permission": permisos,
+                } },
             });
-            let mut a: Vec<String> = ["run", "--format", "json", "--model"]
+            archivos.push(("opencode.json".to_string(), cfg.to_string()));
+            let mut a: Vec<String> = ["run", "--format", "json", "--agent"]
                 .map(String::from)
                 .to_vec();
+            a.push(OPENCODE_AGENTE_ASISTENTE.into());
+            a.push("--model".into());
             a.push(modelo.into());
             if let Some(id) = sesion {
                 a.push("--session".into());
@@ -343,6 +389,7 @@ pub fn orden_agente(
         env,
         stdin: prompt.to_string(),
         directorio: directorio_agente(),
+        archivos,
     })
 }
 
@@ -552,8 +599,7 @@ pub async fn ejecutar_orden(
     mut emitir: impl FnMut(EventoAsistente),
 ) -> Result<Option<String>, String> {
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-    std::fs::create_dir_all(&orden.directorio)
-        .map_err(|e| format!("Could not prepare the AI agent folder: {e}"))?;
+    preparar_directorio(orden)?;
     let mut cmd = tokio::process::Command::new(&orden.programa);
     cmd.args(&orden.args)
         .envs(orden.env.iter().map(|(k, v)| (k, v)))
@@ -1053,12 +1099,15 @@ mod tests_orden {
     fn claude_sin_sesion() {
         let o = orden("claude", None);
         assert_eq!(
-            &o.args[..6],
+            &o.args[..9],
             [
                 "-p",
                 "--output-format",
                 "stream-json",
                 "--verbose",
+                "--tools",
+                "",
+                "--disable-slash-commands",
                 "--strict-mcp-config",
                 "--mcp-config"
             ]
@@ -1096,6 +1145,10 @@ mod tests_orden {
             assert!(prohibidas.split(',').any(|x| x == nombre), "{nombre}");
         }
         assert!(o.directorio.starts_with(std::env::temp_dir()));
+        // Ninguna integrada de Claude Code (ni las futuras) y sin skills.
+        assert_eq!(valor(&o, "--tools"), "");
+        assert!(o.args.contains(&"--disable-slash-commands".to_string()));
+        assert!(o.archivos.is_empty());
     }
 
     #[test]
@@ -1107,7 +1160,40 @@ mod tests_orden {
     #[test]
     fn opencode_con_y_sin_sesion() {
         let o = orden("opencode", None);
-        assert_eq!(o.args, ["run", "--format", "json", "--model", "mod"]);
+        assert_eq!(
+            o.args,
+            [
+                "run",
+                "--format",
+                "json",
+                "--agent",
+                OPENCODE_AGENTE_ASISTENTE,
+                "--model",
+                "mod"
+            ]
+        );
+        // opencode v2 ignora OPENCODE_CONFIG_CONTENT: el agente va en el
+        // opencode.json de la carpeta. Todo denegado salvo las de lectura de ARGUS.
+        assert_eq!(o.archivos.len(), 1);
+        assert_eq!(o.archivos[0].0, "opencode.json");
+        let archivo: Value = serde_json::from_str(&o.archivos[0].1).unwrap();
+        let permisos = archivo["agent"][OPENCODE_AGENTE_ASISTENTE]["permission"]
+            .as_object()
+            .unwrap();
+        assert_eq!(permisos.len(), HERRAMIENTAS_LECTURA.len() + 1);
+        assert_eq!(
+            permisos.keys().next().unwrap(),
+            "*",
+            "la denegación va primero"
+        );
+        assert_eq!(permisos["*"], "deny");
+        for l in HERRAMIENTAS_LECTURA {
+            assert_eq!(permisos[&format!("argus_{l}")], "allow", "{l}");
+        }
+        for e in HERRAMIENTAS_ESCRITURA {
+            assert!(permisos.get(&format!("argus_{e}")).is_none(), "{e}");
+        }
+        assert_eq!(archivo["mcp"]["argus"]["command"][0], "/opt/argus-mcp");
         let o2 = orden("opencode", Some("ses_1"));
         assert_eq!(valor(&o2, "--session"), "ses_1");
         assert_eq!(o2.stdin, "hola");
@@ -1172,6 +1258,7 @@ mod tests_ejecucion {
             args: Vec::new(),
             env: Vec::new(),
             stdin: "hola".into(),
+            archivos: Vec::new(),
         }
     }
 

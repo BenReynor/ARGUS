@@ -43,6 +43,9 @@ pub fn debe_responder(
     }
 }
 
+/// Agente de opencode que ARGUS define para las respuestas en Discord.
+pub const AGENTE_CHAT: &str = "argus-chat";
+
 /// Herramientas integradas de claude, todas desactivadas en el chat.
 const CLAUDE_TODAS: [&str; 11] = [
     "Bash",
@@ -87,6 +90,7 @@ pub fn orden_chat(
     modelo: &str,
     prompt: &str,
 ) -> Result<OrdenAgente, String> {
+    let mut archivos = Vec::new();
     let (args, env) = match agente {
         "claude" => {
             let a: Vec<String> = vec![
@@ -95,6 +99,10 @@ pub fn orden_chat(
                 "text".into(),
                 "--model".into(),
                 modelo.into(),
+                // Sin ninguna herramienta integrada (también las futuras) ni skills.
+                "--tools".into(),
+                "".into(),
+                "--disable-slash-commands".into(),
                 "--strict-mcp-config".into(),
                 "--mcp-config".into(),
                 serde_json::json!({ "mcpServers": {} }).to_string(),
@@ -109,13 +117,26 @@ pub fn orden_chat(
             for t in OPENCODE_TODAS {
                 tools.insert(t.into(), false.into());
             }
+            // Agente propio con TODO denegado: integradas (read, execute…) y los
+            // MCP del usuario. opencode v2 lo lee del opencode.json de la carpeta.
             let cfg = serde_json::json!({
                 "mcp": {},
                 "tools": tools,
-                "permission": { "bash": "deny", "edit": "deny", "webfetch": "deny" },
+                "agent": { AGENTE_CHAT: {
+                    "description": "ARGUS Discord replies: text only, no tools",
+                    "mode": "primary",
+                    "permission": { "*": "deny" },
+                } },
             });
+            archivos.push(("opencode.json".to_string(), cfg.to_string()));
             (
-                vec!["run".into(), "--model".into(), modelo.into()],
+                vec![
+                    "run".into(),
+                    "--agent".into(),
+                    AGENTE_CHAT.into(),
+                    "--model".into(),
+                    modelo.into(),
+                ],
                 vec![("OPENCODE_CONFIG_CONTENT".to_string(), cfg.to_string())],
             )
         }
@@ -127,6 +148,7 @@ pub fn orden_chat(
         env,
         stdin: prompt.to_string(),
         directorio: directorio_chat(),
+        archivos,
     })
 }
 
@@ -304,6 +326,11 @@ mod tests {
             assert!(prohibidas.contains(&t), "falta {t}");
         }
         assert!(!o.args.contains(&"--allowedTools".to_string()));
+        // Ninguna herramienta integrada (ni las futuras) y sin skills.
+        let i = o.args.iter().position(|a| a == "--tools").unwrap();
+        assert_eq!(o.args[i + 1], "");
+        assert!(o.args.contains(&"--disable-slash-commands".to_string()));
+        assert!(o.archivos.is_empty());
         assert_eq!(o.stdin, "hola");
         assert_eq!(o.directorio, directorio_chat());
         assert!(o.env.is_empty());
@@ -312,7 +339,18 @@ mod tests {
     #[test]
     fn orden_opencode_sin_herramientas() {
         let o = orden("opencode");
-        assert_eq!(o.args, ["run", "--model", "mod/x"]);
+        assert_eq!(o.args, ["run", "--agent", AGENTE_CHAT, "--model", "mod/x"]);
+        // opencode v2 lee el agente del opencode.json de la carpeta de trabajo:
+        // todo denegado, sin ninguna excepción.
+        assert_eq!(o.archivos.len(), 1);
+        assert_eq!(o.archivos[0].0, "opencode.json");
+        let archivo: serde_json::Value = serde_json::from_str(&o.archivos[0].1).unwrap();
+        let permisos = archivo["agent"][AGENTE_CHAT]["permission"]
+            .as_object()
+            .unwrap();
+        assert_eq!(permisos.len(), 1);
+        assert_eq!(permisos["*"], "deny");
+        assert_eq!(archivo["mcp"].as_object().unwrap().len(), 0);
         let (k, v) = &o.env[0];
         assert_eq!(k, "OPENCODE_CONFIG_CONTENT");
         let cfg: serde_json::Value = serde_json::from_str(v).unwrap();

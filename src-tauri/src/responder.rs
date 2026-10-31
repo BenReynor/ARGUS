@@ -184,8 +184,7 @@ async fn leer_agente(
 /// proceso y su grupo.
 pub async fn ejecutar_texto(orden: &OrdenAgente, limite: Duration) -> Result<String, String> {
     use tokio::io::AsyncWriteExt;
-    std::fs::create_dir_all(&orden.directorio)
-        .map_err(|e| format!("Could not prepare the AI agent folder: {e}"))?;
+    crate::asistente::preparar_directorio(orden)?;
     let mut cmd = tokio::process::Command::new(&orden.programa);
     cmd.args(&orden.args)
         .envs(orden.env.iter().map(|(k, v)| (k, v)))
