@@ -141,6 +141,11 @@ pub fn run() {
             propuesta::cancelar_asistente,
             asistente::listar_agentes_ia,
             asistente::enviar_al_asistente,
+            asistente::leer_plan_servidor,
+            asistente::guardar_plan_servidor,
+            asistente::leer_conversacion,
+            asistente::guardar_conversacion,
+            asistente::nueva_conversacion,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

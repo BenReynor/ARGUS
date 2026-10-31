@@ -781,13 +781,19 @@ pub async fn enviar_al_asistente(
         }
         .unwrap_or_else(|| gid.clone());
         let idioma = crate::i18n::idioma(&state);
-        let prompt = prompt_asistente(
-            modo,
-            (&gid, &nombre_servidor),
-            plan.as_deref().unwrap_or(""),
-            &idioma,
-            &mensaje,
-        );
+        let (bot_id, pool) = bot_y_pool(&app, &state).await?;
+        let plan = match plan {
+            Some(p) => p,
+            None => crate::db::leer_plan(&pool, &bot_id, &gid)
+                .await
+                .map_err(|e| e.to_string())?,
+        };
+        // Reanuda la sesión guardada; con otro agente se descarta.
+        let previa = crate::db::leer_conversacion(&pool, &bot_id, &gid, Some(&agente))
+            .await
+            .map_err(|e| e.to_string())?;
+        let sesion = previa.as_ref().and_then(|c| c.session_id.clone());
+        let prompt = prompt_asistente(modo, (&gid, &nombre_servidor), &plan, &idioma, &mensaje);
         let ruta = buscar_binario(&agente, &carpetas_busqueda())
             .ok_or_else(|| format!("{agente} is not installed"))?;
         let mcp = crate::commands::ruta_del_mcp()?;
@@ -797,7 +803,7 @@ pub async fn enviar_al_asistente(
             Path::new(&mcp),
             &modelo,
             modo,
-            None,
+            sesion.as_deref(),
             &prompt,
         )?;
         let cancelar = std::sync::Arc::new(tokio::sync::Notify::new());
@@ -813,7 +819,7 @@ pub async fn enviar_al_asistente(
         };
         let mut respuesta = String::new();
         let mut con_error = false;
-        ejecutar_orden(&orden, &agente, &cancelar, |e| {
+        let nueva_sesion = ejecutar_orden(&orden, &agente, &cancelar, |e| {
             match &e {
                 EventoAsistente::Texto { texto } => {
                     respuesta.push_str(texto);
@@ -839,7 +845,131 @@ pub async fn enviar_al_asistente(
             }
             emitir(e);
         })
-        .await
+        .await?;
+        // Guarda el id de sesión para reanudarla en el siguiente turno.
+        if let Some(id) = &nueva_sesion {
+            let mut c = previa.unwrap_or_else(|| crate::db::ConversacionAsistente {
+                agente: agente.clone(),
+                modelo: modelo.clone(),
+                session_id: None,
+                mensajes: serde_json::json!([]),
+            });
+            c.session_id = Some(id.clone());
+            c.modelo = modelo.clone();
+            crate::db::guardar_conversacion(&pool, &bot_id, &gid, &c)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(nueva_sesion)
+    }
+    .await;
+    localizar_error(&state, r)
+}
+
+async fn bot_y_pool(
+    app: &tauri::AppHandle,
+    state: &AppState,
+) -> Result<(String, sqlx::SqlitePool), String> {
+    let bot = state.get_active_bot().ok_or("No bot selected")?;
+    let pool = crate::db::get_pool(app).await.map_err(|e| e.to_string())?;
+    Ok((bot.id, pool))
+}
+
+/// Plan (Markdown) del servidor para el bot activo; vacío si no hay.
+#[tauri::command]
+pub async fn leer_plan_servidor(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    guild_id: String,
+) -> Result<String, String> {
+    let r = async {
+        let (bot, pool) = bot_y_pool(&app, &state).await?;
+        crate::db::leer_plan(&pool, &bot, &guild_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    .await;
+    localizar_error(&state, r)
+}
+
+#[tauri::command]
+pub async fn guardar_plan_servidor(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    guild_id: String,
+    contenido: String,
+) -> Result<(), String> {
+    let r = async {
+        let (bot, pool) = bot_y_pool(&app, &state).await?;
+        crate::db::guardar_plan(&pool, &bot, &guild_id, &contenido)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    .await;
+    localizar_error(&state, r)
+}
+
+/// Conversación guardada del servidor. Si `agente` es otro distinto del de la
+/// conversación, esta se descarta y devuelve `None`.
+#[tauri::command]
+pub async fn leer_conversacion(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    guild_id: String,
+    agente: Option<String>,
+) -> Result<Option<crate::db::ConversacionAsistente>, String> {
+    let r = async {
+        let (bot, pool) = bot_y_pool(&app, &state).await?;
+        crate::db::leer_conversacion(&pool, &bot, &guild_id, agente.as_deref())
+            .await
+            .map_err(|e| e.to_string())
+    }
+    .await;
+    localizar_error(&state, r)
+}
+
+/// Guarda los mensajes de la conversación conservando el id de sesión si el
+/// agente es el mismo (con otro agente empieza una conversación nueva).
+#[tauri::command]
+pub async fn guardar_conversacion(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    guild_id: String,
+    agente: String,
+    modelo: String,
+    mensajes: serde_json::Value,
+) -> Result<(), String> {
+    let r = async {
+        let (bot, pool) = bot_y_pool(&app, &state).await?;
+        let previa = crate::db::leer_conversacion(&pool, &bot, &guild_id, Some(&agente))
+            .await
+            .map_err(|e| e.to_string())?;
+        let c = crate::db::ConversacionAsistente {
+            session_id: previa.and_then(|p| p.session_id),
+            agente,
+            modelo,
+            mensajes,
+        };
+        crate::db::guardar_conversacion(&pool, &bot, &guild_id, &c)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    .await;
+    localizar_error(&state, r)
+}
+
+/// Empieza de cero: borra la conversación y su sesión.
+#[tauri::command]
+pub async fn nueva_conversacion(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    guild_id: String,
+) -> Result<(), String> {
+    let r = async {
+        let (bot, pool) = bot_y_pool(&app, &state).await?;
+        crate::db::borrar_conversacion(&pool, &bot, &guild_id)
+            .await
+            .map_err(|e| e.to_string())
     }
     .await;
     localizar_error(&state, r)

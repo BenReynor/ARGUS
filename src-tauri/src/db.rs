@@ -736,6 +736,220 @@ pub async fn save_guild_settings(
     Ok(())
 }
 
+// Plan del servidor y conversación del asistente IA (por bot y servidor)
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ConversacionAsistente {
+    pub agente: String,
+    pub modelo: String,
+    pub session_id: Option<String>,
+    pub mensajes: serde_json::Value,
+}
+
+pub async fn leer_plan(pool: &SqlitePool, bot_id: &str, guild_id: &str) -> Result<String> {
+    let row = sqlx::query("SELECT contenido FROM plan_servidor WHERE bot_id = ? AND guild_id = ?")
+        .bind(bot_id)
+        .bind(guild_id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.map(|r| r.get("contenido")).unwrap_or_default())
+}
+
+pub async fn guardar_plan(
+    pool: &SqlitePool,
+    bot_id: &str,
+    guild_id: &str,
+    contenido: &str,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO plan_servidor (bot_id, guild_id, contenido, updated_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(bot_id, guild_id) DO UPDATE SET contenido = excluded.contenido, updated_at = excluded.updated_at",
+    )
+    .bind(bot_id)
+    .bind(guild_id)
+    .bind(contenido)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Conversación guardada. Si `agente` se indica y no es el de la conversación,
+/// esta se descarta (la sesión de un agente no sirve para otro) y devuelve `None`.
+pub async fn leer_conversacion(
+    pool: &SqlitePool,
+    bot_id: &str,
+    guild_id: &str,
+    agente: Option<&str>,
+) -> Result<Option<ConversacionAsistente>> {
+    let row = sqlx::query(
+        "SELECT agente, modelo, session_id, mensajes FROM conversacion_asistente
+         WHERE bot_id = ? AND guild_id = ?",
+    )
+    .bind(bot_id)
+    .bind(guild_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(r) = row else { return Ok(None) };
+    let guardado: String = r.get("agente");
+    if agente.is_some_and(|a| a != guardado) {
+        borrar_conversacion(pool, bot_id, guild_id).await?;
+        return Ok(None);
+    }
+    let mensajes: String = r.get("mensajes");
+    Ok(Some(ConversacionAsistente {
+        agente: guardado,
+        modelo: r.get("modelo"),
+        session_id: r.get("session_id"),
+        mensajes: serde_json::from_str(&mensajes).unwrap_or_else(|_| serde_json::json!([])),
+    }))
+}
+
+pub async fn guardar_conversacion(
+    pool: &SqlitePool,
+    bot_id: &str,
+    guild_id: &str,
+    c: &ConversacionAsistente,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO conversacion_asistente
+            (bot_id, guild_id, agente, modelo, session_id, mensajes, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(bot_id, guild_id) DO UPDATE SET agente = excluded.agente,
+            modelo = excluded.modelo, session_id = excluded.session_id,
+            mensajes = excluded.mensajes, updated_at = excluded.updated_at",
+    )
+    .bind(bot_id)
+    .bind(guild_id)
+    .bind(&c.agente)
+    .bind(&c.modelo)
+    .bind(&c.session_id)
+    .bind(serde_json::to_string(&c.mensajes)?)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn borrar_conversacion(pool: &SqlitePool, bot_id: &str, guild_id: &str) -> Result<()> {
+    sqlx::query("DELETE FROM conversacion_asistente WHERE bot_id = ? AND guild_id = ?")
+        .bind(bot_id)
+        .bind(guild_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod asistente_datos_tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn pool_temporal(nombre: &str) -> (SqlitePool, std::path::PathBuf) {
+        let ruta = std::env::temp_dir().join(format!(
+            "argus_test_asist_{}_{}.db",
+            nombre,
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&ruta);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect(&format!("sqlite://{}?mode=rwc", ruta.display()))
+            .await
+            .expect("BD temporal");
+        run_migrations(&pool).await.expect("migraciones");
+        (pool, ruta)
+    }
+
+    fn conv(agente: &str, sesion: Option<&str>) -> ConversacionAsistente {
+        ConversacionAsistente {
+            agente: agente.into(),
+            modelo: "m1".into(),
+            session_id: sesion.map(String::from),
+            mensajes: serde_json::json!([{"rol": "user", "texto": "hola"}]),
+        }
+    }
+
+    #[tokio::test]
+    async fn plan_se_guarda_y_se_lee() {
+        let (pool, ruta) = pool_temporal("plan").await;
+        assert_eq!(leer_plan(&pool, "b1", "g1").await.unwrap(), "");
+        guardar_plan(&pool, "b1", "g1", "# Plan").await.unwrap();
+        assert_eq!(leer_plan(&pool, "b1", "g1").await.unwrap(), "# Plan");
+        guardar_plan(&pool, "b1", "g1", "# Nuevo").await.unwrap();
+        assert_eq!(leer_plan(&pool, "b1", "g1").await.unwrap(), "# Nuevo");
+        pool.close().await;
+        let _ = std::fs::remove_file(ruta);
+    }
+
+    #[tokio::test]
+    async fn cada_servidor_y_bot_tiene_lo_suyo() {
+        let (pool, ruta) = pool_temporal("aislado").await;
+        guardar_plan(&pool, "b1", "g1", "uno").await.unwrap();
+        guardar_plan(&pool, "b1", "g2", "dos").await.unwrap();
+        guardar_plan(&pool, "b2", "g1", "tres").await.unwrap();
+        assert_eq!(leer_plan(&pool, "b1", "g1").await.unwrap(), "uno");
+        assert_eq!(leer_plan(&pool, "b1", "g2").await.unwrap(), "dos");
+        assert_eq!(leer_plan(&pool, "b2", "g1").await.unwrap(), "tres");
+        guardar_conversacion(&pool, "b1", "g1", &conv("claude", Some("s1")))
+            .await
+            .unwrap();
+        guardar_conversacion(&pool, "b1", "g2", &conv("opencode", Some("s2")))
+            .await
+            .unwrap();
+        let a = leer_conversacion(&pool, "b1", "g1", None).await.unwrap();
+        let b = leer_conversacion(&pool, "b1", "g2", None).await.unwrap();
+        assert_eq!(a.unwrap().session_id.as_deref(), Some("s1"));
+        assert_eq!(b.unwrap().session_id.as_deref(), Some("s2"));
+        assert!(leer_conversacion(&pool, "b2", "g1", None)
+            .await
+            .unwrap()
+            .is_none());
+        borrar_conversacion(&pool, "b1", "g1").await.unwrap();
+        assert!(leer_conversacion(&pool, "b1", "g1", None)
+            .await
+            .unwrap()
+            .is_none());
+        assert!(leer_conversacion(&pool, "b1", "g2", None)
+            .await
+            .unwrap()
+            .is_some());
+        pool.close().await;
+        let _ = std::fs::remove_file(ruta);
+    }
+
+    #[tokio::test]
+    async fn conversacion_guarda_sesion_y_mensajes() {
+        let (pool, ruta) = pool_temporal("conv").await;
+        let c = conv("claude", Some("sess-9"));
+        guardar_conversacion(&pool, "b1", "g1", &c).await.unwrap();
+        let leida = leer_conversacion(&pool, "b1", "g1", Some("claude"))
+            .await
+            .unwrap();
+        assert_eq!(leida, Some(c));
+        pool.close().await;
+        let _ = std::fs::remove_file(ruta);
+    }
+
+    #[tokio::test]
+    async fn cambiar_de_agente_descarta_la_conversacion() {
+        let (pool, ruta) = pool_temporal("cambio").await;
+        guardar_conversacion(&pool, "b1", "g1", &conv("claude", Some("s1")))
+            .await
+            .unwrap();
+        let otra = leer_conversacion(&pool, "b1", "g1", Some("opencode"))
+            .await
+            .unwrap();
+        assert!(otra.is_none());
+        // ya no queda nada, ni siquiera volviendo al agente anterior
+        assert!(leer_conversacion(&pool, "b1", "g1", None)
+            .await
+            .unwrap()
+            .is_none());
+        pool.close().await;
+        let _ = std::fs::remove_file(ruta);
+    }
+}
+
 #[cfg(test)]
 mod guild_settings_tests {
     use super::*;
