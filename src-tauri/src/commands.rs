@@ -112,6 +112,7 @@ async fn conectar_bot(
             state.server_maps.clone(),
             state.bot_status.clone(),
             pool,
+            active_bot.id.clone(),
         );
         let anterior = state.gateway_task.lock().unwrap().replace(tarea);
         if let Some(anterior) = anterior {

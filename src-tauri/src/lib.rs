@@ -5,6 +5,8 @@ use tauri::{
 };
 use tauri_plugin_log::{Target, TargetKind};
 
+pub mod asistente;
+pub mod chat;
 pub mod commands;
 pub mod crypto;
 pub mod db;
@@ -15,6 +17,8 @@ pub mod mapa;
 pub mod mcp;
 pub mod mensajes;
 pub mod persistencia;
+pub mod propuesta;
+pub mod responder;
 pub mod state;
 pub mod sync;
 #[cfg(test)]
@@ -134,6 +138,16 @@ pub fn run() {
             export_all_data,
             import_data,
             uninstall_wipe,
+            propuesta::validar_propuesta,
+            propuesta::aplicar_propuesta,
+            propuesta::cancelar_asistente,
+            asistente::listar_agentes_ia,
+            asistente::enviar_al_asistente,
+            asistente::leer_plan_servidor,
+            asistente::guardar_plan_servidor,
+            asistente::leer_conversacion,
+            asistente::guardar_conversacion,
+            asistente::nueva_conversacion,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

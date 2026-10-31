@@ -1,7 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, Event } from '@tauri-apps/api/event';
 
-import type { BotConfig, BotRegistrado, BotStatus, Config, Guild, GuildSettings, Channel, Member, Role, ServerMap } from '../types';
+import type {
+  BotConfig, BotRegistrado, BotStatus, Config, Guild, GuildSettings, Channel, Member, Role, ServerMap,
+  AgenteIa, Propuesta, EventoPropuesta, AvanceAccion, ResumenPropuesta, EventoAsistente, ConversacionAsistente,
+} from '../types';
 
 export type { BotStatus, Config, Guild, Channel, Member, Role, ServerMap };
 
@@ -150,3 +153,27 @@ export const listWebhooks = (guildId: string) => invoke<Webhook[]>('list_webhook
 export const createWebhook = (guildId: string, channelId: string, name: string) =>
   invoke<Webhook>('create_webhook', { guildId, channelId, name });
 export const deleteWebhook = (guildId: string, webhookId: string) => invoke<string>('delete_webhook', { guildId, webhookId });
+
+// Asistente IA
+export const listarAgentesIa = () => invoke<AgenteIa[]>('listar_agentes_ia');
+export const enviarAlAsistente = (mensaje: string, agente: string, modelo: string, modo: 'read' | 'execute', plan?: string) =>
+  invoke<string | null>('enviar_al_asistente', { mensaje, agente, modelo, modo, plan });
+export const leerPlanServidor = (guildId: string) => invoke<string>('leer_plan_servidor', { guildId });
+export const guardarPlanServidor = (guildId: string, contenido: string) =>
+  invoke<void>('guardar_plan_servidor', { guildId, contenido });
+export const leerConversacion = (guildId: string, agente?: string) =>
+  invoke<ConversacionAsistente | null>('leer_conversacion', { guildId, agente });
+export const guardarConversacion = (guildId: string, agente: string, modelo: string, mensajes: unknown) =>
+  invoke<void>('guardar_conversacion', { guildId, agente, modelo, mensajes });
+export const nuevaConversacion = (guildId: string) => invoke<void>('nueva_conversacion', { guildId });
+export const aplicarPropuesta = (propuesta: Propuesta) => invoke<ResumenPropuesta>('aplicar_propuesta', { propuesta });
+export const cancelarAsistente = () => invoke<void>('cancelar_asistente');
+
+export const onAsistenteEvento = (cb: (e: EventoAsistente) => void) =>
+  listen<EventoAsistente>('asistente-evento', (event: Event<EventoAsistente>) => cb(event.payload));
+export const onAsistentePropuesta = (cb: (e: EventoPropuesta) => void) =>
+  listen<EventoPropuesta>('asistente-propuesta', (event: Event<EventoPropuesta>) => cb(event.payload));
+export const onAsistenteAccion = (cb: (a: AvanceAccion) => void) =>
+  listen<AvanceAccion>('asistente-accion', (event: Event<AvanceAccion>) => cb(event.payload));
+export const onAsistenteResumen = (cb: (r: ResumenPropuesta) => void) =>
+  listen<ResumenPropuesta>('asistente-resumen', (event: Event<ResumenPropuesta>) => cb(event.payload));

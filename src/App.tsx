@@ -10,13 +10,14 @@ import { RolesView } from './components/RolesView';
 import { SettingsView } from './components/SettingsView';
 import { LogsView } from './components/LogsView';
 import { ServidorView } from './components/ServidorView';
+import { AsistenteView } from './components/AsistenteView';
 import { Notification } from './components/Notification';
-import { LayoutDashboard, Hash, Users, Shield, Terminal, Settings, Server } from 'lucide-react';
+import { LayoutDashboard, Hash, Users, Shield, Terminal, Settings, Server, Sparkles } from 'lucide-react';
 import { aplicarTema } from './temas';
 import { setIdioma, t } from './i18n';
 import { pasoCarga, finCarga } from './carga';
 import { useBotStatus, useShowNotification } from './store/useStore';
-import { getConfig, getBotStatus, refreshServerMap, getServerMap, onMapUpdated, onSyncProgress, onBotStatusChange } from './api/tauri';
+import { getConfig, getBotStatus, refreshServerMap, getServerMap, onMapUpdated, onSyncProgress, onBotStatusChange, onLog } from './api/tauri';
 
 function App() {
   const setConfig = useStore((s) => s.setConfig);
@@ -72,6 +73,7 @@ function App() {
         if (p.step >= p.total) recargarMapa();
       }),
       onBotStatusChange(setBotStatus),
+      onLog((texto) => useStore.getState().addLog(texto)),
     ];
 
     return () => {
@@ -85,6 +87,7 @@ function App() {
     { id: 'members', label: t('Members'), icon: 'users' },
     { id: 'roles', label: t('Roles'), icon: 'shield' },
     { id: 'servidor', label: t('Server'), icon: 'server' },
+    { id: 'asistente', label: t('AI Assistant'), icon: 'sparkles' },
     { id: 'logs', label: t('Logs'), icon: 'terminal' },
     { id: 'settings', label: t('Settings'), icon: 'settings' },
   ];
@@ -92,7 +95,7 @@ function App() {
   const activeTab = useStore((s) => s.activeTab);
   const seccion = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
   const iconosSeccion: Record<string, any> = {
-    'layout-dashboard': LayoutDashboard, hash: Hash, users: Users, shield: Shield, server: Server, terminal: Terminal, settings: Settings,
+    'layout-dashboard': LayoutDashboard, hash: Hash, users: Users, shield: Shield, server: Server, sparkles: Sparkles, terminal: Terminal, settings: Settings,
   };
 
   const renderView = () => {
@@ -102,6 +105,7 @@ function App() {
       case 'members': return <MembersView />;
       case 'roles': return <RolesView />;
       case 'servidor': return <ServidorView />;
+      case 'asistente': return <AsistenteView />;
       case 'logs': return <LogsView />;
       case 'settings': return <SettingsView />;
       default: return <Dashboard />;

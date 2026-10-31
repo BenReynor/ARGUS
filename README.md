@@ -31,6 +31,18 @@ things you do from the app.
 
 ## What you can do
 
+- **AI Assistant (the main feature):** write your server plan in Markdown
+  (categories, channels with descriptions, roles with permissions, per-channel
+  permissions) and chat with an AI agent (`claude` or `opencode`, including free
+  models). In Execute mode it proposes the changes, you review them and press
+  **Apply**, and ARGUS builds the whole server in order. The agent can only read;
+  note that your plan and what it reads from the server go to the model's
+  provider. See [docs/ASISTENTE.md](docs/ASISTENTE.md).
+- **Chat on Discord with a personality:** per server, turn on replies, pick an
+  agent and model (a free opencode model is enough to chat) and write the bot's
+  personality. It answers only when mentioned or replied to, and only while ARGUS
+  is open; the messages it answers go to the model's provider. See
+  [docs/ASISTENTE.md](docs/ASISTENTE.md#talking-on-discord-replies-from-the-bot).
 - **Several bots in one app:** add your bots with their token; ARGUS reads their
   official name and avatar from Discord. Switch bots in the sidebar and servers
   in the left-hand column.

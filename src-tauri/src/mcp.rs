@@ -3,6 +3,7 @@
 //! Lee la misma base de datos que la app, así que funciona con la app cerrada.
 //! El token del bot nunca sale de aquí: ni en respuestas, ni en logs.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use rmcp::{
@@ -17,6 +18,9 @@ use sqlx::SqlitePool;
 use crate::commands::{self, sincronizar_guilds, token_del_bot_activo};
 use crate::discord::{DatosCanal, DatosRol};
 use crate::i18n;
+use crate::propuesta::{
+    ordenar_propuesta, EstadoAccion, Nombres, Propuesta, ResultadoAccion, ResumenPropuesta,
+};
 use crate::state::{AppState, Channel, Guild, Member, Role};
 
 /// Respuesta de cada herramienta cuando no hay ningún bot activo.
@@ -1425,6 +1429,296 @@ fn miembro_json(m: &Member, roles: &[Role]) -> serde_json::Value {
         "bot": m.bot,
         "roles": con_nombre,
     })
+}
+
+/// Herramientas que solo leen (no cambian nada en Discord ni en la BD). Son las
+/// únicas que se le dan a un agente de IA; el resto va por propuesta aprobada.
+pub const HERRAMIENTAS_LECTURA: &[&str] = &[
+    "estado",
+    "listar_servidores",
+    "mapa_servidor",
+    "listar_canales",
+    "listar_roles",
+    "listar_miembros",
+    "info_miembro",
+    "permisos_bot",
+    "info_servidor",
+    "ajustes_servidor",
+    "registro_auditoria",
+    "leer_mensajes",
+    "listar_baneos",
+    "listar_invitaciones",
+    "listar_webhooks",
+];
+
+/// Herramientas que modifican algo (Discord o el servidor activo guardado).
+pub const HERRAMIENTAS_ESCRITURA: &[&str] = &[
+    "elegir_servidor",
+    "enviar_mensaje",
+    "enviar_dm",
+    "borrar_mensaje",
+    "borrar_mensajes",
+    "fijar_mensaje",
+    "desfijar_mensaje",
+    "crear_canal",
+    "editar_canal",
+    "borrar_canal",
+    "ordenar_canales",
+    "crear_rol",
+    "editar_rol",
+    "borrar_rol",
+    "ordenar_roles",
+    "dar_rol",
+    "quitar_rol",
+    "permiso_canal",
+    "quitar_permiso_canal",
+    "expulsar",
+    "banear",
+    "desbanear",
+    "silenciar",
+    "cambiar_apodo",
+    "editar_servidor",
+    "crear_invitacion",
+    "borrar_invitacion",
+    "crear_webhook",
+    "borrar_webhook",
+];
+
+fn args_de<T: serde::de::DeserializeOwned>(
+    nombre: &str,
+    args: serde_json::Value,
+) -> Result<T, String> {
+    serde_json::from_value(args).map_err(|e| format!("Invalid arguments for «{nombre}»: {e}"))
+}
+
+/// Rechaza lo que no sea una herramienta de escritura (desconocida o de lectura).
+fn comprobar_escritura(nombre: &str) -> Result<(), String> {
+    if HERRAMIENTAS_ESCRITURA.contains(&nombre) {
+        return Ok(());
+    }
+    Err(if HERRAMIENTAS_LECTURA.contains(&nombre) {
+        format!("«{nombre}» is a read-only tool, not an action")
+    } else {
+        format!("Unknown action: «{nombre}»")
+    })
+}
+
+/// Comprueba, sin ejecutar nada, que `nombre` es una herramienta de escritura y
+/// que `args` se deserializa en sus parámetros.
+pub fn validar_accion(nombre: &str, args: &serde_json::Value) -> Result<(), String> {
+    comprobar_escritura(nombre)?;
+    fn ok<T: serde::de::DeserializeOwned>(n: &str, a: &serde_json::Value) -> Result<(), String> {
+        args_de::<T>(n, a.clone()).map(|_| ())
+    }
+    match nombre {
+        "elegir_servidor" => ok::<ElegirServidorParams>(nombre, args),
+        "enviar_mensaje" => ok::<EnviarMensajeParams>(nombre, args),
+        "enviar_dm" => ok::<EnviarDmParams>(nombre, args),
+        "borrar_mensaje" | "fijar_mensaje" | "desfijar_mensaje" => {
+            ok::<MensajeParams>(nombre, args)
+        }
+        "borrar_mensajes" => ok::<BorrarMensajesParams>(nombre, args),
+        "crear_canal" => ok::<CrearCanalParams>(nombre, args),
+        "editar_canal" => ok::<EditarCanalParams>(nombre, args),
+        "borrar_canal" => ok::<CanalParams>(nombre, args),
+        "ordenar_canales" | "ordenar_roles" => ok::<OrdenarParams>(nombre, args),
+        "crear_rol" => ok::<CrearRolParams>(nombre, args),
+        "editar_rol" => ok::<EditarRolParams>(nombre, args),
+        "borrar_rol" => ok::<RolParams>(nombre, args),
+        "dar_rol" | "quitar_rol" => ok::<RolMiembroParams>(nombre, args),
+        "permiso_canal" => ok::<PermisoCanalParams>(nombre, args),
+        "quitar_permiso_canal" => ok::<QuitarPermisoCanalParams>(nombre, args),
+        "expulsar" | "desbanear" => ok::<ExpulsarParams>(nombre, args),
+        "banear" => ok::<BanearParams>(nombre, args),
+        "silenciar" => ok::<SilenciarParams>(nombre, args),
+        "cambiar_apodo" => ok::<CambiarApodoParams>(nombre, args),
+        "editar_servidor" => ok::<EditarServidorParams>(nombre, args),
+        "crear_invitacion" => ok::<CrearInvitacionParams>(nombre, args),
+        "borrar_invitacion" => ok::<BorrarInvitacionParams>(nombre, args),
+        "crear_webhook" => ok::<CrearWebhookParams>(nombre, args),
+        "borrar_webhook" => ok::<BorrarWebhookParams>(nombre, args),
+        _ => Err(format!("Unknown action: «{nombre}»")),
+    }
+}
+
+impl ArgusMcp {
+    /// Ejecuta una herramienta de escritura por nombre con la misma lógica que
+    /// el MCP (permisos, jerarquía y mensajes). Rechaza nombres desconocidos,
+    /// herramientas de lectura y argumentos inválidos.
+    pub async fn ejecutar_accion(
+        &self,
+        nombre: &str,
+        args: serde_json::Value,
+    ) -> Result<String, String> {
+        let r = self.despachar_accion(nombre, args).await;
+        self.salida(r)
+    }
+
+    /// Ejecuta una propuesta en orden seguro. Los nombres de roles, categorías y
+    /// canales se resuelven a IDs con lo que ya existe o se ha creado antes. Una
+    /// acción que falla no detiene las demás; una cuya referencia no se resuelve
+    /// se marca como omitida.
+    pub async fn ejecutar_propuesta(
+        &self,
+        propuesta: &Propuesta,
+    ) -> Result<Vec<ResultadoAccion>, String> {
+        let cancelar = AtomicBool::new(false);
+        Ok(self
+            .ejecutar_propuesta_con(propuesta, &cancelar, &mut |_, _| {})
+            .await?
+            .resultados)
+    }
+
+    /// Como `ejecutar_propuesta`, avisando de cada acción en cuanto termina
+    /// (`avance(total, resultado)`) y parando antes de la siguiente si `cancelar`
+    /// se activa.
+    pub async fn ejecutar_propuesta_con(
+        &self,
+        propuesta: &Propuesta,
+        cancelar: &AtomicBool,
+        avance: &mut (dyn FnMut(usize, &ResultadoAccion) + Send),
+    ) -> Result<ResumenPropuesta, String> {
+        let gid = self.servidor_de(None).await?;
+        let roles = commands::leer_roles(&self.state, &gid, self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        let canales = commands::leer_canales(&self.state, &gid, self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        let mut nombres = Nombres::desde(&roles, &canales);
+        let ordenada = ordenar_propuesta(propuesta);
+        let total = ordenada.acciones.len();
+        let mut resultados = Vec::new();
+        for (indice, a) in ordenada.acciones.iter().enumerate() {
+            if cancelar.load(Ordering::SeqCst) {
+                break;
+            }
+            let (estado, mensaje) = match nombres.resolver_args(&a.herramienta, &a.args) {
+                Err(e) => (EstadoAccion::Omitida, e),
+                Ok(args) => match self.ejecutar_accion(&a.herramienta, args.clone()).await {
+                    Ok(salida) => {
+                        nombres.registrar_creado(&a.herramienta, &args, &salida);
+                        (EstadoAccion::Ok, salida)
+                    }
+                    Err(e) => (EstadoAccion::Error, e),
+                },
+            };
+            let r = ResultadoAccion {
+                indice,
+                herramienta: a.herramienta.clone(),
+                descripcion: a.descripcion.clone(),
+                estado,
+                mensaje,
+            };
+            avance(total, &r);
+            resultados.push(r);
+        }
+        Ok(ResumenPropuesta::de(total, resultados))
+    }
+
+    async fn despachar_accion(
+        &self,
+        nombre: &str,
+        args: serde_json::Value,
+    ) -> Result<String, String> {
+        comprobar_escritura(nombre)?;
+        match nombre {
+            "elegir_servidor" => {
+                let p: ElegirServidorParams = args_de(nombre, args)?;
+                self.elegir_servidor_json(&p.guild_id).await
+            }
+            "enviar_mensaje" => {
+                let p: EnviarMensajeParams = args_de(nombre, args)?;
+                self.enviar_mensaje_json(&p.channel_id, &p.contenido).await
+            }
+            "enviar_dm" => {
+                let p: EnviarDmParams = args_de(nombre, args)?;
+                self.enviar_dm_json(&p.user_id, &p.contenido).await
+            }
+            "borrar_mensaje" => {
+                let p: MensajeParams = args_de(nombre, args)?;
+                self.borrar_mensaje_json(p.guild_id.as_deref(), &p.channel_id, &p.message_id)
+                    .await
+            }
+            "borrar_mensajes" => {
+                let p: BorrarMensajesParams = args_de(nombre, args)?;
+                self.borrar_mensajes_json(p.guild_id.as_deref(), &p.channel_id, &p.message_ids)
+                    .await
+            }
+            "fijar_mensaje" | "desfijar_mensaje" => {
+                let p: MensajeParams = args_de(nombre, args)?;
+                self.fijar_mensaje_json(
+                    p.guild_id.as_deref(),
+                    &p.channel_id,
+                    &p.message_id,
+                    nombre == "fijar_mensaje",
+                )
+                .await
+            }
+            "crear_canal" => self.crear_canal_json(&args_de(nombre, args)?).await,
+            "editar_canal" => self.editar_canal_json(&args_de(nombre, args)?).await,
+            "borrar_canal" => {
+                let p: CanalParams = args_de(nombre, args)?;
+                self.borrar_canal_json(p.guild_id.as_deref(), &p.channel_id)
+                    .await
+            }
+            "ordenar_canales" => {
+                let p: OrdenarParams = args_de(nombre, args)?;
+                self.ordenar_canales_json(p.guild_id.as_deref(), &p.posiciones)
+                    .await
+            }
+            "crear_rol" => self.crear_rol_json(&args_de(nombre, args)?).await,
+            "editar_rol" => self.editar_rol_json(&args_de(nombre, args)?).await,
+            "borrar_rol" => {
+                let p: RolParams = args_de(nombre, args)?;
+                self.borrar_rol_json(p.guild_id.as_deref(), &p.role_id)
+                    .await
+            }
+            "ordenar_roles" => {
+                let p: OrdenarParams = args_de(nombre, args)?;
+                self.ordenar_roles_json(p.guild_id.as_deref(), &p.posiciones)
+                    .await
+            }
+            "dar_rol" | "quitar_rol" => {
+                let p: RolMiembroParams = args_de(nombre, args)?;
+                self.cambiar_rol_json(
+                    p.guild_id.as_deref(),
+                    &p.user_id,
+                    &p.role_id,
+                    nombre == "dar_rol",
+                )
+                .await
+            }
+            "permiso_canal" => self.permiso_canal_json(&args_de(nombre, args)?).await,
+            "quitar_permiso_canal" => {
+                let p: QuitarPermisoCanalParams = args_de(nombre, args)?;
+                self.quitar_permiso_canal_json(&p).await
+            }
+            "expulsar" => self.expulsar_json(&args_de(nombre, args)?).await,
+            "banear" => self.banear_json(&args_de(nombre, args)?).await,
+            "desbanear" => {
+                let p: ExpulsarParams = args_de(nombre, args)?;
+                self.desbanear_json(p.guild_id.as_deref(), &p.user_id, p.motivo.as_deref())
+                    .await
+            }
+            "silenciar" => self.silenciar_json(&args_de(nombre, args)?).await,
+            "cambiar_apodo" => self.cambiar_apodo_json(&args_de(nombre, args)?).await,
+            "editar_servidor" => self.editar_servidor_json(&args_de(nombre, args)?).await,
+            "crear_invitacion" => self.crear_invitacion_json(&args_de(nombre, args)?).await,
+            "borrar_invitacion" => {
+                let p: BorrarInvitacionParams = args_de(nombre, args)?;
+                self.borrar_invitacion_json(p.guild_id.as_deref(), &p.codigo)
+                    .await
+            }
+            "crear_webhook" => self.crear_webhook_json(&args_de(nombre, args)?).await,
+            "borrar_webhook" => {
+                let p: BorrarWebhookParams = args_de(nombre, args)?;
+                self.borrar_webhook_json(p.guild_id.as_deref(), &p.webhook_id)
+                    .await
+            }
+            _ => Err(format!("Unknown action: «{nombre}»")),
+        }
+    }
 }
 
 #[tool_router]
@@ -3192,6 +3486,49 @@ mod tests {
         assert!(crear.input_schema["properties"]["permisos"].is_object());
     }
 
+    #[test]
+    fn cada_herramienta_esta_en_exactamente_una_lista() {
+        let registradas: Vec<String> = ArgusMcp::tool_router()
+            .list_all()
+            .iter()
+            .map(|t| t.name.to_string())
+            .collect();
+        for n in &registradas {
+            let veces = HERRAMIENTAS_LECTURA.iter().filter(|x| **x == n).count()
+                + HERRAMIENTAS_ESCRITURA.iter().filter(|x| **x == n).count();
+            assert_eq!(veces, 1, "{n} debe estar en exactamente una lista");
+        }
+        for n in HERRAMIENTAS_LECTURA.iter().chain(HERRAMIENTAS_ESCRITURA) {
+            assert!(registradas.iter().any(|r| r == n), "{n} no está registrada");
+        }
+    }
+
+    #[test]
+    fn las_herramientas_de_lectura_no_modifican_nada() {
+        const PERMITIDAS: [&str; 5] = [
+            "estado",
+            "mapa_servidor",
+            "permisos_bot",
+            "ajustes_servidor",
+            "registro_auditoria",
+        ];
+        for n in HERRAMIENTAS_LECTURA {
+            let ok = PERMITIDAS.contains(n)
+                || *n == "listar_servidores"
+                || *n == "leer_mensajes"
+                || n.starts_with("listar_")
+                || n.starts_with("info_");
+            assert!(ok, "{n} no es una herramienta de lectura conocida");
+            assert!(
+                !HERRAMIENTAS_ESCRITURA.contains(n),
+                "{n} está en ambas listas"
+            );
+        }
+        for n in HERRAMIENTAS_ESCRITURA {
+            assert!(!HERRAMIENTAS_LECTURA.contains(n));
+        }
+    }
+
     // ------------------------- moderación, servidor, invitaciones y webhooks
 
     const KICK: u64 = 1 << 1;
@@ -3592,5 +3929,394 @@ mod tests {
         assert!(banear.input_schema["properties"]["motivo"].is_object());
         let silenciar = tools.iter().find(|t| t.name == "silenciar").unwrap();
         assert!(silenciar.input_schema["properties"]["minutos"].is_object());
+    }
+
+    #[tokio::test]
+    async fn ejecutar_accion_usa_la_logica_del_mcp() {
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_CANALES | GESTIONAR_ROLES, true).await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "Mods", "permissions": "9216"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(rol("1000", "Mods", 1, 9216)))
+            .expect(1)
+            .mount(&s)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "avisos", "type": 0, "topic": "t"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"id": "20", "type": 0, "guild_id": "555", "name": "avisos", "position": 4}),
+            ))
+            .expect(1)
+            .mount(&s)
+            .await;
+        Mock::given(method("PUT"))
+            .and(path("/api/v10/channels/11/permissions/700"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"allow": "9216", "deny": "2048", "type": 0}),
+            ))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&s)
+            .await;
+
+        let r = v(mcp
+            .ejecutar_accion(
+                "crear_rol",
+                json!({"nombre": "Mods", "permisos": ["ManageMessages", "ViewChannel"]}),
+            )
+            .await
+            .unwrap());
+        assert_eq!(r["rol"]["id"], "1000");
+        let r = v(mcp
+            .ejecutar_accion("crear_canal", json!({"nombre": "avisos", "tema": "t"}))
+            .await
+            .unwrap());
+        assert_eq!(r["canal"]["id"], "20");
+        let r = mcp
+            .ejecutar_accion(
+                "permiso_canal",
+                json!({"channel_id": "11", "target_id": "700", "tipo": "rol",
+                       "permitir": ["ManageMessages", "ViewChannel"], "denegar": "2048"}),
+            )
+            .await
+            .unwrap();
+        assert!(r.contains("updated"));
+
+        // Nombre inventado, herramienta de lectura y argumentos inválidos.
+        let e = mcp.ejecutar_accion("inventada", json!({})).await;
+        assert!(e.unwrap_err().contains("Unknown action"));
+        let e = mcp.ejecutar_accion("listar_roles", json!({})).await;
+        assert!(e.unwrap_err().contains("read-only"));
+        let e = mcp.ejecutar_accion("crear_rol", json!({"color": 1})).await;
+        assert!(e.unwrap_err().contains("Invalid arguments"));
+    }
+
+    #[tokio::test]
+    async fn ejecutar_propuesta_resuelve_nombres_a_ids() {
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_CANALES | GESTIONAR_ROLES, true).await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "Nueva", "type": 4}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"id": "30", "type": 4, "guild_id": "555", "name": "Nueva", "position": 5}),
+            ))
+            .expect(1)
+            .mount(&s)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "avisos", "type": 0, "parent_id": "30"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"id": "31", "type": 0, "guild_id": "555", "name": "avisos", "position": 6,
+                       "parent_id": "30"}),
+            ))
+            .expect(1)
+            .mount(&s)
+            .await;
+        Mock::given(method("PUT"))
+            .and(path("/api/v10/channels/31/permissions/700"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&s)
+            .await;
+
+        let acc = |h: &str, args: serde_json::Value| crate::propuesta::Accion {
+            herramienta: h.to_string(),
+            args,
+            descripcion: h.to_string(),
+        };
+        // Desordenada: el permiso y el canal van antes que su categoría.
+        let p = Propuesta {
+            resumen: "x".to_string(),
+            acciones: vec![
+                acc(
+                    "permiso_canal",
+                    json!({"channel_id": "avisos", "target_id": "Moderadores", "tipo": "rol",
+                           "permitir": "1024"}),
+                ),
+                acc("dar_rol", json!({"user_id": "1001", "role_id": "Fantasma"})),
+                acc(
+                    "crear_canal",
+                    json!({"nombre": "avisos", "parent": "Nueva"}),
+                ),
+                acc(
+                    "crear_canal",
+                    json!({"nombre": "Nueva", "tipo": "categoria"}),
+                ),
+            ],
+        };
+        let r = mcp.ejecutar_propuesta(&p).await.unwrap();
+        let h: Vec<_> = r.iter().map(|x| x.herramienta.as_str()).collect();
+        assert_eq!(
+            h,
+            ["crear_canal", "crear_canal", "permiso_canal", "dar_rol"]
+        );
+        assert_eq!(r[0].descripcion, "crear_canal");
+        assert!(r[..3].iter().all(|x| x.estado == EstadoAccion::Ok), "{r:?}");
+        // La referencia que no se resuelve se omite, sin tocar Discord.
+        assert_eq!(r[3].estado, EstadoAccion::Omitida);
+        assert!(r[3].mensaje.contains("«Fantasma»"));
+    }
+
+    /// El Discord falso responde a `GET roles` con los roles de siempre más estos
+    /// (los que la propuesta acaba de crear).
+    async fn roles_con_nuevos(s: &MockServer, nuevos: &[serde_json::Value]) {
+        let mut roles = vec![
+            rol("555", "@everyone", 0, 0),
+            rol("600", "Bot", 5, TODO),
+            rol("700", "Moderadores", 3, 8192),
+        ];
+        roles.extend(nuevos.iter().cloned());
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(roles))
+            .with_priority(1)
+            .mount(s)
+            .await;
+    }
+
+    fn accion(h: &str, args: serde_json::Value) -> crate::propuesta::Accion {
+        crate::propuesta::Accion {
+            herramienta: h.to_string(),
+            descripcion: format!("{h} {args}"),
+            args,
+        }
+    }
+
+    #[tokio::test]
+    async fn aplicar_propuesta_crea_en_orden_con_avance() {
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_CANALES | GESTIONAR_ROLES, true).await;
+        for (id, nombre) in [("1100", "Staff"), ("1101", "Miembro")] {
+            Mock::given(method("POST"))
+                .and(path("/api/v10/guilds/555/roles"))
+                .and(wiremock::matchers::body_partial_json(
+                    json!({"name": nombre}),
+                ))
+                .respond_with(ResponseTemplate::new(200).set_body_json(rol(id, nombre, 1, 0)))
+                .expect(1)
+                .mount(&s)
+                .await;
+        }
+        let canal = |id: &str, tipo: u8, nombre: &str, padre: Option<&str>| {
+            let mut c = json!({"id": id, "type": tipo, "guild_id": "555", "name": nombre,
+                               "position": 9});
+            if let Some(p) = padre {
+                c["parent_id"] = json!(p);
+            }
+            c
+        };
+        let creados = [
+            canal("40", 4, "Comunidad", None),
+            canal("41", 0, "bienvenida", Some("40")),
+            canal("42", 0, "normas", Some("40")),
+            canal("43", 0, "charla", Some("40")),
+        ];
+        for c in creados {
+            let mut cuerpo = json!({"name": c["name"], "type": c["type"]});
+            if c["type"] == 0 {
+                cuerpo["parent_id"] = json!("40");
+            }
+            Mock::given(method("POST"))
+                .and(path("/api/v10/guilds/555/channels"))
+                .and(wiremock::matchers::body_partial_json(cuerpo))
+                .respond_with(ResponseTemplate::new(200).set_body_json(c))
+                .expect(1)
+                .mount(&s)
+                .await;
+        }
+        roles_con_nuevos(
+            &s,
+            &[rol("1100", "Staff", 1, 0), rol("1101", "Miembro", 1, 0)],
+        )
+        .await;
+        for (canal, rol) in [("41", "1100"), ("42", "1101")] {
+            Mock::given(method("PUT"))
+                .and(path(format!("/api/v10/channels/{canal}/permissions/{rol}")))
+                .respond_with(ResponseTemplate::new(204))
+                .expect(1)
+                .mount(&s)
+                .await;
+        }
+
+        // Desordenada a propósito: permisos y canales antes que sus roles/categoría.
+        let p = Propuesta {
+            resumen: "x".to_string(),
+            acciones: vec![
+                accion(
+                    "permiso_canal",
+                    json!({"channel_id": "bienvenida", "target_id": "Staff", "tipo": "rol",
+                           "permitir": "1024"}),
+                ),
+                accion(
+                    "permiso_canal",
+                    json!({"channel_id": "normas", "target_id": "Miembro", "tipo": "rol",
+                           "denegar": "2048"}),
+                ),
+                accion(
+                    "crear_canal",
+                    json!({"nombre": "bienvenida", "parent": "Comunidad"}),
+                ),
+                accion(
+                    "crear_canal",
+                    json!({"nombre": "normas", "parent": "Comunidad"}),
+                ),
+                accion(
+                    "crear_canal",
+                    json!({"nombre": "charla", "parent": "Comunidad"}),
+                ),
+                accion(
+                    "crear_canal",
+                    json!({"nombre": "Comunidad", "tipo": "categoria"}),
+                ),
+                accion("crear_rol", json!({"nombre": "Staff"})),
+                accion("crear_rol", json!({"nombre": "Miembro"})),
+            ],
+        };
+        let cancelar = AtomicBool::new(false);
+        let mut avisos = Vec::new();
+        let resumen = mcp
+            .ejecutar_propuesta_con(&p, &cancelar, &mut |total, r| {
+                avisos.push((total, r.indice, r.estado.clone()))
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            (
+                resumen.total,
+                resumen.hechas,
+                resumen.fallidas,
+                resumen.omitidas
+            ),
+            (8, 8, 0, 0),
+            "{resumen:?}"
+        );
+        assert_eq!(avisos.len(), 8);
+        assert!(avisos
+            .iter()
+            .enumerate()
+            .all(|(i, (t, idx, e))| *t == 8 && *idx == i && *e == EstadoAccion::Ok));
+        // Orden en Discord: roles, categoría, canales, permisos (los `expect`
+        // de los mocks comprueban parent_id y los IDs de los roles creados).
+        let orden: Vec<String> = s
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|r| r.method.as_str() != "GET")
+            .map(|r| format!("{} {}", r.method, r.url.path()))
+            .collect();
+        let dest = |i: usize| orden[i].as_str();
+        assert_eq!(dest(0), "POST /api/v10/guilds/555/roles");
+        assert_eq!(dest(1), "POST /api/v10/guilds/555/roles");
+        assert!(orden[2..6]
+            .iter()
+            .all(|o| o == "POST /api/v10/guilds/555/channels"));
+        assert_eq!(dest(6), "PUT /api/v10/channels/41/permissions/1100");
+        assert_eq!(dest(7), "PUT /api/v10/channels/42/permissions/1101");
+    }
+
+    #[tokio::test]
+    async fn aplicar_propuesta_sigue_tras_un_fallo_omite_dependientes_y_cancela() {
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_CANALES | GESTIONAR_ROLES, true).await;
+        // Crear el rol «Roto» falla; «Bueno» y el canal se crean.
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "Roto"}),
+            ))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&s)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "Bueno"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(rol("1200", "Bueno", 1, 0)))
+            .mount(&s)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"id": "50", "type": 0, "guild_id": "555", "name": "sala", "position": 9}),
+            ))
+            .mount(&s)
+            .await;
+        roles_con_nuevos(&s, &[rol("1200", "Bueno", 1, 0)]).await;
+        Mock::given(method("PUT"))
+            .and(path("/api/v10/channels/50/permissions/1200"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&s)
+            .await;
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: vec![
+                accion("crear_rol", json!({"nombre": "Roto"})),
+                accion("crear_rol", json!({"nombre": "Bueno"})),
+                accion("crear_canal", json!({"nombre": "sala"})),
+                accion(
+                    "permiso_canal",
+                    json!({"channel_id": "sala", "target_id": "Roto", "tipo": "rol",
+                           "permitir": "1024"}),
+                ),
+                accion(
+                    "permiso_canal",
+                    json!({"channel_id": "sala", "target_id": "Bueno", "tipo": "rol",
+                           "permitir": "1024"}),
+                ),
+            ],
+        };
+        let cancelar = AtomicBool::new(false);
+        let r = mcp
+            .ejecutar_propuesta_con(&p, &cancelar, &mut |_, _| {})
+            .await
+            .unwrap();
+        let e: Vec<_> = r.resultados.iter().map(|x| x.estado.clone()).collect();
+        assert_eq!(
+            e,
+            [
+                EstadoAccion::Error,
+                EstadoAccion::Ok,
+                EstadoAccion::Ok,
+                EstadoAccion::Omitida,
+                EstadoAccion::Ok
+            ]
+        );
+        assert_eq!(
+            (r.hechas, r.fallidas, r.omitidas, r.canceladas),
+            (3, 1, 1, 0)
+        );
+
+        // Cancelar tras la primera acción: el resto no se intenta.
+        let cancelar = AtomicBool::new(false);
+        let r = mcp
+            .ejecutar_propuesta_con(&p, &cancelar, &mut |_, _| {
+                cancelar.store(true, Ordering::SeqCst)
+            })
+            .await
+            .unwrap();
+        assert_eq!((r.resultados.len(), r.canceladas, r.total), (1, 4, 5));
+    }
+
+    #[tokio::test]
+    async fn ejecutar_accion_respeta_los_permisos() {
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_MENSAJES, true).await;
+        prohibir_cambios(&s).await;
+        let e = mcp
+            .ejecutar_accion("crear_canal", json!({"nombre": "x"}))
+            .await;
+        assert_eq!(
+            e.unwrap_err(),
+            "The bot is missing the permission «Manage Channels»"
+        );
     }
 }

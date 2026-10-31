@@ -118,6 +118,15 @@ export interface GuildSettings {
   vigilance_enabled: boolean;
   personality_enabled: boolean;
   templates_enabled: boolean;
+  /** Conversación del bot: `personality_enabled` es el interruptor. */
+  chat_agente: 'claude' | 'opencode';
+  chat_modelo: string;
+  chat_personalidad: string;
+  /** IDs de canales; vacía = todos. */
+  chat_canales: string[];
+  chat_espera_s: number;
+  /** Mensajes previos que se pasan al agente (máximo 30). */
+  chat_contexto: number;
 }
 
 export interface Guild {
@@ -214,4 +223,26 @@ export interface EntradaAuditoria {
   objetivo: string;
   reason: string | null;
   fecha: string;
+}
+
+// Asistente IA (sincronizado con asistente.rs, propuesta.rs y db.rs)
+export interface AgenteIa { agente: string; ruta: string; modelos: string[] }
+export interface AccionPropuesta { herramienta: string; args: unknown; descripcion: string }
+export interface Propuesta { resumen: string; acciones: AccionPropuesta[] }
+export interface ErrorValidacion { indice: number; herramienta: string; mensaje: string }
+export interface Validacion { cambios: string[]; errores: ErrorValidacion[] }
+export interface EventoPropuesta { propuesta: Propuesta; validacion: Validacion }
+export type EstadoAccion = 'ok' | 'error' | 'omitida';
+export interface AvanceAccion { indice: number; total: number; descripcion: string; estado: EstadoAccion; mensaje: string }
+export interface ResultadoAccion { indice: number; herramienta: string; descripcion: string; estado: EstadoAccion; mensaje: string }
+export interface ResumenPropuesta {
+  total: number; hechas: number; fallidas: number; omitidas: number; canceladas: number; resultados: ResultadoAccion[];
+}
+export type EventoAsistente =
+  | { tipo: 'texto'; texto: string }
+  | { tipo: 'herramienta'; id: string; nombre: string; ok: boolean | null }
+  | { tipo: 'error'; mensaje: string }
+  | { tipo: 'fin'; sesion: string | null; cancelado: boolean };
+export interface ConversacionAsistente {
+  agente: string; modelo: string; session_id: string | null; mensajes: unknown;
 }
