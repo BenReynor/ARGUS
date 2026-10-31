@@ -335,7 +335,7 @@ Dos opciones nuevas por servidor en la pestaña «Discord replies». (1) **Respo
 - [x] Ajustes de usuarios y órdenes por servidor
   criterio: `GuildSettings` (db.rs y tipos TS) añade con `#[serde(default)]`: `chat_usuarios` (IDs a los que responde; vacío = todos), `chat_ordenes` (bool, por defecto false), `chat_ordenes_usuarios` (IDs que pueden dar órdenes), `chat_ordenes_confirmar` (bool, por defecto true), `ordenes_agente` (por defecto "claude") y `ordenes_modelo` (por defecto "sonnet"); una función `ordenes_activas(ajustes, autor)` devuelve true solo si `chat_ordenes` está activo y el autor está en `chat_ordenes_usuarios` (con la lista vacía, nunca); tests de Rust de valores por defecto, de una configuración antigua sin estos campos y de `ordenes_activas`
 
-- [ ] Responder solo a ciertos usuarios
+- [x] Responder solo a ciertos usuarios
   criterio: la función que decide si responder (chat.rs) no responde a autores que no están en `chat_usuarios` cuando la lista no está vacía, y con la lista vacía se comporta como antes; tests de los dos casos
 
 - [ ] Detectar una orden en la respuesta del chat (funciones puras)
