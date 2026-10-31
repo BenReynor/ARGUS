@@ -38,6 +38,12 @@ mismo que tú desde la app.
   **Apply**, y ARGUS construye el servidor entero en orden. El agente solo puede
   leer; ten en cuenta que tu plan y lo que lea del servidor van al proveedor del
   modelo. Ver [docs/ASISTENTE.md](docs/ASISTENTE.md) (en inglés).
+- **Conversar en Discord con personalidad:** por servidor, activa las respuestas,
+  elige agente y modelo (un modelo gratis de opencode basta para conversar) y
+  escribe la personalidad del bot. Solo responde cuando lo mencionan o le
+  responden, y solo con ARGUS abierto; los mensajes que contesta van al proveedor
+  del modelo. Ver
+  [docs/ASISTENTE.md](docs/ASISTENTE.md#talking-on-discord-replies-from-the-bot) (en inglés).
 - **Varios bots en una app:** añade tus bots con su token; ARGUS lee de Discord su
   nombre y avatar oficiales. Cambia de bot en la barra lateral y de servidor en la
   columna de la izquierda.
