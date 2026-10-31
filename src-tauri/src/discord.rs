@@ -735,16 +735,38 @@ pub async fn create_guild_channel(
         .ok_or("The channel needs a name")?;
     let gid = parse_guild_id(guild_id)?;
     let client = build_client(token, base_url);
+    let tipo = datos.channel_type.unwrap_or(0);
+    let padre = match datos.parent_id.as_deref().filter(|p| !p.is_empty()) {
+        Some(_) if tipo == 4 => {
+            return Err("A category cannot be inside another category".to_string())
+        }
+        Some(p) => Some(parse_id(p, "category")?),
+        None => None,
+    };
+    // Un canal creado por la API NO hereda los permisos de su categoría (eso lo
+    // hace la app de Discord al crearlo a mano). Se copian, como un canal
+    // «sincronizado»: sin esto, una categoría privada tenía canales visibles.
+    let permisos_padre = match padre {
+        Some(pid) => client
+            .channel(pid)
+            .await
+            .map_err(traducir_error)?
+            .model()
+            .await
+            .map_err(|e| format!("Invalid response from Discord: {e}"))?
+            .permission_overwrites
+            .unwrap_or_default(),
+        None => Vec::new(),
+    };
     let mut peticion = client
         .create_guild_channel(gid, nombre)
         .map_err(|_| "Invalid channel name".to_string())?;
-    let tipo = datos.channel_type.unwrap_or(0);
     peticion = peticion.kind(ChannelType::from(tipo));
-    if let Some(padre) = datos.parent_id.as_deref().filter(|p| !p.is_empty()) {
-        if tipo == 4 {
-            return Err("A category cannot be inside another category".to_string());
+    if let Some(pid) = padre {
+        peticion = peticion.parent_id(pid);
+        if !permisos_padre.is_empty() {
+            peticion = peticion.permission_overwrites(&permisos_padre);
         }
-        peticion = peticion.parent_id(parse_id(padre, "category")?);
     }
     if let Some(tema) = datos.topic.as_deref() {
         peticion = peticion

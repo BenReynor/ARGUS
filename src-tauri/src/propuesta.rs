@@ -161,14 +161,25 @@ pub struct Validacion {
 
 /// Grupo de ejecución: crear/editar roles → categorías → canales → permisos de
 /// canal → dar/quitar roles → resto.
-fn grupo(a: &Accion) -> u8 {
+/// Grupo de orden de una acción. Los permisos de una categoría que crea la
+/// propuesta van antes de los canales: al crearse dentro, el canal copia los
+/// permisos de su categoría (como en la app de Discord), así que tienen que
+/// estar puestos ya.
+fn grupo(a: &Accion, categorias: &std::collections::HashSet<String>) -> u8 {
+    let sobre_categoria = || {
+        a.args
+            .get("channel_id")
+            .and_then(Value::as_str)
+            .is_some_and(|c| categorias.contains(&clave(c)))
+    };
     match a.herramienta.as_str() {
         "crear_rol" | "editar_rol" => 0,
         "crear_canal" if es_categoria(&a.args) => 1,
-        "crear_canal" | "editar_canal" => 2,
-        "permiso_canal" | "quitar_permiso_canal" => 3,
-        "dar_rol" | "quitar_rol" => 4,
-        _ => 5,
+        "permiso_canal" | "quitar_permiso_canal" if sobre_categoria() => 2,
+        "crear_canal" | "editar_canal" => 3,
+        "permiso_canal" | "quitar_permiso_canal" => 4,
+        "dar_rol" | "quitar_rol" => 5,
+        _ => 6,
     }
 }
 
@@ -185,8 +196,14 @@ fn es_categoria(args: &Value) -> bool {
 /// Deja las acciones en orden seguro sin cambiar el orden relativo dentro de
 /// cada grupo.
 pub fn ordenar_propuesta(p: &Propuesta) -> Propuesta {
+    let categorias: std::collections::HashSet<String> = p
+        .acciones
+        .iter()
+        .filter(|a| a.herramienta == "crear_canal" && es_categoria(&a.args))
+        .filter_map(|a| a.args.get("nombre").and_then(Value::as_str).map(clave))
+        .collect();
     let mut acciones = p.acciones.clone();
-    acciones.sort_by_key(grupo); // estable
+    acciones.sort_by_key(|a| grupo(a, &categorias)); // estable
     Propuesta {
         resumen: p.resumen.clone(),
         acciones,
@@ -497,6 +514,58 @@ mod tests {
             ),
             acc("quitar_rol", json!({"user_id": "1", "role_id": "2"})),
         ])
+    }
+
+    #[test]
+    fn permisos_de_categoria_van_antes_de_sus_canales() {
+        let acc = |h: &str, args: Value| Accion {
+            herramienta: h.into(),
+            args,
+            descripcion: String::new(),
+        };
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: vec![
+                acc(
+                    "crear_canal",
+                    json!({"nombre": "keter", "categoria_id": "Archivos"}),
+                ),
+                acc(
+                    "permiso_canal",
+                    json!({"channel_id": "keter", "target_id": "O5", "tipo": "rol"}),
+                ),
+                acc(
+                    "permiso_canal",
+                    json!({"channel_id": "Archivos", "target_id": "O5", "tipo": "rol"}),
+                ),
+                acc(
+                    "crear_canal",
+                    json!({"nombre": "Archivos", "tipo": "categoria"}),
+                ),
+                acc("crear_rol", json!({"nombre": "O5"})),
+            ],
+        };
+        let orden: Vec<String> = ordenar_propuesta(&p)
+            .acciones
+            .iter()
+            .map(|a| {
+                format!(
+                    "{} {}",
+                    a.herramienta,
+                    a.args.get("channel_id").or(a.args.get("nombre")).unwrap()
+                )
+            })
+            .collect();
+        assert_eq!(
+            orden,
+            [
+                "crear_rol \"O5\"",
+                "crear_canal \"Archivos\"",
+                "permiso_canal \"Archivos\"",
+                "crear_canal \"keter\"",
+                "permiso_canal \"keter\"",
+            ]
+        );
     }
 
     #[test]

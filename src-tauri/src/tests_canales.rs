@@ -105,11 +105,26 @@ async fn mock_lista(server: &MockServer, canales: serde_json::Value) {
 async fn crea_canal_con_todos_los_campos_y_actualiza_el_mapa() {
     let server = MockServer::start().await;
     mock_permisos(&server, GESTIONAR_CANALES).await;
+    // La categoría 5 es privada (oculta a @everyone y visible para el rol 7):
+    // el canal nuevo nace con esos mismos permisos, como en la app de Discord.
+    let permisos_categoria = serde_json::json!([
+        {"id": "555", "type": 0, "allow": "0", "deny": "1024"},
+        {"id": "7", "type": 0, "allow": "1024", "deny": "0"}
+    ]);
+    let mut categoria = canal_json("5", "Info", 4, None);
+    categoria["permission_overwrites"] = permisos_categoria.clone();
+    Mock::given(method("GET"))
+        .and(path("/api/v10/channels/5"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(categoria))
+        .expect(1)
+        .mount(&server)
+        .await;
     Mock::given(method("POST"))
         .and(path("/api/v10/guilds/555/channels"))
         .and(body_json(serde_json::json!({
             "name": "novedades", "type": 5, "parent_id": "5",
-            "topic": "Avisos", "nsfw": true, "rate_limit_per_user": 30
+            "topic": "Avisos", "nsfw": true, "rate_limit_per_user": 30,
+            "permission_overwrites": permisos_categoria
         })))
         .respond_with(ResponseTemplate::new(201).set_body_json(canal_json(
             "10",

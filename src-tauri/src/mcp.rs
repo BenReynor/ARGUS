@@ -2762,6 +2762,17 @@ mod tests {
         guardar_bot(&pool).await;
         let discord = discord_falso().await;
         servidor_555(&discord, bits).await;
+        // Crear un canal dentro de una categoría lee antes sus permisos para
+        // copiarlos: respuesta genérica (sin permisos propios) de baja prioridad.
+        Mock::given(method("GET"))
+            .and(wiremock::matchers::path_regex(r"^/api/v10/channels/\d+$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": "10", "type": 4, "guild_id": "555", "name": "Categoría",
+                "position": 0, "permission_overwrites": []
+            })))
+            .with_priority(10)
+            .mount(&discord)
+            .await;
         let mcp = servidor(pool, &discord).await;
         if activo {
             mcp.elegir_servidor_json("555").await.unwrap();
