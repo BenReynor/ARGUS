@@ -423,7 +423,7 @@ Separar **construir** el servidor de **gestionarlo**. Nueva pestaña **Moderatio
 - [x] Prompt y conversación de moderación
   criterio: las conversaciones del asistente guardan su tipo (`construccion` o `moderacion`; migración con valor por defecto `construccion` para las existentes) y cada tipo tiene su propia conversación y sesión por servidor; `prompt_asistente` con tipo moderación orienta al agente a miembros, mensajes y sanciones (usa `buscar_mensajes`, `leer_mensajes` y `listar_avisos`; lee por defecto como mucho `limite_por_canal` mensajes por canal), en modo Read responde análisis citando las pruebas (autor, fecha y enlace de cada mensaje relevante) y diciendo cuándo no hay pruebas suficientes, y en modo Execute propone solo acciones de moderación (avisar, silenciar, expulsar, banear, desbanear, borrar_mensajes, dar_rol, quitar_rol, cambiar_apodo) y nunca cambios de estructura; tests de los dos tipos de prompt y de que las conversaciones no se mezclan
 
-- [ ] Pestaña Moderation en la interfaz
+- [x] Pestaña Moderation en la interfaz
   criterio: la sección AI Assistant pasa a tener las pestañas **Build** (plan + chat de construcción, lo actual), **Moderation**, **Context & personality** y **Discord replies**; Moderation reutiliza el chat (agente, modelo, Read/Execute, Stop, New conversation) con la conversación de moderación, un campo «Messages to read per channel» (por defecto 100), y un panel lateral con los avisos recientes del servidor (usuario, número de avisos, último motivo); las propuestas de moderación muestran el nombre del miembro y el motivo de cada acción; todo con `t()`; `npm run i18n:check` y `npm run build` pasan
 
 - [ ] Órdenes de Discord a construcción o moderación
