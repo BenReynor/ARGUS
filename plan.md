@@ -401,7 +401,7 @@ Sintaxis (palabras clave en español o inglés, sin distinguir mayúsculas ni ti
 - [x] Pestaña de contexto y personalidad
   criterio: la sección AI Assistant tiene una pestaña «Context & personality» con dos editores: el contexto del servidor (Markdown, guardado automático, Import/Export .md, con un texto de ejemplo como marcador) y la personalidad del bot (el mismo campo `chat_personalidad` de «Discord replies», que allí pasa a mostrarse como un resumen con enlace a esta pestaña); todo con `t()`; `npm run i18n:check` y `npm run build` pasan
 
-- [ ] Manual y plantilla en la app
+- [x] Manual y plantilla en la app
   criterio: junto al editor del plan hay un botón **Manual** que abre un panel con la sintaxis explicada con ejemplos (roles, categoría privada, rangos, descripción literal y `generar:`, permisos, texto libre) y consejos para gastar menos tokens, y un botón **Insert template** que inserta un plan de ejemplo estructurado y comentado (si el editor tiene texto, pregunta antes de reemplazar); los avisos del análisis (línea y motivo) se muestran bajo el editor mientras se escribe; todo con `t()`; `npm run i18n:check` y `npm run build` pasan
 
 - [ ] Documentación del plan estructurado
