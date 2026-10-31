@@ -118,6 +118,15 @@ export interface GuildSettings {
   vigilance_enabled: boolean;
   personality_enabled: boolean;
   templates_enabled: boolean;
+  /** Conversación del bot: `personality_enabled` es el interruptor. */
+  chat_agente: 'claude' | 'opencode';
+  chat_modelo: string;
+  chat_personalidad: string;
+  /** IDs de canales; vacía = todos. */
+  chat_canales: string[];
+  chat_espera_s: number;
+  /** Mensajes previos que se pasan al agente (máximo 30). */
+  chat_contexto: number;
 }
 
 export interface Guild {

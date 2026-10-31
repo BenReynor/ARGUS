@@ -688,14 +688,73 @@ pub async fn set_setting(pool: &SqlitePool, key: &str, value: &str) -> Result<()
 }
 
 // Ajustes propios de cada servidor (por bot)
-#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct GuildSettings {
     pub alias: Option<String>,
     pub notes: String,
     pub vigilance_enabled: bool,
+    /// Interruptor de la conversación del bot en este servidor.
     pub personality_enabled: bool,
     pub templates_enabled: bool,
+    /// Agente de línea de comandos: "claude" u "opencode".
+    #[serde(default = "chat_agente_defecto")]
+    pub chat_agente: String,
+    #[serde(default)]
+    pub chat_modelo: String,
+    /// Texto libre: nombre, tono, rol, reglas.
+    #[serde(default)]
+    pub chat_personalidad: String,
+    /// IDs de canales donde conversa; vacía = todos.
+    #[serde(default)]
+    pub chat_canales: Vec<String>,
+    /// Espera mínima por usuario, en segundos.
+    #[serde(default = "chat_espera_defecto")]
+    pub chat_espera_s: u32,
+    /// Mensajes previos del canal que se le pasan (máximo 30).
+    #[serde(default = "chat_contexto_defecto")]
+    pub chat_contexto: u32,
+}
+
+pub const CHAT_CONTEXTO_MAX: u32 = 30;
+
+fn chat_agente_defecto() -> String {
+    "claude".into()
+}
+fn chat_espera_defecto() -> u32 {
+    10
+}
+fn chat_contexto_defecto() -> u32 {
+    10
+}
+
+impl Default for GuildSettings {
+    fn default() -> Self {
+        Self {
+            alias: None,
+            notes: String::new(),
+            vigilance_enabled: false,
+            personality_enabled: false,
+            templates_enabled: false,
+            chat_agente: chat_agente_defecto(),
+            chat_modelo: String::new(),
+            chat_personalidad: String::new(),
+            chat_canales: Vec::new(),
+            chat_espera_s: chat_espera_defecto(),
+            chat_contexto: chat_contexto_defecto(),
+        }
+    }
+}
+
+impl GuildSettings {
+    /// Corrige valores fuera de rango (agente desconocido, contexto > 30).
+    pub fn normalizado(mut self) -> Self {
+        if self.chat_agente != "claude" && self.chat_agente != "opencode" {
+            self.chat_agente = chat_agente_defecto();
+        }
+        self.chat_contexto = self.chat_contexto.min(CHAT_CONTEXTO_MAX);
+        self
+    }
 }
 
 pub async fn get_guild_settings(
@@ -711,7 +770,9 @@ pub async fn get_guild_settings(
     match row {
         Some(r) => {
             let data: String = r.get("data");
-            Ok(serde_json::from_str(&data).unwrap_or_default())
+            Ok(serde_json::from_str::<GuildSettings>(&data)
+                .unwrap_or_default()
+                .normalizado())
         }
         None => Ok(GuildSettings::default()),
     }
@@ -729,7 +790,7 @@ pub async fn save_guild_settings(
     )
     .bind(bot_id)
     .bind(guild_id)
-    .bind(serde_json::to_string(settings)?)
+    .bind(serde_json::to_string(&settings.clone().normalizado())?)
     .bind(chrono::Utc::now().to_rfc3339())
     .execute(pool)
     .await?;
@@ -1012,6 +1073,46 @@ mod guild_settings_tests {
         let s: GuildSettings = serde_json::from_str("{\"notes\":\"x\"}").unwrap();
         assert_eq!(s.notes, "x");
         assert!(!s.personality_enabled);
+    }
+
+    #[test]
+    fn los_ajustes_de_chat_tienen_valores_por_defecto() {
+        let s = GuildSettings::default();
+        assert_eq!(s.chat_agente, "claude");
+        assert!(s.chat_modelo.is_empty() && s.chat_personalidad.is_empty());
+        assert!(s.chat_canales.is_empty());
+        assert_eq!(s.chat_espera_s, 10);
+        assert_eq!(s.chat_contexto, 10);
+    }
+
+    #[test]
+    fn configuracion_antigua_sin_campos_de_chat_se_lee_con_defectos() {
+        let antigua = "{\"alias\":\"A\",\"notes\":\"n\",\"vigilance_enabled\":true,\
+                       \"personality_enabled\":true,\"templates_enabled\":false}";
+        let s: GuildSettings = serde_json::from_str(antigua).unwrap();
+        assert!(s.personality_enabled && s.vigilance_enabled);
+        assert_eq!(s.alias.as_deref(), Some("A"));
+        assert_eq!(s.chat_agente, "claude");
+        assert!(s.chat_canales.is_empty());
+        assert_eq!((s.chat_espera_s, s.chat_contexto), (10, 10));
+    }
+
+    #[test]
+    fn normalizado_limita_contexto_y_agente() {
+        let s = GuildSettings {
+            chat_agente: "otro".into(),
+            chat_contexto: 99,
+            ..Default::default()
+        }
+        .normalizado();
+        assert_eq!(s.chat_agente, "claude");
+        assert_eq!(s.chat_contexto, 30);
+        let o = GuildSettings {
+            chat_agente: "opencode".into(),
+            ..Default::default()
+        }
+        .normalizado();
+        assert_eq!(o.chat_agente, "opencode");
     }
 }
 
