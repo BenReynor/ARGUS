@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
 import { useActiveGuildId, useShowNotification } from '../store/useStore';
-import { listarAgentesIa, getGuildSettings, saveGuildSettings, listChannels } from '../api/tauri';
-import type { AgenteIa, Channel, GuildSettings } from '../types';
-import { Button, Cargando, EstadoVacio, ErrorPanel, Input, Select } from './ui';
+import { listarAgentesIa, getGuildSettings, saveGuildSettings, listChannels, listMembers } from '../api/tauri';
+import type { AgenteIa, Channel, GuildSettings, Member } from '../types';
+import { Avatar, Button, Cargando, EstadoVacio, ErrorPanel, Input, Select } from './ui';
 import { t } from '../i18n';
 import './Asistente.css';
 
@@ -18,6 +18,7 @@ export const RespuestasDiscord: React.FC = () => {
   const showNotification = useShowNotification();
 
   const [agentes, setAgentes] = useState<AgenteIa[] | null>(null);
+  const [miembros, setMiembros] = useState<Member[]>([]);
   const [canales, setCanales] = useState<Channel[]>([]);
   const [ajustes, setAjustes] = useState<GuildSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,13 +33,14 @@ export const RespuestasDiscord: React.FC = () => {
     setSucio(false);
     (async () => {
       try {
-        const [a, s, c] = await Promise.all([listarAgentesIa(), getGuildSettings(guildId), listChannels(guildId)]);
+        const [a, s, c, m] = await Promise.all([listarAgentesIa(), getGuildSettings(guildId), listChannels(guildId), listMembers(guildId).catch(() => [] as Member[])]);
         if (!vigente) return;
         setAgentes(a);
         // Sin modelo guardado, el más barato del agente: las respuestas en
         // Discord son para conversar sin gastar (el desplegable mostraba opus).
         const agente = a.find((x) => x.agente === s.chat_agente);
         setAjustes(s.chat_modelo ? s : { ...s, chat_modelo: modeloMasBarato(s.chat_agente, agente?.modelos ?? []) });
+        setMiembros(m.filter((x) => !x.bot));
         setCanales(c.filter((x) => TIPOS_TEXTO.includes(x.channel_type)).sort((x, y) => x.position - y.position));
       } catch (e) {
         if (vigente) setError(mensajeError(e, t('Could not load the Discord reply settings')));
@@ -66,6 +68,13 @@ export const RespuestasDiscord: React.FC = () => {
     const a = agentes.find((x) => x.agente === nombre);
     const lista = a?.modelos ?? [];
     cambiar({ chat_agente: nombre as GuildSettings['chat_agente'], chat_modelo: modeloMasBarato(nombre, lista) });
+  };
+  const hayAutorizados = (ajustes.chat_ordenes_usuarios ?? []).length > 0;
+  const modelosOrdenes = agentes.find((a) => a.agente === ajustes.ordenes_agente)?.modelos ?? [];
+  const cambiarAgenteOrdenes = (nombre: string) => {
+    const lista = agentes.find((x) => x.agente === nombre)?.modelos ?? [];
+    const defecto = nombre === 'claude' && lista.includes('sonnet') ? 'sonnet' : (lista[0] ?? '');
+    cambiar({ ordenes_agente: nombre as GuildSettings['ordenes_agente'], ordenes_modelo: defecto });
   };
   const alternarCanal = (id: string) => cambiar({
     chat_canales: ajustes.chat_canales.includes(id) ? ajustes.chat_canales.filter((x) => x !== id) : [...ajustes.chat_canales, id],
@@ -154,6 +163,14 @@ export const RespuestasDiscord: React.FC = () => {
           )}
         </fieldset>
 
+        <SelectorMiembros
+          etiqueta={t('Reply only to')}
+          ayuda={t('None selected = the bot replies to everyone.')}
+          miembros={miembros}
+          valor={ajustes.chat_usuarios ?? []}
+          onChange={(ids) => cambiar({ chat_usuarios: ids })}
+        />
+
         <div className="asistente__acciones">
           <Input
             etiqueta={t('Wait per user (seconds)')}
@@ -168,11 +185,107 @@ export const RespuestasDiscord: React.FC = () => {
           />
         </div>
 
+        <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+          <legend>{t('Orders from Discord')}</legend>
+          <div className="asistente__aviso" role="note">
+            <TriangleAlert size={16} />
+            <span>{t('Orders really change your server and are recorded in Logs.')}</span>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            <input
+              type="checkbox" role="switch"
+              checked={ajustes.chat_ordenes && hayAutorizados}
+              disabled={!hayAutorizados}
+              onChange={(e) => cambiar({ chat_ordenes: e.target.checked })}
+            />
+            <span>{t('Let authorized users give orders from Discord')}</span>
+          </label>
+          {!hayAutorizados && <small>{t('Choose at least one authorized user below to turn orders on. Nobody else can give orders.')}</small>}
+          <SelectorMiembros
+            etiqueta={t('Users who can give orders')}
+            ayuda={t('Only these users can give orders. Empty = nobody.')}
+            miembros={miembros}
+            valor={ajustes.chat_ordenes_usuarios ?? []}
+            onChange={(ids) => cambiar({ chat_ordenes_usuarios: ids, ...(ids.length === 0 ? { chat_ordenes: false } : {}) })}
+          />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            <input type="checkbox" role="switch" checked={ajustes.chat_ordenes_confirmar} onChange={(e) => cambiar({ chat_ordenes_confirmar: e.target.checked })} />
+            <span>{t('Ask for confirmation before applying')}</span>
+          </label>
+          <div className="asistente__acciones">
+            <Select etiqueta={t('Builder agent')} value={ajustes.ordenes_agente} onChange={(e) => cambiarAgenteOrdenes(e.target.value)}>
+              {agentes.map((a) => <option key={a.agente} value={a.agente}>{a.agente}</option>)}
+            </Select>
+            {modelosOrdenes.length > 0 ? (
+              <Select etiqueta={t('Builder model')} value={ajustes.ordenes_modelo} onChange={(e) => cambiar({ ordenes_modelo: e.target.value })}>
+                {ajustes.ordenes_modelo && !modelosOrdenes.includes(ajustes.ordenes_modelo) && <option value={ajustes.ordenes_modelo}>{ajustes.ordenes_modelo}</option>}
+                {modelosOrdenes.map((m) => <option key={m} value={m}>{m}</option>)}
+              </Select>
+            ) : (
+              <Input etiqueta={t('Builder model')} value={ajustes.ordenes_modelo} placeholder={t('Model name')} onChange={(e) => cambiar({ ordenes_modelo: e.target.value })} />
+            )}
+          </div>
+        </fieldset>
+
         <div className="asistente__acciones">
           <Button onClick={() => { void guardar(); }} disabled={!sucio || guardando}>{guardando ? t('Saving…') : t('Save settings')}</Button>
         </div>
       </section>
     </div>
+  );
+};
+
+const nombreMiembro = (m: Member) => m.nickname || m.username;
+
+/** Selector múltiple de miembros: buscador, lista filtrada y chips con avatar y nombre. */
+const SelectorMiembros: React.FC<{
+  etiqueta: string; ayuda: string; miembros: Member[]; valor: string[]; onChange: (ids: string[]) => void;
+}> = ({ etiqueta, ayuda, miembros, valor, onChange }) => {
+  const [busqueda, setBusqueda] = useState('');
+  const q = busqueda.trim().toLowerCase();
+  const candidatos = miembros
+    .filter((m) => !valor.includes(m.user_id) && (nombreMiembro(m).toLowerCase().includes(q) || m.username.toLowerCase().includes(q)))
+    .slice(0, 8);
+  return (
+    <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+      <legend>{etiqueta}</legend>
+      <small>{ayuda}</small>
+      {valor.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-1)', margin: 'var(--sp-1) 0' }}>
+          {valor.map((id) => {
+            const m = miembros.find((x) => x.user_id === id);
+            const nombre = m ? nombreMiembro(m) : id;
+            return (
+              <span key={id} className="ui-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-1)' }}>
+                <Avatar src={m?.avatar ?? null} nombre={nombre} tamano={20} />
+                <span>{nombre}</span>
+                <button type="button" aria-label={t('Remove {name}', { name: nombre })} onClick={() => onChange(valor.filter((x) => x !== id))}>×</button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+      <Input
+        aria-label={t('Search members by name')}
+        placeholder={t('Search members by name')}
+        value={busqueda}
+        onChange={(e) => setBusqueda(e.target.value)}
+      />
+      {q !== '' && (
+        candidatos.length === 0 ? <small>{t('No members found.')}</small> : (
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {candidatos.map((m) => (
+              <li key={m.user_id}>
+                <button type="button" style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }} onClick={() => { onChange([...valor, m.user_id]); setBusqueda(''); }}>
+                  <Avatar src={m.avatar} nombre={nombreMiembro(m)} tamano={20} />
+                  <span>{nombreMiembro(m)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+    </fieldset>
   );
 };
 
