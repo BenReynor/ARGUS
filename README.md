@@ -37,7 +37,10 @@ things you do from the app.
   models). In Execute mode it proposes the changes, you review them and press
   **Apply**, and ARGUS builds the whole server in order. The agent can only read;
   note that your plan and what it reads from the server go to the model's
-  provider. See [docs/ASISTENTE.md](docs/ASISTENTE.md).
+  provider. See [docs/ASISTENTE.md](docs/ASISTENTE.md). The plan also has a
+  structured syntax that ARGUS builds without AI: see
+  [docs/PLAN_SERVIDOR.md](docs/PLAN_SERVIDOR.md) (also in
+  [Spanish](docs/PLAN_SERVIDOR.es.md)).
 - **Chat on Discord with a personality:** per server, turn on replies, pick an
   agent and model (a free opencode model is enough to chat) and write the bot's
   personality. It answers only when mentioned or replied to, and only while ARGUS

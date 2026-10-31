@@ -37,7 +37,10 @@ mismo que tú desde la app.
   modelos gratis). En modo Execute propone los cambios, tú los revisas y pulsas
   **Apply**, y ARGUS construye el servidor entero en orden. El agente solo puede
   leer; ten en cuenta que tu plan y lo que lea del servidor van al proveedor del
-  modelo. Ver [docs/ASISTENTE.md](docs/ASISTENTE.md) (en inglés).
+  modelo. Ver [docs/ASISTENTE.md](docs/ASISTENTE.md) (en inglés). El plan
+  también admite una sintaxis estructurada que ARGUS construye sin IA: ver
+  [docs/PLAN_SERVIDOR.es.md](docs/PLAN_SERVIDOR.es.md) (en
+  [inglés](docs/PLAN_SERVIDOR.md)).
 - **Conversar en Discord con personalidad:** por servidor, activa las respuestas,
   elige agente y modelo (un modelo gratis de opencode basta para conversar) y
   escribe la personalidad del bot. Solo responde cuando lo mencionan o le

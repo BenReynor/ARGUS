@@ -369,3 +369,7 @@ in addition to what is described above for chatting.
   apply again.
 
 See also [MCP.md](MCP.md) for the tools the agent can read with.
+
+Structured plan syntax (build servers without AI, server context, saving
+tokens): [PLAN_SERVIDOR.md](PLAN_SERVIDOR.md) (English) ·
+[PLAN_SERVIDOR.es.md](PLAN_SERVIDOR.es.md) (español).
