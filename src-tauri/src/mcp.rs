@@ -1864,6 +1864,11 @@ pub fn esquema_args(nombre: &str) -> Option<serde_json::Value> {
 /// así el asistente no adivina argumentos (antes solo se documentaban cuatro).
 /// `guild_id` se omite: siempre se usa el servidor activo.
 pub fn firmas_escritura() -> String {
+    firmas_de(HERRAMIENTAS_ESCRITURA)
+}
+
+/// Como `firmas_escritura` pero solo para las herramientas indicadas.
+pub fn firmas_de(herramientas: &[&str]) -> String {
     fn tipo(v: &serde_json::Value) -> String {
         match v.get("type") {
             Some(serde_json::Value::String(t)) if t == "array" => {
@@ -1882,7 +1887,7 @@ pub fn firmas_escritura() -> String {
     }
     let mut lineas = Vec::new();
     for h in HERRAMIENTAS_ESCRITURA {
-        if *h == "elegir_servidor" {
+        if *h == "elegir_servidor" || !herramientas.contains(h) {
             continue;
         }
         let Some(esquema) = esquema_args(h) else {

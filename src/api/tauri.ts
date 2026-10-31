@@ -156,19 +156,21 @@ export const deleteWebhook = (guildId: string, webhookId: string) => invoke<stri
 
 // Asistente IA
 export const listarAgentesIa = () => invoke<AgenteIa[]>('listar_agentes_ia');
-export const enviarAlAsistente = (mensaje: string, agente: string, modelo: string, modo: 'read' | 'plan' | 'execute', plan?: string) =>
-  invoke<string | null>('enviar_al_asistente', { mensaje, agente, modelo, modo, plan });
+export const enviarAlAsistente = (mensaje: string, agente: string, modelo: string, modo: 'read' | 'plan' | 'execute', plan?: string, tipo?: TipoAsistente, limitePorCanal?: number) =>
+  invoke<string | null>('enviar_al_asistente', { mensaje, agente, modelo, modo, plan, tipo, limitePorCanal });
 export const leerPlanServidor = (guildId: string) => invoke<string>('leer_plan_servidor', { guildId });
 export const leerContextoServidor = (guildId: string) => invoke<string>('leer_contexto_servidor', { guildId });
 export const guardarContextoServidor = (guildId: string, contenido: string) =>
   invoke<void>('guardar_contexto_servidor', { guildId, contenido });
 export const guardarPlanServidor =(guildId: string, contenido: string) =>
   invoke<void>('guardar_plan_servidor', { guildId, contenido });
-export const leerConversacion = (guildId: string, agente?: string) =>
-  invoke<ConversacionAsistente | null>('leer_conversacion', { guildId, agente });
-export const guardarConversacion = (guildId: string, agente: string, modelo: string, mensajes: unknown) =>
-  invoke<void>('guardar_conversacion', { guildId, agente, modelo, mensajes });
-export const nuevaConversacion = (guildId: string) => invoke<void>('nueva_conversacion', { guildId });
+export type TipoAsistente = 'construccion' | 'moderacion';
+export const leerConversacion = (guildId: string, agente?: string, tipo?: TipoAsistente) =>
+  invoke<ConversacionAsistente | null>('leer_conversacion', { guildId, agente, tipo });
+export const guardarConversacion = (guildId: string, agente: string, modelo: string, mensajes: unknown, tipo?: TipoAsistente) =>
+  invoke<void>('guardar_conversacion', { guildId, agente, modelo, mensajes, tipo });
+export const nuevaConversacion = (guildId: string, tipo?: TipoAsistente) =>
+  invoke<void>('nueva_conversacion', { guildId, tipo });
 export const aplicarPropuesta = (propuesta: Propuesta) => invoke<ResumenPropuesta>('aplicar_propuesta', { propuesta });
 export const resumirPlan = (plan: string) => invoke<ResumenPlan>('resumir_plan', { plan });
 export const construirDesdePlan = (agente: string, modelo: string, plan?: string) =>
