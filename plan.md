@@ -277,7 +277,7 @@ La función principal de ARGUS: montar servidores enormes en minutos. Dentro de 
 - [x] Aplicar una propuesta con avance en vivo
   criterio: comando Tauri `aplicar_propuesta` que ejecuta las acciones en orden con `ejecutar_accion`, emite por cada una el evento `asistente-accion` (índice, total, descripción, estado ok/error y mensaje) y al final un resumen (hechas, fallidas); una acción que falla no detiene las siguientes salvo que dependan de ella (sus referencias por nombre no se resuelven → se marcan omitidas); se puede cancelar a mitad con `cancelar_asistente`; test contra el Discord falso con una propuesta de 2 roles, 1 categoría, 3 canales y 2 permisos: se crean en orden, los canales quedan dentro de la categoría y los permisos apuntan a los roles creados
 
-- [ ] Detectar agentes de IA y sus modelos
+- [x] Detectar agentes de IA y sus modelos
   criterio: módulo `src-tauri/src/asistente.rs` con `agentes_disponibles()` que encuentra `claude` y `opencode` en el PATH y en las rutas habituales aunque la app se abra desde un acceso directo sin el PATH de la terminal (`~/.local/bin`, `~/.claude/local`, `~/.opencode/bin`, `~/.npm-global/bin`, y en Windows `%APPDATA%\npm` y `%USERPROFILE%\.local\bin`); modelos: para claude los alias `opus`, `sonnet` y `haiku`; para opencode la salida de `opencode models` (una línea `proveedor/modelo` por modelo), con caché en memoria; comando Tauri `listar_agentes_ia` → [{agente, ruta, modelos}]; tests con binarios falsos en un directorio temporal (un `opencode` falso que imprime dos modelos) y sin ninguno instalado (lista vacía, sin error)
 
 - [ ] Orden de lanzamiento del agente (función pura)
