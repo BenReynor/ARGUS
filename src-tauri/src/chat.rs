@@ -1,6 +1,8 @@
 //! Conversación del bot: decisión pura de cuándo responder a un mensaje.
 
+use crate::asistente::OrdenAgente;
 use crate::db::GuildSettings;
+use std::path::{Path, PathBuf};
 
 /// Datos de un mensaje de servidor que importan para decidir si responder.
 #[derive(Debug, Clone, Default)]
@@ -39,6 +41,131 @@ pub fn debe_responder(
         Some(ultima) => ahora_s.saturating_sub(ultima) >= u64::from(ajustes.chat_espera_s),
         None => true,
     }
+}
+
+/// Herramientas integradas de claude, todas desactivadas en el chat.
+const CLAUDE_TODAS: [&str; 11] = [
+    "Bash",
+    "Edit",
+    "Write",
+    "Read",
+    "Glob",
+    "Grep",
+    "NotebookEdit",
+    "WebFetch",
+    "WebSearch",
+    "Task",
+    "TodoWrite",
+];
+
+/// Herramientas integradas de opencode, todas desactivadas en el chat.
+const OPENCODE_TODAS: [&str; 12] = [
+    "bash",
+    "edit",
+    "write",
+    "read",
+    "glob",
+    "grep",
+    "list",
+    "patch",
+    "webfetch",
+    "websearch",
+    "task",
+    "todowrite",
+];
+
+/// Carpeta de trabajo propia del chat (no se crea aquí).
+pub fn directorio_chat() -> PathBuf {
+    std::env::temp_dir().join("argus-chat")
+}
+
+/// Orden para conversar con un agente sin ninguna herramienta (ni MCP). El
+/// prompt va por stdin y la respuesta es texto plano.
+pub fn orden_chat(
+    agente: &str,
+    ruta_agente: &Path,
+    modelo: &str,
+    prompt: &str,
+) -> Result<OrdenAgente, String> {
+    let (args, env) = match agente {
+        "claude" => {
+            let a: Vec<String> = vec![
+                "-p".into(),
+                "--output-format".into(),
+                "text".into(),
+                "--model".into(),
+                modelo.into(),
+                "--strict-mcp-config".into(),
+                "--mcp-config".into(),
+                serde_json::json!({ "mcpServers": {} }).to_string(),
+                "--disallowedTools".into(),
+                CLAUDE_TODAS.join(","),
+            ];
+            (a, Vec::new())
+        }
+        "opencode" => {
+            let mut tools = serde_json::Map::new();
+            tools.insert("*".into(), false.into());
+            for t in OPENCODE_TODAS {
+                tools.insert(t.into(), false.into());
+            }
+            let cfg = serde_json::json!({
+                "mcp": {},
+                "tools": tools,
+                "permission": { "bash": "deny", "edit": "deny", "webfetch": "deny" },
+            });
+            (
+                vec!["run".into(), "--model".into(), modelo.into()],
+                vec![("OPENCODE_CONFIG_CONTENT".to_string(), cfg.to_string())],
+            )
+        }
+        otro => return Err(format!("Unknown AI agent: {otro}")),
+    };
+    Ok(OrdenAgente {
+        programa: ruta_agente.to_path_buf(),
+        args,
+        env,
+        stdin: prompt.to_string(),
+        directorio: directorio_chat(),
+    })
+}
+
+/// Mensaje previo del canal para el contexto.
+#[derive(Debug, Clone)]
+pub struct MensajeContexto {
+    pub autor: String,
+    pub texto: String,
+}
+
+/// Arma el prompt: personalidad, servidor, canal, los últimos `contexto`
+/// mensajes del canal y el mensaje a responder.
+pub fn prompt_chat(
+    personalidad: &str,
+    servidor: &str,
+    canal: &str,
+    previos: &[MensajeContexto],
+    contexto: usize,
+    autor: &str,
+    mensaje: &str,
+) -> String {
+    let desde = previos.len().saturating_sub(contexto);
+    let historial: Vec<String> = previos[desde..]
+        .iter()
+        .map(|m| format!("{}: {}", m.autor, m.texto))
+        .collect();
+    let historial = if historial.is_empty() {
+        "(none)".to_string()
+    } else {
+        historial.join("\n")
+    };
+    format!(
+        "{personalidad}\n\n\
+         You are a Discord bot chatting in the server \"{servidor}\", channel \"#{canal}\".\n\
+         Rules: reply in the same language as the person writing; keep the reply under 1800 characters; \
+         never mention @everyone, @here or any role; you have no tools, answer with plain text only.\n\n\
+         Recent messages in the channel (author: text):\n{historial}\n\n\
+         Message to reply to:\n{autor}: {mensaje}\n"
+    )
 }
 
 #[cfg(test)]
@@ -138,5 +265,101 @@ mod tests {
         assert!(debe_responder(&mencion(), BOT, &a, Some(50), 100));
         // Reloj que retrocede: no responde hasta que pase la espera.
         assert!(!debe_responder(&mencion(), BOT, &a, Some(200), 100));
+    }
+
+    fn orden(agente: &str) -> OrdenAgente {
+        orden_chat(agente, Path::new("/bin/ag"), "mod/x", "hola").unwrap()
+    }
+
+    #[test]
+    fn orden_claude_sin_herramientas() {
+        let o = orden("claude");
+        assert_eq!(
+            &o.args[..5],
+            ["-p", "--output-format", "text", "--model", "mod/x"]
+        );
+        assert!(o.args.contains(&"--strict-mcp-config".to_string()));
+        let i = o.args.iter().position(|a| a == "--mcp-config").unwrap();
+        let mcp: serde_json::Value = serde_json::from_str(&o.args[i + 1]).unwrap();
+        assert_eq!(mcp["mcpServers"].as_object().unwrap().len(), 0);
+        let i = o
+            .args
+            .iter()
+            .position(|a| a == "--disallowedTools")
+            .unwrap();
+        let prohibidas: Vec<&str> = o.args[i + 1].split(',').collect();
+        for t in [
+            "Bash",
+            "Edit",
+            "Write",
+            "Read",
+            "Glob",
+            "Grep",
+            "NotebookEdit",
+            "WebFetch",
+            "WebSearch",
+            "Task",
+            "TodoWrite",
+        ] {
+            assert!(prohibidas.contains(&t), "falta {t}");
+        }
+        assert!(!o.args.contains(&"--allowedTools".to_string()));
+        assert_eq!(o.stdin, "hola");
+        assert_eq!(o.directorio, directorio_chat());
+        assert!(o.env.is_empty());
+    }
+
+    #[test]
+    fn orden_opencode_sin_herramientas() {
+        let o = orden("opencode");
+        assert_eq!(o.args, ["run", "--model", "mod/x"]);
+        let (k, v) = &o.env[0];
+        assert_eq!(k, "OPENCODE_CONFIG_CONTENT");
+        let cfg: serde_json::Value = serde_json::from_str(v).unwrap();
+        assert_eq!(cfg["mcp"].as_object().unwrap().len(), 0);
+        let tools = cfg["tools"].as_object().unwrap();
+        assert!(!tools.is_empty());
+        assert!(tools.values().all(|v| v == false));
+        for t in ["bash", "edit", "write", "read", "webfetch"] {
+            assert_eq!(tools[t], false);
+        }
+    }
+
+    #[test]
+    fn orden_agente_desconocido() {
+        assert!(orden_chat("otro", Path::new("x"), "m", "p").is_err());
+    }
+
+    #[test]
+    fn prompt_incluye_todo_y_limita_contexto() {
+        let previos: Vec<MensajeContexto> = (1..=5)
+            .map(|i| MensajeContexto {
+                autor: format!("u{i}"),
+                texto: format!("t{i}"),
+            })
+            .collect();
+        let p = prompt_chat(
+            "Eres Pepe.",
+            "Mi Server",
+            "general",
+            &previos,
+            2,
+            "Ana",
+            "¿Qué tal?",
+        );
+        assert!(p.starts_with("Eres Pepe."));
+        assert!(p.contains("Mi Server") && p.contains("general"));
+        assert!(p.contains("u4: t4\nu5: t5"));
+        assert!(!p.contains("u3: t3"));
+        assert!(p.contains("Ana: ¿Qué tal?"));
+        assert!(p.contains("same language"));
+        assert!(p.contains("1800"));
+        assert!(p.contains("@everyone") && p.contains("@here") && p.contains("role"));
+    }
+
+    #[test]
+    fn prompt_sin_contexto() {
+        let p = prompt_chat("P", "S", "c", &[], 10, "A", "hi");
+        assert!(p.contains("(none)"));
     }
 }
