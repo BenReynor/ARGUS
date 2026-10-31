@@ -44,6 +44,11 @@ mismo que tú desde la app.
   responden, y solo con ARGUS abierto; los mensajes que contesta van al proveedor
   del modelo. Ver
   [docs/ASISTENTE.md](docs/ASISTENTE.md#talking-on-discord-replies-from-the-bot) (en inglés).
+- **Órdenes desde Discord:** elige a quién responde el bot (**Reply only to**) y
+  qué miembros pueden pedirle, en un mensaje, que cambie el servidor (**Orders
+  from Discord**). El modelo que conversa sigue sin herramientas: un constructor
+  prepara una propuesta y ARGUS la aplica, por defecto tras confirmar el autor con
+  «sí». Ver [docs/ASISTENTE.md](docs/ASISTENTE.md#orders-from-discord) (en inglés).
 - **Varios bots en una app:** añade tus bots con su token; ARGUS lee de Discord su
   nombre y avatar oficiales. Cambia de bot en la barra lateral y de servidor en la
   columna de la izquierda.

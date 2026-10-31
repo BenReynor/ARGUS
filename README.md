@@ -43,6 +43,11 @@ things you do from the app.
   personality. It answers only when mentioned or replied to, and only while ARGUS
   is open; the messages it answers go to the model's provider. See
   [docs/ASISTENTE.md](docs/ASISTENTE.md#talking-on-discord-replies-from-the-bot).
+- **Orders from Discord:** choose who the bot answers (**Reply only to**) and
+  which members can ask it, in a message, to change the server (**Orders from
+  Discord**). The chatting model still has no tools: a builder prepares a
+  proposal and ARGUS applies it, by default after the author confirms with "yes".
+  See [docs/ASISTENTE.md](docs/ASISTENTE.md#orders-from-discord).
 - **Several bots in one app:** add your bots with their token; ARGUS reads their
   official name and avatar from Discord. Switch bots in the sidebar and servers
   in the left-hand column.
