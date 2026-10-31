@@ -73,7 +73,7 @@ interface AppState {
   refreshServerMap: () => Promise<void>;
 
   // UI state
-  activeTab: 'dashboard' | 'channels' | 'members' | 'roles' | 'servidor' | 'settings' | 'logs';
+  activeTab: 'dashboard' | 'channels' | 'members' | 'roles' | 'servidor' | 'asistente' | 'settings' | 'logs';
   setActiveTab: (tab: AppState['activeTab']) => void;
   
   selectedChannel: Channel | null;
