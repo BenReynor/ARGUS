@@ -37,6 +37,10 @@ pub fn debe_responder(
     if !ajustes.chat_canales.is_empty() && !ajustes.chat_canales.contains(&canal) {
         return false;
     }
+    let autor = msg.autor_id.to_string();
+    if !ajustes.chat_usuarios.is_empty() && !ajustes.chat_usuarios.contains(&autor) {
+        return false;
+    }
     match ultima_respuesta_s {
         Some(ultima) => ahora_s.saturating_sub(ultima) >= u64::from(ajustes.chat_espera_s),
         None => true,
@@ -257,6 +261,25 @@ mod tests {
             ..Default::default()
         };
         assert!(!debe_responder(&m, BOT, &ajustes(), None, 100));
+    }
+
+    #[test]
+    fn solo_responde_a_los_usuarios_elegidos() {
+        let a = GuildSettings {
+            chat_usuarios: vec!["2".into()],
+            ..ajustes()
+        };
+        // Autor 1 no está en la lista.
+        assert!(!debe_responder(&mencion(), BOT, &a, None, 100));
+        let mut m = mencion();
+        m.autor_id = 2;
+        assert!(debe_responder(&m, BOT, &a, None, 100));
+    }
+
+    #[test]
+    fn con_la_lista_de_usuarios_vacia_responde_a_cualquiera() {
+        assert!(ajustes().chat_usuarios.is_empty());
+        assert!(debe_responder(&mencion(), BOT, &ajustes(), None, 100));
     }
 
     #[test]
