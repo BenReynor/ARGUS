@@ -18,6 +18,7 @@ pub mod mcp;
 pub mod mensajes;
 pub mod persistencia;
 pub mod plan_compilar;
+pub mod plan_descripciones;
 pub mod plan_estructurado;
 pub mod propuesta;
 pub mod responder;
