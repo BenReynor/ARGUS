@@ -404,7 +404,7 @@ Sintaxis (palabras clave en español o inglés, sin distinguir mayúsculas ni ti
 - [x] Manual y plantilla en la app
   criterio: junto al editor del plan hay un botón **Manual** que abre un panel con la sintaxis explicada con ejemplos (roles, categoría privada, rangos, descripción literal y `generar:`, permisos, texto libre) y consejos para gastar menos tokens, y un botón **Insert template** que inserta un plan de ejemplo estructurado y comentado (si el editor tiene texto, pregunta antes de reemplazar); los avisos del análisis (línea y motivo) se muestran bajo el editor mientras se escribe; todo con `t()`; `npm run i18n:check` y `npm run build` pasan
 
-- [ ] Documentación del plan estructurado
+- [x] Documentación del plan estructurado
   criterio: `docs/PLAN_SERVIDOR.md` (inglés) y `docs/PLAN_SERVIDOR.es.md` (español) con el manual completo de la sintaxis, ejemplos (servidor temático de 10 categorías y una categoría de 120 canales con descripciones generadas), el contexto del servidor y cómo ahorrar tokens; docs/ASISTENTE.md, README.md y README.es.md enlazan a ellos
 
 Verificación manual:
