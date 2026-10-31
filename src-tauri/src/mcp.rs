@@ -17,6 +17,7 @@ use sqlx::SqlitePool;
 use crate::commands::{self, sincronizar_guilds, token_del_bot_activo};
 use crate::discord::{DatosCanal, DatosRol};
 use crate::i18n;
+use crate::propuesta::{ordenar_propuesta, EstadoAccion, Nombres, Propuesta, ResultadoAccion};
 use crate::state::{AppState, Channel, Guild, Member, Role};
 
 /// Respuesta de cada herramienta cuando no hay ningún bot activo.
@@ -1487,6 +1488,56 @@ fn args_de<T: serde::de::DeserializeOwned>(
     serde_json::from_value(args).map_err(|e| format!("Invalid arguments for «{nombre}»: {e}"))
 }
 
+/// Rechaza lo que no sea una herramienta de escritura (desconocida o de lectura).
+fn comprobar_escritura(nombre: &str) -> Result<(), String> {
+    if HERRAMIENTAS_ESCRITURA.contains(&nombre) {
+        return Ok(());
+    }
+    Err(if HERRAMIENTAS_LECTURA.contains(&nombre) {
+        format!("«{nombre}» is a read-only tool, not an action")
+    } else {
+        format!("Unknown action: «{nombre}»")
+    })
+}
+
+/// Comprueba, sin ejecutar nada, que `nombre` es una herramienta de escritura y
+/// que `args` se deserializa en sus parámetros.
+pub fn validar_accion(nombre: &str, args: &serde_json::Value) -> Result<(), String> {
+    comprobar_escritura(nombre)?;
+    fn ok<T: serde::de::DeserializeOwned>(n: &str, a: &serde_json::Value) -> Result<(), String> {
+        args_de::<T>(n, a.clone()).map(|_| ())
+    }
+    match nombre {
+        "elegir_servidor" => ok::<ElegirServidorParams>(nombre, args),
+        "enviar_mensaje" => ok::<EnviarMensajeParams>(nombre, args),
+        "enviar_dm" => ok::<EnviarDmParams>(nombre, args),
+        "borrar_mensaje" | "fijar_mensaje" | "desfijar_mensaje" => {
+            ok::<MensajeParams>(nombre, args)
+        }
+        "borrar_mensajes" => ok::<BorrarMensajesParams>(nombre, args),
+        "crear_canal" => ok::<CrearCanalParams>(nombre, args),
+        "editar_canal" => ok::<EditarCanalParams>(nombre, args),
+        "borrar_canal" => ok::<CanalParams>(nombre, args),
+        "ordenar_canales" | "ordenar_roles" => ok::<OrdenarParams>(nombre, args),
+        "crear_rol" => ok::<CrearRolParams>(nombre, args),
+        "editar_rol" => ok::<EditarRolParams>(nombre, args),
+        "borrar_rol" => ok::<RolParams>(nombre, args),
+        "dar_rol" | "quitar_rol" => ok::<RolMiembroParams>(nombre, args),
+        "permiso_canal" => ok::<PermisoCanalParams>(nombre, args),
+        "quitar_permiso_canal" => ok::<QuitarPermisoCanalParams>(nombre, args),
+        "expulsar" | "desbanear" => ok::<ExpulsarParams>(nombre, args),
+        "banear" => ok::<BanearParams>(nombre, args),
+        "silenciar" => ok::<SilenciarParams>(nombre, args),
+        "cambiar_apodo" => ok::<CambiarApodoParams>(nombre, args),
+        "editar_servidor" => ok::<EditarServidorParams>(nombre, args),
+        "crear_invitacion" => ok::<CrearInvitacionParams>(nombre, args),
+        "borrar_invitacion" => ok::<BorrarInvitacionParams>(nombre, args),
+        "crear_webhook" => ok::<CrearWebhookParams>(nombre, args),
+        "borrar_webhook" => ok::<BorrarWebhookParams>(nombre, args),
+        _ => Err(format!("Unknown action: «{nombre}»")),
+    }
+}
+
 impl ArgusMcp {
     /// Ejecuta una herramienta de escritura por nombre con la misma lógica que
     /// el MCP (permisos, jerarquía y mensajes). Rechaza nombres desconocidos,
@@ -1500,18 +1551,51 @@ impl ArgusMcp {
         self.salida(r)
     }
 
+    /// Ejecuta una propuesta en orden seguro. Los nombres de roles, categorías y
+    /// canales se resuelven a IDs con lo que ya existe o se ha creado antes. Una
+    /// acción que falla no detiene las demás; una cuya referencia no se resuelve
+    /// se marca como omitida.
+    pub async fn ejecutar_propuesta(
+        &self,
+        propuesta: &Propuesta,
+    ) -> Result<Vec<ResultadoAccion>, String> {
+        let gid = self.servidor_de(None).await?;
+        let roles = commands::leer_roles(&self.state, &gid, self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        let canales = commands::leer_canales(&self.state, &gid, self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        let mut nombres = Nombres::desde(&roles, &canales);
+        let mut resultados = Vec::new();
+        for (indice, a) in ordenar_propuesta(propuesta).acciones.iter().enumerate() {
+            let (estado, mensaje) = match nombres.resolver_args(&a.herramienta, &a.args) {
+                Err(e) => (EstadoAccion::Omitida, e),
+                Ok(args) => match self.ejecutar_accion(&a.herramienta, args.clone()).await {
+                    Ok(salida) => {
+                        nombres.registrar_creado(&a.herramienta, &args, &salida);
+                        (EstadoAccion::Ok, salida)
+                    }
+                    Err(e) => (EstadoAccion::Error, e),
+                },
+            };
+            resultados.push(ResultadoAccion {
+                indice,
+                herramienta: a.herramienta.clone(),
+                descripcion: a.descripcion.clone(),
+                estado,
+                mensaje,
+            });
+        }
+        Ok(resultados)
+    }
+
     async fn despachar_accion(
         &self,
         nombre: &str,
         args: serde_json::Value,
     ) -> Result<String, String> {
-        if !HERRAMIENTAS_ESCRITURA.contains(&nombre) {
-            return Err(if HERRAMIENTAS_LECTURA.contains(&nombre) {
-                format!("«{nombre}» is a read-only tool, not an action")
-            } else {
-                format!("Unknown action: «{nombre}»")
-            });
-        }
+        comprobar_escritura(nombre)?;
         match nombre {
             "elegir_servidor" => {
                 let p: ElegirServidorParams = args_de(nombre, args)?;
@@ -3884,6 +3968,77 @@ mod tests {
         assert!(e.unwrap_err().contains("read-only"));
         let e = mcp.ejecutar_accion("crear_rol", json!({"color": 1})).await;
         assert!(e.unwrap_err().contains("Invalid arguments"));
+    }
+
+    #[tokio::test]
+    async fn ejecutar_propuesta_resuelve_nombres_a_ids() {
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_CANALES | GESTIONAR_ROLES, true).await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "Nueva", "type": 4}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"id": "30", "type": 4, "guild_id": "555", "name": "Nueva", "position": 5}),
+            ))
+            .expect(1)
+            .mount(&s)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "avisos", "type": 0, "parent_id": "30"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"id": "31", "type": 0, "guild_id": "555", "name": "avisos", "position": 6,
+                       "parent_id": "30"}),
+            ))
+            .expect(1)
+            .mount(&s)
+            .await;
+        Mock::given(method("PUT"))
+            .and(path("/api/v10/channels/31/permissions/700"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&s)
+            .await;
+
+        let acc = |h: &str, args: serde_json::Value| crate::propuesta::Accion {
+            herramienta: h.to_string(),
+            args,
+            descripcion: h.to_string(),
+        };
+        // Desordenada: el permiso y el canal van antes que su categoría.
+        let p = Propuesta {
+            resumen: "x".to_string(),
+            acciones: vec![
+                acc(
+                    "permiso_canal",
+                    json!({"channel_id": "avisos", "target_id": "Moderadores", "tipo": "rol",
+                           "permitir": "1024"}),
+                ),
+                acc("dar_rol", json!({"user_id": "1001", "role_id": "Fantasma"})),
+                acc(
+                    "crear_canal",
+                    json!({"nombre": "avisos", "parent": "Nueva"}),
+                ),
+                acc(
+                    "crear_canal",
+                    json!({"nombre": "Nueva", "tipo": "categoria"}),
+                ),
+            ],
+        };
+        let r = mcp.ejecutar_propuesta(&p).await.unwrap();
+        let h: Vec<_> = r.iter().map(|x| x.herramienta.as_str()).collect();
+        assert_eq!(
+            h,
+            ["crear_canal", "crear_canal", "permiso_canal", "dar_rol"]
+        );
+        assert_eq!(r[0].descripcion, "crear_canal");
+        assert!(r[..3].iter().all(|x| x.estado == EstadoAccion::Ok), "{r:?}");
+        // La referencia que no se resuelve se omite, sin tocar Discord.
+        assert_eq!(r[3].estado, EstadoAccion::Omitida);
+        assert!(r[3].mensaje.contains("«Fantasma»"));
     }
 
     #[tokio::test]

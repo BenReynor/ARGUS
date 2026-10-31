@@ -15,6 +15,7 @@ pub mod mapa;
 pub mod mcp;
 pub mod mensajes;
 pub mod persistencia;
+pub mod propuesta;
 pub mod state;
 pub mod sync;
 #[cfg(test)]
@@ -134,6 +135,7 @@ pub fn run() {
             export_all_data,
             import_data,
             uninstall_wipe,
+            propuesta::validar_propuesta,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

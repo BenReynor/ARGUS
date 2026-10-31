@@ -13,6 +13,18 @@ pub const IDIOMA_DEFECTO: &str = "en";
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
     // <CATALOGO>
+    ("Roles to create: {n}", "Roles a crear: {n}"),
+    ("Roles to edit: {n}", "Roles a editar: {n}"),
+    ("Categories to create: {n}", "Categorías a crear: {n}"),
+    ("Channels to create: {n}", "Canales a crear: {n}"),
+    ("Channels to edit: {n}", "Canales a editar: {n}"),
+    ("Channel permissions to change: {n}", "Permisos de canal a cambiar: {n}"),
+    ("Member roles to change: {n}", "Roles de miembros a cambiar: {n}"),
+    ("Other actions: {n}", "Otras acciones: {n}"),
+    ("The {que} «{texto}» does not exist and is not created before this action", "El {que} «{texto}» no existe y no se crea antes de esta acción"),
+    ("Unknown action: «{nombre}»", "Acción desconocida: «{nombre}»"),
+    ("«{nombre}» is a read-only tool, not an action", "«{nombre}» es una herramienta de lectura, no una acción"),
+    ("Invalid arguments for «{nombre}»: {e}", "Argumentos no válidos para «{nombre}»: {e}"),
     ("No active bot in ARGUS: add or choose one in the app", "No hay bot activo en ARGUS: añade o elige uno en la app"),
     ("No active server in ARGUS: pass `guild_id` or choose one with `elegir_servidor`", "No hay servidor activo en ARGUS: indica `guild_id` o elige uno con `elegir_servidor`"),
     ("Permissions must be a bits number or a list of names", "Los permisos deben ser un número de bits o una lista de nombres"),
