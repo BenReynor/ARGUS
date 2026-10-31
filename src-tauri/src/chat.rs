@@ -192,11 +192,15 @@ pub struct MensajeContexto {
     pub texto: String,
 }
 
+/// Máximo de caracteres del contexto del servidor en el prompt del chat.
+pub const MAX_CONTEXTO_CHAT: usize = 1500;
+
 /// Arma el prompt: personalidad, servidor, canal, los últimos `contexto`
 /// mensajes del canal y el mensaje a responder.
 pub fn prompt_chat(
     personalidad: &str,
     servidor: &str,
+    contexto_servidor: &str,
     canal: &str,
     previos: &[MensajeContexto],
     contexto: usize,
@@ -214,6 +218,16 @@ pub fn prompt_chat(
     } else {
         historial.join("\n")
     };
+    let contexto_servidor: String = contexto_servidor
+        .trim()
+        .chars()
+        .take(MAX_CONTEXTO_CHAT)
+        .collect();
+    let contexto_servidor = if contexto_servidor.is_empty() {
+        "(none)".to_string()
+    } else {
+        contexto_servidor
+    };
     let regla_ordenes = if ordenes {
         "If the user asks for a change in the server (create, edit or delete channels, categories, \
          roles or permissions, give roles...), reply briefly and end with one exact line \
@@ -228,6 +242,7 @@ pub fn prompt_chat(
          Rules: reply in the same language as the person writing; keep the reply under 1800 characters; \
          never mention @everyone, @here or any role; you have no tools, answer with plain text only.\n\
          {regla_ordenes}\n\n\
+         Server context:\n{contexto_servidor}\n\n\
          Recent messages in the channel (author: text):\n{historial}\n\n\
          Message to reply to:\n{autor}: {mensaje}\n"
     )
@@ -474,6 +489,7 @@ mod tests {
         let p = prompt_chat(
             "Eres Pepe.",
             "Mi Server",
+            "",
             "general",
             &previos,
             2,
@@ -492,14 +508,24 @@ mod tests {
     }
 
     #[test]
+    fn prompt_incluye_el_contexto_del_servidor_recortado() {
+        let p = prompt_chat("P", "S", "Tema: piratas", "c", &[], 10, "A", "hi", false);
+        assert!(p.contains("Server context:\nTema: piratas"));
+        let largo = "x".repeat(2000);
+        let p = prompt_chat("P", "S", &largo, "c", &[], 10, "A", "hi", false);
+        assert!(p.contains(&"x".repeat(1500)));
+        assert!(!p.contains(&"x".repeat(1501)));
+    }
+
+    #[test]
     fn prompt_sin_contexto() {
-        let p = prompt_chat("P", "S", "c", &[], 10, "A", "hi", false);
+        let p = prompt_chat("P", "S", "", "c", &[], 10, "A", "hi", false);
         assert!(p.contains("(none)"));
     }
 
     #[test]
     fn prompt_con_ordenes_pide_la_linea_orden() {
-        let p = prompt_chat("P", "S", "c", &[], 10, "A", "hi", true);
+        let p = prompt_chat("P", "S", "", "c", &[], 10, "A", "hi", true);
         assert!(p.contains("`ORDEN: <"));
         assert!(p.contains("channels, categories"));
         assert!(!p.contains("cannot make changes"));
@@ -507,7 +533,7 @@ mod tests {
 
     #[test]
     fn prompt_sin_ordenes_prohibe_la_linea_orden() {
-        let p = prompt_chat("P", "S", "c", &[], 10, "A", "hi", false);
+        let p = prompt_chat("P", "S", "", "c", &[], 10, "A", "hi", false);
         assert!(p.contains("cannot make changes"));
         assert!(p.contains("Never write a line starting with `ORDEN:`"));
         assert!(!p.contains("ORDEN: <"));

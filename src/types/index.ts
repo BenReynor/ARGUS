@@ -241,7 +241,14 @@ export interface Propuesta { resumen: string; acciones: AccionPropuesta[] }
 export interface ErrorValidacion { indice: number; herramienta: string; mensaje: string }
 export interface Validacion { cambios: string[]; errores: ErrorValidacion[] }
 export interface EventoPropuesta { propuesta: Propuesta; validacion: Validacion }
-export type EstadoAccion = 'ok' | 'error' | 'omitida';
+export interface ResumenPlan { roles: number; categorias: number; canales: number; texto_libre: number; tiene_estructura: boolean; avisos: string[] }
+export interface ResultadoConstruccion {
+  propuesta: Propuesta; validacion: Validacion; desde_estructura: number; descripciones_ia: number; texto_libre: number; avisos: string[];
+}
+export interface LineaDiff { tipo: 'same' | 'added' | 'removed'; texto: string }
+export interface CambiosPlan { lineas: LineaDiff[]; anadidas: number; quitadas: number; avisos: string[] }
+export interface EventoPlan { plan: string }
+export type EstadoAccion ='ok' | 'error' | 'omitida';
 export interface AvanceAccion { indice: number; total: number; descripcion: string; estado: EstadoAccion; mensaje: string }
 export interface ResultadoAccion { indice: number; herramienta: string; descripcion: string; estado: EstadoAccion; mensaje: string }
 export interface ResumenPropuesta {

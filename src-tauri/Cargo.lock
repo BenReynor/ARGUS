@@ -150,6 +150,8 @@ dependencies = [
  "base64 0.21.7",
  "chrono",
  "getrandom 0.2.17",
+ "hyper 0.14.32",
+ "hyper-rustls",
  "machine-uid",
  "rmcp",
  "serde",

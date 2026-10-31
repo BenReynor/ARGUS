@@ -1,20 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
-import { Check, CircleDashed, Download, Loader2, Square, TriangleAlert, Upload, X } from 'lucide-react';
+import { BookOpen, Check, CircleDashed, FilePlus, Download, Hammer, Loader2, Square, TriangleAlert, Undo2, Upload, X } from 'lucide-react';
 import { useActiveGuildId, useShowNotification } from '../store/useStore';
 import {
   listarAgentesIa, enviarAlAsistente, leerPlanServidor, guardarPlanServidor, leerConversacion,
-  guardarConversacion, nuevaConversacion, aplicarPropuesta, cancelarAsistente,
+  guardarConversacion, nuevaConversacion, aplicarPropuesta, cancelarAsistente, resumirPlan, construirDesdePlan, compararPlan, onAsistentePlan,
   onAsistenteEvento, onAsistentePropuesta, onAsistenteAccion, onAsistenteResumen,
 } from '../api/tauri';
-import type { AccionPropuesta, AgenteIa, AvanceAccion, EstadoAccion, EventoPropuesta, ResumenPropuesta } from '../types';
+import type { AccionPropuesta, AgenteIa, AvanceAccion, CambiosPlan, EstadoAccion, EventoPropuesta, ResultadoConstruccion, ResumenPlan, ResumenPropuesta } from '../types';
 import { Badge, Button, Cargando, EstadoVacio, ErrorPanel, Input, Select } from './ui';
 import { t } from '../i18n';
 import { RespuestasDiscord } from './RespuestasDiscord';
+import { ContextoPersonalidad } from './ContextoPersonalidad';
 import './Asistente.css';
 
-type Modo = 'read' | 'execute';
+type Modo = 'read' | 'plan' | 'execute';
 interface Herramienta { id: string; nombre: string; ok: boolean | null }
 interface Mensaje { id: string; rol: 'user' | 'assistant'; texto: string; herramientas: Herramienta[]; error?: string }
 
@@ -81,6 +82,17 @@ const ChatAsistente: React.FC = () => {
   const [avances, setAvances] = useState<Record<number, AvanceAccion>>({});
   const [resumen, setResumen] = useState<ResumenPropuesta | null>(null);
   const [errorAplicar, setErrorAplicar] = useState<string | null>(null);
+
+  const [estructura, setEstructura] = useState<ResumenPlan | null>(null);
+  const [construyendo, setConstruyendo] = useState(false);
+  // Origen de la propuesta mostrada cuando sale de «Build from plan» (se compara por referencia).
+  const [construccion, setConstruccion] = useState<{ ev: EventoPropuesta; res: ResultadoConstruccion } | null>(null);
+
+  // Plan propuesto por la IA (modo Plan): vista de cambios frente al editor y plan previo para deshacer.
+  const [cambios, setCambios] = useState<{ propuesto: string; vista: CambiosPlan } | null>(null);
+  const [planPrevio, setPlanPrevio] = useState<string | null>(null);
+  const areaPlan = useRef<HTMLTextAreaElement>(null);
+  const [manualAbierto, setManualAbierto] = useState(false);
 
   const [ancho, setAncho] = useState(50);
   const contenedor = useRef<HTMLDivElement>(null);
@@ -198,6 +210,12 @@ const ChatAsistente: React.FC = () => {
         }
       }),
       onAsistentePropuesta((p) => { setPropuesta(p); setResumen(null); setAvances({}); setErrorAplicar(null); }),
+      onAsistentePlan((e) => {
+        // Se compara siempre con lo que haya en el editor en este momento.
+        compararPlan(refs.current.plan, e.plan)
+          .then((vista) => setCambios({ propuesto: e.plan, vista }))
+          .catch((err) => showNotification(mensajeError(err, t('Could not compare the plans')), 'error'));
+      }),
       onAsistenteAccion((a) => setAvances((v) => ({ ...v, [a.indice]: a }))),
       onAsistenteResumen((r) => { setResumen(r); setAplicando(false); }),
     ];
@@ -211,6 +229,7 @@ const ChatAsistente: React.FC = () => {
     if (!guildId || !contenido || enviando || !agente || !modelo) return;
     setTexto('');
     setSinSesion(false);
+    setCambios(null);
     setPropuesta(null);
     setResumen(null);
     setAvances({});
@@ -242,6 +261,91 @@ const ChatAsistente: React.FC = () => {
     }
     turnoPrevio.current = enviando;
   }, [enviando]);
+
+  // ¿Tiene el plan estructura? Decide si se ofrece «Build from plan».
+  useEffect(() => {
+    if (!plan.trim()) { setEstructura(null); return; }
+    let vigente = true;
+    const espera = setTimeout(() => {
+      resumirPlan(plan).then((r) => { if (vigente) setEstructura(r); }).catch(() => { if (vigente) setEstructura(null); });
+    }, 300);
+    return () => { vigente = false; clearTimeout(espera); };
+  }, [plan]);
+
+  const insertarPlantilla = () => {
+    if (plan.trim() && !window.confirm(t('Replace the current plan with the example template?'))) return;
+    const lineas = [
+      t('// Example plan. Lines starting with // are comments and are ignored.'),
+      t('// Roles are created in the order written, highest first.'),
+      '## Role: Admin | color: #E74C3C | permissions: Administrator | hoist',
+      '## Role: Moderator | color: #3498DB | permissions: KickMembers, ManageMessages | mentionable: no',
+      '## Role: Member | color: #95A5A6',
+      '',
+      t('// A variable is declared once and used as $name.'),
+      '@var staff = Moderator',
+      '',
+      t('// A category and its channels (written right below it).'),
+      '## Category: Welcome | description: "Start here"',
+      '- text: rules | description: "Server rules" | read only: Member',
+      '- announcements: news | description: generate: short news channel for members',
+      '',
+      t('// Private category: only these roles can see it.'),
+      '## Category: Staff | hide from: @everyone | view: Admin, $staff',
+      '- text: staff-chat | description: "Private chat for the team"',
+      '',
+      t('// A range creates several channels at once: Table-01 … Table-03.'),
+      '## Category: Voice',
+      '- voice: Table-{01..03} | description: "Voice room {n}"',
+      '',
+      t('Any other line is free text: ARGUS will not build it, but the assistant can read it.'),
+    ];
+    escribirEnEditor(lineas.join('\n'));
+  };
+
+  const construir = async () => {
+    if (!guildId || construyendo || enviando || aplicando || !agente || !modelo) return;
+    setConstruyendo(true);
+    setPropuesta(null);
+    setResumen(null);
+    setAvances({});
+    setErrorAplicar(null);
+    setSinSesion(false);
+    try {
+      const res = await construirDesdePlan(agente, modelo, plan);
+      const ev: EventoPropuesta = { propuesta: res.propuesta, validacion: res.validacion };
+      setConstruccion({ ev, res });
+      setPropuesta(ev);
+    } catch (e) {
+      setConstruccion(null);
+      showNotification(mensajeError(e, t('Could not build from the plan')), 'error');
+    } finally {
+      setConstruyendo(false);
+    }
+  };
+
+  // Sustituye el editor por el plan de la IA. Con execCommand se conserva el Ctrl+Z nativo del textarea.
+  const escribirEnEditor = (nuevo: string) => {
+    const area = areaPlan.current;
+    if (area) {
+      area.focus();
+      area.select();
+      if (document.execCommand('insertText', false, nuevo)) return;
+    }
+    cambiarPlan(nuevo);
+  };
+
+  const aplicarAlPlan = () => {
+    if (!cambios) return;
+    setPlanPrevio(plan);
+    escribirEnEditor(cambios.propuesto);
+    setCambios(null);
+  };
+
+  const deshacerPlan = () => {
+    if (planPrevio === null) return;
+    escribirEnEditor(planPrevio);
+    setPlanPrevio(null);
+  };
 
   const detener = () => { void cancelarAsistente().catch(() => {}); };
 
@@ -358,18 +462,60 @@ const ChatAsistente: React.FC = () => {
           <header className="asistente__cabecera">
             <h3>{t('Server plan')}</h3>
             <div className="asistente__acciones">
+              {modo === 'execute' && estructura?.tiene_estructura && (
+                <Button tamano="sm" disabled={construyendo || enviando || aplicando || !modelo} onClick={() => { void construir(); }}>
+                  {construyendo ? <Loader2 size={14} className="asistente__giro" /> : <Hammer size={14} />} {construyendo ? t('Building…') : t('Build from plan')}
+                </Button>
+              )}
+              {planPrevio !== null && (
+                <Button variante="secundario" tamano="sm" onClick={deshacerPlan}><Undo2 size={14} /> {t('Undo')}</Button>
+              )}
+              <Button variante="secundario" tamano="sm" onClick={() => setManualAbierto((v) => !v)}><BookOpen size={14} /> {t('Manual')}</Button>
+              <Button variante="secundario" tamano="sm" onClick={insertarPlantilla}><FilePlus size={14} /> {t('Insert template')}</Button>
               <Button variante="secundario" tamano="sm" onClick={() => { void importar(); }}><Upload size={14} /> {t('Import .md')}</Button>
               <Button variante="secundario" tamano="sm" onClick={() => { void exportar(); }}><Download size={14} /> {t('Export .md')}</Button>
             </div>
           </header>
+          {manualAbierto && (
+            <div className="asistente__aviso" role="region" aria-label={t('Plan manual')} style={{ display: 'block', maxHeight: '40%', overflow: 'auto' }}>
+              <strong>{t('Plan manual')}</strong>
+              <p>{t('Write one item per line. Lines that do not follow the syntax are free text: ARGUS keeps them but does not build them.')}</p>
+              <ul>
+                <li><strong>{t('Roles')}</strong>: <code>## Role: Name | color: #RRGGBB | permissions: ManageMessages, KickMembers | hoist | mentionable: no</code></li>
+                <li><strong>{t('Categories')}</strong>: <code>## Category: Name | description: "text"</code></li>
+                <li><strong>{t('Private category')}</strong>: <code>## Category: Staff | hide from: @everyone | view: Admin, Moderator</code></li>
+                <li><strong>{t('Channels')}</strong>: <code>- text: name</code>, <code>- voice: name</code>, <code>- announcements: name</code>, <code>- forum: name</code>. {t('They belong to the last category above them.')}</li>
+                <li><strong>{t('Ranges')}</strong>: <code>- voice: Table-{'{01..05}'}</code> {t('creates Table-01 … Table-05; use')} <code>{'{n}'}</code> {t('in a quoted description for the number.')}</li>
+                <li><strong>{t('Literal description')}</strong>: <code>description: "Welcome!"</code></li>
+                <li><strong>{t('AI-written description')}</strong>: <code>description: generate: short hint</code></li>
+                <li><strong>{t('Permissions')}</strong>: <code>view: Role1, Role2</code> · <code>write: Role</code> · <code>read only: Role</code> · <code>hide from: @everyone</code></li>
+                <li><strong>{t('Variables and comments')}</strong>: <code>@var name = value</code> {t('used as $name;')} <code>// {t('comment')}</code></li>
+                <li><strong>{t('Free text')}</strong>: {t('any other line is notes for you and the assistant; it is never built.')}</li>
+              </ul>
+              <strong>{t('Tips to spend fewer tokens')}</strong>
+              <ul>
+                <li>{t('Use the structured syntax and press Build from plan: it builds without asking the AI.')}</li>
+                <li>{t('Use ranges instead of listing similar channels one by one.')}</li>
+                <li>{t('Write literal descriptions; use generate: only where you really want the AI to write.')}</li>
+                <li>{t('Keep the plan short and remove free text you no longer need.')}</li>
+              </ul>
+            </div>
+          )}
           <textarea
             className="ui-control asistente__plan"
+            ref={areaPlan}
             value={plan}
             spellCheck={false}
             aria-label={t('Server plan')}
             placeholder={t('Describe your server in Markdown: categories, channels with their description, roles with permissions, and the permissions of each role in each channel.')}
             onChange={(e) => cambiarPlan(e.target.value)}
           />
+          {estructura && estructura.avisos.length > 0 && (
+            <div className="asistente__aviso" role="note" style={{ maxHeight: '20%', overflow: 'auto' }}>
+              <TriangleAlert size={14} />
+              <span><strong>{t('Plan warnings')}</strong>{estructura.avisos.map((a, i) => <small key={i} style={{ display: 'block' }}>{t('Line {warning}', { warning: a })}</small>)}</span>
+            </div>
+          )}
           <footer className="asistente__pie">
             <span>{t('{count} characters', { count: plan.length.toLocaleString() })}</span>
             <span role="status">{textoGuardado}</span>
@@ -407,6 +553,7 @@ const ChatAsistente: React.FC = () => {
             )}
             <div className="asistente__modo" role="group" aria-label={t('Mode')}>
               <button type="button" className={modo === 'read' ? 'activo' : ''} aria-pressed={modo === 'read'} disabled={enviando} onClick={() => setModo('read')}>{t('Read')}</button>
+              <button type="button" className={modo === 'plan' ? 'activo' : ''} aria-pressed={modo === 'plan'} disabled={enviando} onClick={() => setModo('plan')}>{t('Plan')}</button>
               <button type="button" className={modo === 'execute' ? 'activo' : ''} aria-pressed={modo === 'execute'} disabled={enviando} onClick={() => setModo('execute')}>{t('Execute')}</button>
             </div>
             <Button variante="ghost" tamano="sm" disabled={enviando || aplicando || !hayMensajes} onClick={() => { void reiniciar(guildId); }}>{t('New conversation')}</Button>
@@ -418,7 +565,9 @@ const ChatAsistente: React.FC = () => {
                 titulo={t('Talk to the assistant')}
                 descripcion={modo === 'read'
                   ? t('Read mode: ask about your server or your plan. The assistant cannot change anything.')
-                  : t('Execute mode: ask it to build your plan. It proposes the changes and you approve them.')}
+                  : modo === 'plan'
+                    ? t('Plan mode: ask it to write or improve your plan. You review the changes and accept them.')
+                    : t('Execute mode: ask it to build your plan. It proposes the changes and you approve them.')}
               />
             )}
             {sinSesion && (
@@ -444,10 +593,57 @@ const ChatAsistente: React.FC = () => {
               </article>
             ))}
 
+            {cambios && (
+              <section className="asistente__cambios" aria-label={t('Plan changes')}>
+                <h4>{t('Plan changes')}</h4>
+                <p>{t('+{added} / −{removed} lines', { added: cambios.vista.anadidas, removed: cambios.vista.quitadas })}</p>
+                {cambios.vista.anadidas + cambios.vista.quitadas === 0 ? (
+                  <p>{t('The proposed plan is identical to the editor.')}</p>
+                ) : (
+                  <div className="asistente__diff" role="group" aria-label={t('Plan changes')}>
+                    {cambios.vista.lineas.map((l, i) => (
+                      <div key={i} className={l.tipo === 'added' ? 'anadida' : l.tipo === 'removed' ? 'quitada' : ''}>
+                        {l.tipo === 'added' ? '+ ' : l.tipo === 'removed' ? '− ' : '  '}{l.texto}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {cambios.vista.avisos.length > 0 && (
+                  <div className="asistente__aviso" role="note">
+                    <TriangleAlert size={16} />
+                    <span>{cambios.vista.avisos.map((a) => <span key={a} style={{ display: 'block' }}>{a}</span>)}</span>
+                  </div>
+                )}
+                <div className="asistente__acciones">
+                  <Button onClick={aplicarAlPlan} disabled={cambios.vista.anadidas + cambios.vista.quitadas === 0}>{t('Apply to plan')}</Button>
+                  <Button variante="secundario" onClick={() => setCambios(null)}>{t('Discard')}</Button>
+                </div>
+              </section>
+            )}
+
             {propuesta && (
               <section className="asistente__propuesta" aria-label={t('Proposal')}>
                 <h4>{t('Proposal')}</h4>
                 {propuesta.propuesta.resumen && <p>{propuesta.propuesta.resumen}</p>}
+                {construccion && construccion.ev === propuesta && (
+                  <>
+                    <p>{t('{actions} actions from the plan structure, {descriptions} descriptions written by the AI', {
+                      actions: construccion.res.desde_estructura, descriptions: construccion.res.descripciones_ia,
+                    })}</p>
+                    {construccion.res.texto_libre > 0 && (
+                      <div className="asistente__aviso" role="note">
+                        <TriangleAlert size={16} />
+                        <span>{t('The plan also has {count} lines of free text that were not built. Ask the assistant in the chat to handle them.', { count: construccion.res.texto_libre })}</span>
+                      </div>
+                    )}
+                    {construccion.res.avisos.length > 0 && (
+                      <div className="asistente__aviso" role="note">
+                        <TriangleAlert size={16} />
+                        <span><strong>{t('Plan warnings')}</strong>{construccion.res.avisos.map((a, i) => <small key={i} style={{ display: 'block' }}>{a}</small>)}</span>
+                      </div>
+                    )}
+                  </>
+                )}
                 <div className="asistente__chips">
                   {propuesta.validacion.cambios.map((c) => <Badge key={c} tono="acento">{c}</Badge>)}
                 </div>
@@ -530,8 +726,8 @@ const ChatAsistente: React.FC = () => {
  */
 export function textoVisible(texto: string): string {
   return texto
-    .replace(/```json[\s\S]*?```/g, '')
-    .replace(/```json[\s\S]*$/, '')
+    .replace(/```(?:json|plan)[\s\S]*?```/gi, '')
+    .replace(/```(?:json|plan)[\s\S]*$/i, '')
     .trim();
 }
 
@@ -552,15 +748,16 @@ const FilaAccion: React.FC<{ texto: string; avance?: AvanceAccion; activa: boole
 };
 
 export const AsistenteView: React.FC = () => {
-  const [pestana, setPestana] = useState<'chat' | 'discord'>('chat');
+  type Pestana = 'chat' | 'contexto' | 'discord';
+  const [pestana, setPestana] = useState<Pestana>('chat');
   return (
     <div className="vista vista--llena" style={{ padding: 0 }}>
       <div className="pestanas" role="tablist" aria-label={t('Assistant sections')} style={{ margin: 0, padding: '0 var(--sp-3)' }}>
-        {([['chat', t('Chat')], ['discord', t('Discord replies')]] as ['chat' | 'discord', string][]).map(([id, etiqueta]) => (
+        {([['chat', t('Chat')], ['contexto', t('Context & personality')], ['discord', t('Discord replies')]] as [Pestana, string][]).map(([id, etiqueta]) => (
           <button key={id} role="tab" aria-selected={pestana === id} className="pestanas__tab" onClick={() => setPestana(id)}>{etiqueta}</button>
         ))}
       </div>
-      {pestana === 'chat' ? <ChatAsistente /> : <RespuestasDiscord />}
+      {pestana === 'chat' ? <ChatAsistente /> : pestana === 'contexto' ? <ContextoPersonalidad /> : <RespuestasDiscord onAbrirPersonalidad={() => setPestana('contexto')} />}
     </div>
   );
 };

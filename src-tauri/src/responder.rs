@@ -221,9 +221,71 @@ fn ahora_s() -> u64 {
         .unwrap_or(0)
 }
 
+/// Archivo adjunto de un mensaje.
+#[derive(Debug, Clone, Default)]
+pub struct Adjunto {
+    pub nombre: String,
+    pub url: String,
+    /// Tamaño declarado por Discord (bytes).
+    pub tamano: u64,
+}
+
+/// Tamaño máximo de un plan enviado como archivo.
+pub const MAX_ARCHIVO: usize = 200 * 1024;
+/// Dónde se explica la sintaxis del plan.
+pub const ENLACE_MANUAL: &str =
+    "https://github.com/BenReynor/ARGUS/blob/main/docs/PLAN_SERVIDOR.md";
+/// Líneas de aviso del análisis que se publican como máximo.
+const MAX_AVISOS: usize = 10;
+
+fn es_archivo_de_plan(nombre: &str) -> bool {
+    let n = nombre.to_lowercase();
+    n.ends_with(".md") || n.ends_with(".txt")
+}
+
+/// Descarga `url` (http/https) con tope de tamaño y de tiempo.
+pub async fn descargar_archivo(url: &str, max: usize) -> Result<Vec<u8>, String> {
+    use hyper::body::HttpBody;
+    let uri: hyper::Uri = url
+        .parse()
+        .map_err(|_| "Invalid file address".to_string())?;
+    if !matches!(uri.scheme_str(), Some("http") | Some("https")) {
+        return Err("Invalid file address".into());
+    }
+    let https = hyper_rustls::HttpsConnectorBuilder::new()
+        .with_native_roots()
+        .https_or_http()
+        .enable_http1()
+        .build();
+    let cliente = hyper::Client::builder().build::<_, hyper::Body>(https);
+    let leer = async {
+        let resp = cliente
+            .get(uri)
+            .await
+            .map_err(|e| format!("Download failed: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("Download failed: HTTP {}", resp.status().as_u16()));
+        }
+        let mut cuerpo = resp.into_body();
+        let mut datos = Vec::new();
+        while let Some(trozo) = cuerpo.data().await {
+            let trozo = trozo.map_err(|e| format!("Download failed: {e}"))?;
+            datos.extend_from_slice(&trozo);
+            if datos.len() > max {
+                return Err("The file is too large".to_string());
+            }
+        }
+        Ok(datos)
+    };
+    tokio::time::timeout(Duration::from_secs(30), leer)
+        .await
+        .map_err(|_| "Download failed: timed out".to_string())?
+}
+
 /// Un mensaje de servidor ya traducido a lo que necesita el conversador.
 #[derive(Debug, Clone, Default)]
 pub struct Entrada {
+    pub adjuntos: Vec<Adjunto>,
     pub msg: MensajeEntrante,
     pub mensaje_id: u64,
     pub guild_id: u64,
@@ -259,8 +321,13 @@ pub struct ContextoOrdenes {
     pub ruta_mcp: Arc<dyn Fn() -> Result<String, String> + Send + Sync>,
     /// Plan guardado del servidor (vacío si no hay).
     pub leer_plan: Arc<dyn Fn(u64) -> FuturoPlan + Send + Sync>,
+    /// Contexto guardado del servidor (vacío si no hay).
+    pub leer_contexto: Arc<dyn Fn(u64) -> FuturoPlan + Send + Sync>,
     /// Roles y canales conocidos del servidor, para validar.
     pub nombres: Arc<dyn Fn(u64) -> crate::propuesta::Nombres + Send + Sync>,
+    /// Roles y canales del servidor, para compilar un plan.
+    pub existentes:
+        Arc<dyn Fn(u64) -> (Vec<crate::state::Role>, Vec<crate::state::Channel>) + Send + Sync>,
     /// Aplica la propuesta (ya con el servidor puesto): `ejecutar_propuesta`.
     pub aplicar: Arc<dyn Fn(Propuesta) -> FuturoAplicar + Send + Sync>,
     /// Idioma de la interfaz.
@@ -420,6 +487,12 @@ impl Conversador {
         // Se anota al aceptar el mensaje para que una ráfaga no llene la cola.
         self.coord.anotar(e.guild_id, e.msg.autor_id, ahora);
 
+        // Un archivo .md/.txt adjunto es un plan para construir, sin pasar por el chat.
+        if let Some(adjunto) = e.adjuntos.iter().find(|a| es_archivo_de_plan(&a.nombre)) {
+            self.desde_archivo(&e, ajustes, adjunto).await;
+            return Resultado::Respondido;
+        }
+
         let turno = self.coord.turno(e.msg.canal_id).await;
         let inicio = Instant::now();
         let resultado = self.responder(&e, ajustes).await;
@@ -565,9 +638,11 @@ impl Conversador {
         }
         let previos = self.leer_previos(&canal, e.mensaje_id).await;
         let autorizado = crate::db::ordenes_activas(ajustes, &e.msg.autor_id.to_string());
+        let contexto = (self.ordenes.leer_contexto)(e.guild_id).await;
         let prompt = prompt_chat(
             &ajustes.chat_personalidad,
             &e.servidor,
+            &contexto,
             &e.canal,
             &previos,
             ajustes.chat_contexto as usize,
@@ -614,39 +689,205 @@ impl Conversador {
         let inicio = Instant::now();
         match self.construir(e, ajustes, orden, &idioma).await {
             Ok(ev) => {
-                let texto =
-                    texto_propuesta(&ev, ajustes.chat_ordenes_confirmar, &idioma, MAX_PROPUESTA);
-                match self.enviar(e, &texto).await {
-                    Ok(mensaje_id) => {
-                        self.log(format!(
-                            "[ORDER] Proposal for {} in {} #{}: {} actions in {} ms",
-                            e.autor_nombre,
-                            e.servidor,
-                            e.canal,
-                            ev.propuesta.acciones.len(),
-                            inicio.elapsed().as_millis()
-                        ));
-                        if ajustes.chat_ordenes_confirmar {
-                            self.coord.guardar_pendiente(
-                                (e.guild_id, e.msg.canal_id, e.msg.autor_id),
-                                ev.propuesta,
-                                mensaje_id,
-                            );
-                        } else if let Some(guardia) = self.coord.tomar_aplicacion(e.guild_id) {
-                            self.aplicar_propuesta(e, ev.propuesta, &idioma).await;
-                            drop(guardia);
-                        } else {
-                            self.fallo_orden(e, &idioma, MOTIVO_APLICANDO).await;
-                        }
-                    }
-                    Err(err) => self.log(format!(
-                        "[WARN] Could not prepare the proposal in {} #{} for {}: {}",
-                        e.servidor, e.canal, e.autor_nombre, err
-                    )),
-                }
+                self.publicar_propuesta(e, ajustes, ev, "", &idioma, inicio)
+                    .await
             }
             Err(motivo) => self.fallo_orden(e, &idioma, &motivo).await,
         }
+    }
+
+    /// Publica la propuesta (más `extra`, p. ej. avisos) y, según los ajustes,
+    /// la deja esperando el «sí» o la aplica directamente.
+    async fn publicar_propuesta(
+        &self,
+        e: &Entrada,
+        ajustes: &GuildSettings,
+        ev: crate::asistente::EventoPropuesta,
+        extra: &str,
+        idioma: &str,
+        inicio: Instant,
+    ) {
+        let mut texto = texto_propuesta(&ev, false, idioma, MAX_PROPUESTA);
+        texto.push_str(extra);
+        if ajustes.chat_ordenes_confirmar {
+            texto.push_str("\n\n");
+            texto.push_str(&crate::i18n::tr(
+                idioma,
+                "Reply **yes** within the next 5 minutes to apply it",
+            ));
+        }
+        match self.enviar(e, &texto).await {
+            Ok(mensaje_id) => {
+                self.log(format!(
+                    "[ORDER] Proposal for {} in {} #{}: {} actions in {} ms",
+                    e.autor_nombre,
+                    e.servidor,
+                    e.canal,
+                    ev.propuesta.acciones.len(),
+                    inicio.elapsed().as_millis()
+                ));
+                if ajustes.chat_ordenes_confirmar {
+                    self.coord.guardar_pendiente(
+                        (e.guild_id, e.msg.canal_id, e.msg.autor_id),
+                        ev.propuesta,
+                        mensaje_id,
+                    );
+                } else if let Some(guardia) = self.coord.tomar_aplicacion(e.guild_id) {
+                    self.aplicar_propuesta(e, ev.propuesta, idioma).await;
+                    drop(guardia);
+                } else {
+                    self.fallo_orden(e, idioma, MOTIVO_APLICANDO).await;
+                }
+            }
+            Err(err) => self.log(format!(
+                "[WARN] Could not prepare the proposal in {} #{} for {}: {}",
+                e.servidor, e.canal, e.autor_nombre, err
+            )),
+        }
+    }
+
+    /// Avisa de que el archivo no se pudo usar (Logs y canal).
+    async fn fallo_archivo(&self, e: &Entrada, idioma: &str, motivo: &str) {
+        let motivo = crate::i18n::tr(idioma, motivo);
+        self.log(format!(
+            "[WARN] Could not build from a file in {} #{} for {}: {}",
+            e.servidor, e.canal, e.autor_nombre, motivo
+        ));
+        self.avisar(e, &motivo).await;
+    }
+
+    /// Construye una propuesta desde un plan adjunto, sin IA salvo las
+    /// descripciones `generar:`. Después sigue el flujo de confirmación normal.
+    async fn desde_archivo(&self, e: &Entrada, ajustes: &GuildSettings, adjunto: &Adjunto) {
+        let idioma = (self.ordenes.idioma)();
+        if !crate::db::ordenes_activas(ajustes, &e.msg.autor_id.to_string()) {
+            let motivo = "You are not allowed to give orders from Discord";
+            self.fallo_archivo(e, &idioma, motivo).await;
+            return;
+        }
+        if self.coord.esta_aplicando(e.guild_id) {
+            self.fallo_archivo(e, &idioma, MOTIVO_APLICANDO).await;
+            return;
+        }
+        let Some(_guardia) = self.coord.tomar_constructor(e.guild_id) else {
+            let motivo = "Another proposal is already being prepared in this server";
+            self.fallo_archivo(e, &idioma, motivo).await;
+            return;
+        };
+        let inicio = Instant::now();
+        self.log(format!(
+            "[ORDER] File {} from {} in {} #{}",
+            adjunto.nombre, e.autor_nombre, e.servidor, e.canal
+        ));
+        match self.compilar_archivo(e, ajustes, adjunto, &idioma).await {
+            Ok((ev, extra)) => {
+                self.publicar_propuesta(e, ajustes, ev, &extra, &idioma, inicio)
+                    .await
+            }
+            Err(motivo) => self.fallo_archivo(e, &idioma, &motivo).await,
+        }
+    }
+
+    /// Descarga, analiza y compila el archivo. Devuelve la propuesta validada y
+    /// el texto de avisos para publicar tras ella.
+    async fn compilar_archivo(
+        &self,
+        e: &Entrada,
+        ajustes: &GuildSettings,
+        adjunto: &Adjunto,
+        idioma: &str,
+    ) -> Result<(crate::asistente::EventoPropuesta, String), String> {
+        if adjunto.tamano > MAX_ARCHIVO as u64 {
+            return Err("The file is too large (the maximum is 200 KB)".into());
+        }
+        let datos = descargar_archivo(&adjunto.url, MAX_ARCHIVO)
+            .await
+            .map_err(|m| {
+                if m == "The file is too large" {
+                    "The file is too large (the maximum is 200 KB)".to_string()
+                } else {
+                    m
+                }
+            })?;
+        let texto = String::from_utf8(datos).map_err(|_| "The file is not valid text")?;
+        let analizado = crate::plan_estructurado::analizar(&texto);
+        if !analizado.tiene_estructura() {
+            return Err(format!(
+                "The file has no structure to build from. Read the manual: {ENLACE_MANUAL}"
+            ));
+        }
+        let (roles, canales) = (self.ordenes.existentes)(e.guild_id);
+        let mut comp = crate::plan_compilar::compilar(
+            &analizado,
+            &crate::plan_compilar::Existentes {
+                roles: &roles,
+                canales: &canales,
+            },
+        );
+        if !comp.pendientes.is_empty() {
+            let agente = ajustes.ordenes_agente.as_str();
+            match (self.buscar_agente)(agente) {
+                Some(ruta) => {
+                    let contexto = (self.ordenes.leer_contexto)(e.guild_id).await;
+                    let _permiso = self.coord.permiso_agente().await;
+                    crate::plan_descripciones::escribir_descripciones(
+                        &mut comp,
+                        &contexto,
+                        idioma,
+                        agente,
+                        &ruta,
+                        &ajustes.ordenes_modelo,
+                        self.limite_constructor,
+                    )
+                    .await;
+                }
+                None => comp.avisos.push(
+                    "The descriptions were not written: the AI agent is not installed".into(),
+                ),
+            }
+        }
+        let nombres = (self.ordenes.nombres)(e.guild_id);
+        let mut propuesta = comp.propuesta;
+        propuesta.resumen = crate::i18n::tr(idioma, &propuesta.resumen);
+        let validacion = crate::propuesta::validar_traducida(&propuesta, &nombres, idioma);
+        if let Some(err) = validacion.errores.first() {
+            return Err(format!(
+                "The plan is not valid: {}: {}",
+                err.herramienta, err.mensaje
+            ));
+        }
+        let mut lineas: Vec<String> = analizado
+            .avisos
+            .iter()
+            .map(|a| {
+                let motivo = crate::i18n::tr(idioma, &a.mensaje);
+                crate::i18n::tr(idioma, &format!("Line {}: {}", a.linea, motivo))
+            })
+            .collect();
+        lineas.extend(comp.avisos.iter().map(|a| crate::i18n::tr(idioma, a)));
+        let mut extra = String::new();
+        if !lineas.is_empty() {
+            extra.push_str("\n\n");
+            extra.push_str(&crate::i18n::tr(idioma, "Warnings:"));
+            for l in lineas.iter().take(MAX_AVISOS) {
+                let l: String = l.chars().take(200).collect();
+                extra.push_str(&format!("\n⚠ {l}"));
+            }
+            if lineas.len() > MAX_AVISOS {
+                extra.push('\n');
+                extra.push_str(&crate::i18n::tr(
+                    idioma,
+                    &format!("…and {} more warnings", lineas.len() - MAX_AVISOS),
+                ));
+            }
+        }
+        Ok((
+            crate::asistente::EventoPropuesta {
+                propuesta,
+                validacion,
+            },
+            extra,
+        ))
     }
 
     /// Anota el fallo en Logs y avisa en el canal con el motivo traducido.
@@ -683,11 +924,13 @@ impl Conversador {
             .ok_or_else(|| format!("The AI agent «{agente}» is not installed"))?;
         let mcp = (self.ordenes.ruta_mcp)()?;
         let plan = (self.ordenes.leer_plan)(e.guild_id).await;
+        let contexto = (self.ordenes.leer_contexto)(e.guild_id).await;
         let gid = e.guild_id.to_string();
         let prompt = prompt_asistente(
             ModoAsistente::Execute,
             (&gid, &e.servidor),
             &plan,
+            &contexto,
             idioma,
             orden,
         );
@@ -884,7 +1127,11 @@ mod tests {
             ordenes: ContextoOrdenes {
                 ruta_mcp: Arc::new(|| Ok("/opt/argus-mcp".to_string())),
                 leer_plan: Arc::new(|_| Box::pin(async { "PLAN-DEL-SERVIDOR".to_string() })),
+                leer_contexto: Arc::new(|_| {
+                    Box::pin(async { "CONTEXTO-DEL-SERVIDOR".to_string() })
+                }),
                 nombres: Arc::new(|_| crate::propuesta::Nombres::default()),
+                existentes: Arc::new(|_| (Vec::new(), Vec::new())),
                 aplicar: Arc::new(|_| Box::pin(async { Ok(Vec::new()) })),
                 idioma: Arc::new(|| "en".to_string()),
             },
@@ -908,6 +1155,7 @@ mod tests {
                 menciones: if menciona { vec![BOT] } else { vec![] },
                 ..Default::default()
             },
+            adjuntos: Vec::new(),
             mensaje_id: 500,
             guild_id: 555,
             texto: "hola".into(),
@@ -1585,5 +1833,174 @@ EOF"#;
             t.await.unwrap();
         }
         assert_eq!(maximo.load(Ordering::SeqCst), 1);
+    }
+
+    const PLAN_VALIDO: &str =
+        "## Rol: Mods | color: #ff0000\n## Categoría: Staff\n- texto: general\n- texto: reglas\n";
+
+    /// Sirve `cuerpo` en /files/plan.md y devuelve un mensaje con ese adjunto.
+    async fn con_archivo(
+        server: &MockServer,
+        autor: u64,
+        nombre: &str,
+        cuerpo: Vec<u8>,
+        tamano: u64,
+    ) -> Entrada {
+        // Una ruta por tamaño real, para poder servir varios archivos distintos.
+        let ruta = format!("/files/{}/plan.md", cuerpo.len());
+        Mock::given(method("GET"))
+            .and(path(ruta.clone()))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(cuerpo))
+            .mount(server)
+            .await;
+        let mut e = entrada(autor, true);
+        e.texto = "construye esto".into();
+        e.adjuntos = vec![Adjunto {
+            nombre: nombre.into(),
+            url: format!("{}{ruta}", server.uri()),
+            tamano,
+        }];
+        e
+    }
+
+    async fn descargas(server: &MockServer) -> usize {
+        server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|r| r.url.path().starts_with("/files/"))
+            .count()
+    }
+
+    #[tokio::test]
+    async fn un_archivo_valido_se_compila_sin_ia_y_el_si_lo_aplica() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        // El agente fallaría si se lanzara: no debe usarse.
+        let (mut c, logs) = conversador(
+            &server,
+            agente_falso("archivo-ok", "echo no-debe-usarse >&2; exit 1"),
+            LIMITE_AGENTE,
+        );
+        let aplicadas = aplicador_falso(&mut c);
+        let e = con_archivo(
+            &server,
+            1,
+            "Plan.MD",
+            PLAN_VALIDO.as_bytes().to_vec(),
+            PLAN_VALIDO.len() as u64,
+        )
+        .await;
+        let r = c.atender(e, &ajustes_ordenes(true)).await;
+        assert_eq!(r, Resultado::Respondido);
+        let env = envios(&server).await;
+        let t = textos(&env);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert!(t[0].contains("• Roles to create: 1"), "{}", t[0]);
+        assert!(t[0].contains("Reply **yes** within the next 5 minutes"));
+        assert!(!t[0].contains("Warnings:"), "{}", t[0]);
+        assert_eq!(env[0]["message_reference"]["message_id"], "500");
+        assert!(aplicadas.lock().unwrap().is_empty());
+        assert!(logs
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|l| l.starts_with("[ORDER] File Plan.MD from Ana")));
+
+        // El «sí» del mismo autor la aplica.
+        let r = c.atender(confirmar(1, "sí"), &ajustes_ordenes(true)).await;
+        assert_eq!(r, Resultado::Respondido);
+        {
+            let a = aplicadas.lock().unwrap();
+            assert_eq!(a.len(), 1);
+            assert_eq!(a[0].acciones[0].herramienta, "crear_rol");
+            assert_eq!(a[0].acciones[0].args["guild_id"], "555");
+        }
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), 2);
+        assert!(t[1].starts_with("Done: "), "{}", t[1]);
+    }
+
+    #[tokio::test]
+    async fn un_archivo_con_avisos_los_publica_con_su_linea() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (c, _) = conversador(&server, agente_falso("archivo-av", "exit 1"), LIMITE_AGENTE);
+        let plan = "## Categoría: Staff | rareza: alta\n- texto: general\n";
+        let e = con_archivo(&server, 1, "plan.txt", plan.as_bytes().to_vec(), 50).await;
+        c.atender(e, &ajustes_ordenes(true)).await;
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert!(t[0].contains("Warnings:\n⚠ Line 1:"), "{}", t[0]);
+        assert!(t[0].contains("Reply **yes**"));
+    }
+
+    #[tokio::test]
+    async fn un_archivo_sin_estructura_se_rechaza_con_el_enlace_al_manual() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (c, _) = conversador(
+            &server,
+            agente_falso("archivo-sin", "exit 1"),
+            LIMITE_AGENTE,
+        );
+        let libre = b"Quiero un servidor bonito con muchos canales.".to_vec();
+        let e = con_archivo(&server, 1, "idea.md", libre, 45).await;
+        c.atender(e, &ajustes_ordenes(true)).await;
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert!(t[0].contains("no structure"), "{}", t[0]);
+        assert!(t[0].contains(ENLACE_MANUAL), "{}", t[0]);
+        // No queda nada pendiente.
+        let r = c.atender(confirmar(1, "sí"), &ajustes_ordenes(true)).await;
+        assert_eq!(r, Resultado::Ignorado);
+    }
+
+    #[tokio::test]
+    async fn un_archivo_demasiado_grande_no_se_descarga_o_se_corta() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (c, _) = conversador(&server, agente_falso("archivo-gr", "exit 1"), LIMITE_AGENTE);
+        let a = GuildSettings {
+            chat_espera_s: 0,
+            ..ajustes_ordenes(true)
+        };
+        // Tamaño declarado por Discord.
+        let e = con_archivo(&server, 1, "plan.md", PLAN_VALIDO.into(), 300 * 1024).await;
+        c.atender(e, &a).await;
+        assert_eq!(descargas(&server).await, 0);
+        // Declara poco pero el contenido real es grande.
+        let grande = vec![b'a'; MAX_ARCHIVO + 1];
+        let e = con_archivo(&server, 1, "plan.md", grande, 10).await;
+        c.atender(e, &a).await;
+        assert_eq!(descargas(&server).await, 1);
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), 2, "{t:?}");
+        for x in &t {
+            assert!(x.contains("too large (the maximum is 200 KB)"), "{x}");
+        }
+    }
+
+    #[tokio::test]
+    async fn un_autor_sin_ordenes_no_puede_construir_desde_un_archivo() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (mut c, _) = conversador(&server, agente_falso("archivo-no", "exit 1"), LIMITE_AGENTE);
+        let aplicadas = aplicador_falso(&mut c);
+        let e = con_archivo(&server, 2, "plan.md", PLAN_VALIDO.into(), 90).await;
+        // Autor fuera de la lista, y órdenes desactivadas para el autor 1.
+        c.atender(e, &ajustes_ordenes(true)).await;
+        let e = con_archivo(&server, 1, "plan.md", PLAN_VALIDO.into(), 90).await;
+        c.atender(e, &ajustes()).await;
+        assert_eq!(descargas(&server).await, 0);
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), 2, "{t:?}");
+        for x in &t {
+            assert!(x.contains("not allowed to give orders"), "{x}");
+        }
+        let r = c.atender(confirmar(2, "sí"), &ajustes_ordenes(true)).await;
+        assert_eq!(r, Resultado::Ignorado);
+        assert!(aplicadas.lock().unwrap().is_empty());
     }
 }

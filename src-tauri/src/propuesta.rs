@@ -270,7 +270,7 @@ fn referencias(herramienta: &str, args: &Value) -> Vec<(&'static str, Ref)> {
 
 /// Clave de comparación de nombres: sin mayúsculas ni espacios sobrantes, y con
 /// los espacios como guiones (Discord guarda así los nombres de canales).
-fn clave(t: &str) -> String {
+pub(crate) fn clave(t: &str) -> String {
     t.trim()
         .to_lowercase()
         .split_whitespace()

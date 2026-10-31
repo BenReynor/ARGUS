@@ -3,7 +3,7 @@ import { listen, Event } from '@tauri-apps/api/event';
 
 import type {
   BotConfig, BotRegistrado, BotStatus, Config, Guild, GuildSettings, Channel, Member, Role, ServerMap,
-  AgenteIa, Propuesta, EventoPropuesta, AvanceAccion, ResumenPropuesta, EventoAsistente, ConversacionAsistente,
+  AgenteIa, Propuesta, EventoPropuesta, ResumenPlan, ResultadoConstruccion, CambiosPlan, EventoPlan, AvanceAccion, ResumenPropuesta, EventoAsistente, ConversacionAsistente,
 } from '../types';
 
 export type { BotStatus, Config, Guild, Channel, Member, Role, ServerMap };
@@ -156,10 +156,13 @@ export const deleteWebhook = (guildId: string, webhookId: string) => invoke<stri
 
 // Asistente IA
 export const listarAgentesIa = () => invoke<AgenteIa[]>('listar_agentes_ia');
-export const enviarAlAsistente = (mensaje: string, agente: string, modelo: string, modo: 'read' | 'execute', plan?: string) =>
+export const enviarAlAsistente = (mensaje: string, agente: string, modelo: string, modo: 'read' | 'plan' | 'execute', plan?: string) =>
   invoke<string | null>('enviar_al_asistente', { mensaje, agente, modelo, modo, plan });
 export const leerPlanServidor = (guildId: string) => invoke<string>('leer_plan_servidor', { guildId });
-export const guardarPlanServidor = (guildId: string, contenido: string) =>
+export const leerContextoServidor = (guildId: string) => invoke<string>('leer_contexto_servidor', { guildId });
+export const guardarContextoServidor = (guildId: string, contenido: string) =>
+  invoke<void>('guardar_contexto_servidor', { guildId, contenido });
+export const guardarPlanServidor =(guildId: string, contenido: string) =>
   invoke<void>('guardar_plan_servidor', { guildId, contenido });
 export const leerConversacion = (guildId: string, agente?: string) =>
   invoke<ConversacionAsistente | null>('leer_conversacion', { guildId, agente });
@@ -167,7 +170,14 @@ export const guardarConversacion = (guildId: string, agente: string, modelo: str
   invoke<void>('guardar_conversacion', { guildId, agente, modelo, mensajes });
 export const nuevaConversacion = (guildId: string) => invoke<void>('nueva_conversacion', { guildId });
 export const aplicarPropuesta = (propuesta: Propuesta) => invoke<ResumenPropuesta>('aplicar_propuesta', { propuesta });
-export const cancelarAsistente = () => invoke<void>('cancelar_asistente');
+export const resumirPlan = (plan: string) => invoke<ResumenPlan>('resumir_plan', { plan });
+export const construirDesdePlan = (agente: string, modelo: string, plan?: string) =>
+  invoke<ResultadoConstruccion>('construir_desde_plan', { agente, modelo, plan });
+export const compararPlan = (actual: string, propuesto: string) =>
+  invoke<CambiosPlan>('comparar_plan', { actual, propuesto });
+export const onAsistentePlan = (cb: (e: EventoPlan) => void) =>
+  listen<EventoPlan>('asistente-plan', (event: Event<EventoPlan>) => cb(event.payload));
+export const cancelarAsistente =() => invoke<void>('cancelar_asistente');
 
 export const onAsistenteEvento = (cb: (e: EventoAsistente) => void) =>
   listen<EventoAsistente>('asistente-evento', (event: Event<EventoAsistente>) => cb(event.payload));

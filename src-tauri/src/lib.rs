@@ -17,6 +17,9 @@ pub mod mapa;
 pub mod mcp;
 pub mod mensajes;
 pub mod persistencia;
+pub mod plan_compilar;
+pub mod plan_descripciones;
+pub mod plan_estructurado;
 pub mod propuesta;
 pub mod responder;
 pub mod state;
@@ -143,8 +146,13 @@ pub fn run() {
             propuesta::cancelar_asistente,
             asistente::listar_agentes_ia,
             asistente::enviar_al_asistente,
+            asistente::construir_desde_plan,
+            asistente::resumir_plan,
+            asistente::comparar_plan,
             asistente::leer_plan_servidor,
             asistente::guardar_plan_servidor,
+            asistente::leer_contexto_servidor,
+            asistente::guardar_contexto_servidor,
             asistente::leer_conversacion,
             asistente::guardar_conversacion,
             asistente::nueva_conversacion,

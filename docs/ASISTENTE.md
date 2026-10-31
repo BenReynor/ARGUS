@@ -284,6 +284,77 @@ is sent: no token, no other channels. Messages of other people are processed by
 the provider too, so tell your members and read the provider's terms, especially
 with free models. See also [What leaves your computer](#what-leaves-your-computer).
 
+### Reply only to
+
+In **Discord replies**, **Reply only to** limits the bot to the members you pick
+(search by name; they appear as chips with avatar and name). **Empty means it
+answers everyone.** Bots never appear in the list. Anyone not on the list is
+ignored, even if they mention the bot.
+
+## Orders from Discord
+
+Besides chatting, the bot can **change the server when you ask it in a message**.
+This is off by default and configured per server in **Discord replies → Orders
+from Discord**.
+
+### Who can give orders
+
+- Only the members you add to the **users who can give orders** list. With the list
+  empty nobody can, and the switch stays disabled (it turns itself off if you empty
+  the list).
+- The person must also pass **Reply only to**, if you set it.
+- Everyone else keeps chatting normally, but their requests never change anything.
+- Orders really modify the server and are recorded in **Logs**. Authorize only
+  people you trust.
+
+### How it works
+
+- The model that **chats** still has **no tools**: it cannot read or change the
+  server. When an authorized person gives an order, the work goes to a separate
+  **builder** (the agent and model you choose under *Orders from Discord*;
+  default `claude` / `sonnet`; only installed agents are listed).
+- The builder only **prepares a proposal**, the same structured list of actions as
+  Execute mode. **ARGUS applies it**, in order and with the same checks as the
+  Apply button; what is executed is exactly what was proposed. The builder never
+  touches Discord itself and never sees the bot token.
+
+### With confirmation (default)
+
+With **Ask for confirmation before applying** on:
+
+1. An authorized person mentions the bot with an order.
+2. The bot replies with the proposal (a summary of the changes).
+3. The same person answers **yes** (`sí`, `si`, `yes`, `ok` or `aplicar`) to apply
+   it, or **no** (`no` or `cancelar`) to discard it.
+4. ARGUS applies it and the bot reports the result.
+
+Only the author of the order can confirm it, in the same channel. A proposal
+expires after 5 minutes; a new order replaces the pending one, and only one
+proposal is applied at a time per server.
+
+### Without confirmation
+
+With the option off, ARGUS applies the proposal **as soon as the builder prepares
+it**, and the bot posts what it did. Use it only with people you fully trust.
+
+### Example
+
+> **You:** `@Bot crea un canal de voz llamado Reuniones en Comunidad`
+>
+> **Bot:** Proposal: create the voice channel **Reuniones** in the category
+> **Comunidad**. Reply *yes* to apply it or *no* to discard it.
+>
+> **You:** `sí`
+>
+> **Bot:** Done: voice channel **Reuniones** created in **Comunidad**.
+
+Without confirmation, the last step happens right after the order.
+
+### What leaves your computer
+
+The order and the server data the builder reads go to the builder's AI provider,
+in addition to what is described above for chatting.
+
 ## Troubleshooting
 
 - **No agents found:** install one (section 1) and reopen ARGUS.
@@ -298,3 +369,7 @@ with free models. See also [What leaves your computer](#what-leaves-your-compute
   apply again.
 
 See also [MCP.md](MCP.md) for the tools the agent can read with.
+
+Structured plan syntax (build servers without AI, server context, saving
+tokens): [PLAN_SERVIDOR.md](PLAN_SERVIDOR.md) (English) ·
+[PLAN_SERVIDOR.es.md](PLAN_SERVIDOR.es.md) (español).

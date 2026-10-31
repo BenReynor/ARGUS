@@ -41,6 +41,12 @@
   border: var(--border-w) solid var(--danger); border-radius: var(--radius); color: var(--text);
 }
 
+.asistente__cambios { display: flex; flex-direction: column; gap: var(--sp-2); border: var(--border-w) solid var(--border); border-radius: var(--radius-sm); padding: var(--sp-3); }
+.asistente__cambios h4, .asistente__cambios p { margin: 0; }
+.asistente__diff { margin: 0; max-height: 280px; overflow: auto; font-family: var(--font-mono, monospace); font-size: 12px; border: var(--border-w) solid var(--border); border-radius: var(--radius-sm); }
+.asistente__diff div { padding: 0 var(--sp-2); white-space: pre-wrap; word-break: break-word; }
+.asistente__diff .anadida { background: color-mix(in srgb, #2ea043 22%, transparent); }
+.asistente__diff .quitada { background: color-mix(in srgb, #f85149 22%, transparent); text-decoration: line-through; }
 .asistente__propuesta {
   display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3);
   background: var(--surface-2); border: var(--border-w) solid var(--border-strong); border-radius: var(--radius);
