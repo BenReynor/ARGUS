@@ -1541,6 +1541,105 @@ pub fn validar_accion(nombre: &str, args: &serde_json::Value) -> Result<(), Stri
     }
 }
 
+/// Esquema JSON de los argumentos de una herramienta de escritura (el mismo tipo
+/// que valida `validar_args`), o `None` si no es de escritura.
+pub fn esquema_args(nombre: &str) -> Option<serde_json::Value> {
+    fn de<T: schemars::JsonSchema>() -> Option<serde_json::Value> {
+        serde_json::to_value(schemars::schema_for!(T)).ok()
+    }
+    match nombre {
+        "elegir_servidor" => de::<ElegirServidorParams>(),
+        "enviar_mensaje" => de::<EnviarMensajeParams>(),
+        "enviar_dm" => de::<EnviarDmParams>(),
+        "borrar_mensaje" | "fijar_mensaje" | "desfijar_mensaje" => de::<MensajeParams>(),
+        "borrar_mensajes" => de::<BorrarMensajesParams>(),
+        "crear_canal" => de::<CrearCanalParams>(),
+        "editar_canal" => de::<EditarCanalParams>(),
+        "borrar_canal" => de::<CanalParams>(),
+        "ordenar_canales" | "ordenar_roles" => de::<OrdenarParams>(),
+        "crear_rol" => de::<CrearRolParams>(),
+        "editar_rol" => de::<EditarRolParams>(),
+        "borrar_rol" => de::<RolParams>(),
+        "dar_rol" | "quitar_rol" => de::<RolMiembroParams>(),
+        "permiso_canal" => de::<PermisoCanalParams>(),
+        "quitar_permiso_canal" => de::<QuitarPermisoCanalParams>(),
+        "expulsar" | "desbanear" => de::<ExpulsarParams>(),
+        "banear" => de::<BanearParams>(),
+        "silenciar" => de::<SilenciarParams>(),
+        "cambiar_apodo" => de::<CambiarApodoParams>(),
+        "editar_servidor" => de::<EditarServidorParams>(),
+        "crear_invitacion" => de::<CrearInvitacionParams>(),
+        "borrar_invitacion" => de::<BorrarInvitacionParams>(),
+        "crear_webhook" => de::<CrearWebhookParams>(),
+        "borrar_webhook" => de::<BorrarWebhookParams>(),
+        _ => None,
+    }
+}
+
+/// Una línea por herramienta de escritura con sus argumentos (nombre, tipo,
+/// obligatorio u opcional y su descripción), sacada del esquema de sus params:
+/// así el asistente no adivina argumentos (antes solo se documentaban cuatro).
+/// `guild_id` se omite: siempre se usa el servidor activo.
+pub fn firmas_escritura() -> String {
+    fn tipo(v: &serde_json::Value) -> String {
+        match v.get("type") {
+            Some(serde_json::Value::String(t)) if t == "array" => {
+                let item = v.get("items").map(tipo).unwrap_or_else(|| "any".into());
+                format!("list of {item}")
+            }
+            Some(serde_json::Value::String(t)) => t.clone(),
+            Some(serde_json::Value::Array(ts)) => ts
+                .iter()
+                .filter_map(|t| t.as_str())
+                .filter(|t| *t != "null")
+                .collect::<Vec<_>>()
+                .join("|"),
+            _ => "any".into(),
+        }
+    }
+    let mut lineas = Vec::new();
+    for h in HERRAMIENTAS_ESCRITURA {
+        if *h == "elegir_servidor" {
+            continue;
+        }
+        let Some(esquema) = esquema_args(h) else {
+            continue;
+        };
+        let requeridos: Vec<&str> = esquema["required"]
+            .as_array()
+            .map(|r| r.iter().filter_map(|x| x.as_str()).collect())
+            .unwrap_or_default();
+        let mut args = Vec::new();
+        if let Some(props) = esquema["properties"].as_object() {
+            for (campo, def) in props {
+                if campo == "guild_id" {
+                    continue;
+                }
+                let oblig = if requeridos.contains(&campo.as_str()) {
+                    "required"
+                } else {
+                    "optional"
+                };
+                let mut texto = format!("{campo} ({}, {oblig})", tipo(def));
+                if let Some(d) = def.get("description").and_then(|d| d.as_str()) {
+                    let d: String = d.split_whitespace().collect::<Vec<_>>().join(" ");
+                    texto.push_str(&format!(": {d}"));
+                }
+                args.push(texto);
+            }
+        }
+        lineas.push(format!(
+            "- `{h}`: {}",
+            if args.is_empty() {
+                "no arguments".into()
+            } else {
+                args.join("; ")
+            }
+        ));
+    }
+    lineas.join("\n")
+}
+
 impl ArgusMcp {
     /// Ejecuta una herramienta de escritura por nombre con la misma lógica que
     /// el MCP (permisos, jerarquía y mensajes). Rechaza nombres desconocidos,
@@ -4318,5 +4417,38 @@ mod tests {
             e.unwrap_err(),
             "The bot is missing the permission «Manage Channels»"
         );
+    }
+}
+
+#[cfg(test)]
+mod tests_firmas {
+    use super::*;
+
+    #[test]
+    fn firmas_cubren_todas_las_de_escritura_con_sus_obligatorios() {
+        let f = firmas_escritura();
+        println!("{f}");
+        for h in HERRAMIENTAS_ESCRITURA
+            .iter()
+            .filter(|h| **h != "elegir_servidor")
+        {
+            assert!(f.contains(&format!("- `{h}`:")), "falta {h}");
+            assert!(esquema_args(h).is_some(), "sin esquema {h}");
+        }
+        // La que falló en la prueba real: `posiciones` es obligatorio.
+        let ordenar = f
+            .lines()
+            .find(|l| l.starts_with("- `ordenar_roles`"))
+            .unwrap();
+        assert!(
+            ordenar.contains("posiciones (") && ordenar.contains("required"),
+            "{ordenar}"
+        );
+        let canal = f
+            .lines()
+            .find(|l| l.starts_with("- `crear_canal`"))
+            .unwrap();
+        assert!(canal.contains("nombre (string, required)"), "{canal}");
+        assert!(!f.contains("guild_id"));
     }
 }

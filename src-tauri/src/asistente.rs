@@ -778,17 +778,17 @@ Format: {{\"resumen\": string, \"acciones\": [{{\"herramienta\": string, \"args\
 - Where an id of a role, channel or category goes (`categoria_id`, `channel_id`, `role_id`, \
 `target_id` with tipo \"rol\"), you may write its name instead; it can be something an earlier \
 action creates.\n\
-- `crear_rol` args: nombre, color (\"#RRGGBB\"), separado, mencionable, permisos (list of \
-permission names such as \"ManageMessages\").\n\
-- `crear_canal` args: nombre, tipo (\"texto\", \"voz\", \"categoria\", \"anuncios\", \"foro\"), \
-categoria_id, tema (the channel topic), nsfw, slowmode_segundos.\n\
-- `permiso_canal` args: channel_id, target_id, tipo (\"rol\" or \"miembro\"), permitir, denegar \
-(lists of permission names).\n\
-- `dar_rol` args: user_id, role_id.\n\
-- Only propose what is needed: do not recreate what already exists.\n\n\
+- Permission names are Discord's (e.g. \"ViewChannel\", \"SendMessages\", \
+\"ReadMessageHistory\", \"Connect\", \"Speak\", \"ManageMessages\", \"ModerateMembers\", \
+\"Administrator\"). Create roles in the order the plan lists them (highest first); do not use \
+`ordenar_roles` or `ordenar_canales` unless the plan asks to reorder something.\n\
+- Only propose what is needed: do not recreate what already exists, and never delete, move \
+or rename anything the plan does not explicitly ask for.\n\
+- Use exactly these arguments for each tool (required ones must be present):\n{firmas}\n\n\
 Example of a valid answer block (a role, a category, a channel with topic and a permission by \
 name):\n```json\n{ejemplo}\n```\n",
             escritura = crate::mcp::HERRAMIENTAS_ESCRITURA.join(", "),
+            firmas = crate::mcp::firmas_escritura(),
             ejemplo = EJEMPLO_PROPUESTA,
         ));
     } else {
