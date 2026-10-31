@@ -1322,12 +1322,20 @@ pub struct ResumenPlan {
     pub canales: usize,
     pub texto_libre: usize,
     pub tiene_estructura: bool,
+    /// Avisos del análisis como «línea: motivo», ya traducidos.
+    pub avisos: Vec<String>,
 }
 
 #[tauri::command]
-pub fn resumir_plan(plan: String) -> ResumenPlan {
+pub fn resumir_plan(state: tauri::State<'_, AppState>, plan: String) -> ResumenPlan {
+    let idioma = crate::i18n::idioma(&state);
     let p = crate::plan_estructurado::analizar(&plan);
     ResumenPlan {
+        avisos: p
+            .avisos
+            .iter()
+            .map(|a| format!("{}: {}", a.linea, crate::i18n::tr(&idioma, &a.mensaje)))
+            .collect(),
         roles: p.roles.len(),
         categorias: p.categorias.len(),
         canales: p.categorias.iter().map(|c| c.canales.len()).sum(),

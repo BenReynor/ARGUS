@@ -241,7 +241,7 @@ export interface Propuesta { resumen: string; acciones: AccionPropuesta[] }
 export interface ErrorValidacion { indice: number; herramienta: string; mensaje: string }
 export interface Validacion { cambios: string[]; errores: ErrorValidacion[] }
 export interface EventoPropuesta { propuesta: Propuesta; validacion: Validacion }
-export interface ResumenPlan { roles: number; categorias: number; canales: number; texto_libre: number; tiene_estructura: boolean }
+export interface ResumenPlan { roles: number; categorias: number; canales: number; texto_libre: number; tiene_estructura: boolean; avisos: string[] }
 export interface ResultadoConstruccion {
   propuesta: Propuesta; validacion: Validacion; desde_estructura: number; descripciones_ia: number; texto_libre: number; avisos: string[];
 }

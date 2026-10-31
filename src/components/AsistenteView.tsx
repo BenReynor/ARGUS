@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
-import { Check, CircleDashed, Download, Hammer, Loader2, Square, TriangleAlert, Undo2, Upload, X } from 'lucide-react';
+import { BookOpen, Check, CircleDashed, FilePlus, Download, Hammer, Loader2, Square, TriangleAlert, Undo2, Upload, X } from 'lucide-react';
 import { useActiveGuildId, useShowNotification } from '../store/useStore';
 import {
   listarAgentesIa, enviarAlAsistente, leerPlanServidor, guardarPlanServidor, leerConversacion,
@@ -92,6 +92,7 @@ const ChatAsistente: React.FC = () => {
   const [cambios, setCambios] = useState<{ propuesto: string; vista: CambiosPlan } | null>(null);
   const [planPrevio, setPlanPrevio] = useState<string | null>(null);
   const areaPlan = useRef<HTMLTextAreaElement>(null);
+  const [manualAbierto, setManualAbierto] = useState(false);
 
   const [ancho, setAncho] = useState(50);
   const contenedor = useRef<HTMLDivElement>(null);
@@ -271,6 +272,36 @@ const ChatAsistente: React.FC = () => {
     return () => { vigente = false; clearTimeout(espera); };
   }, [plan]);
 
+  const insertarPlantilla = () => {
+    if (plan.trim() && !window.confirm(t('Replace the current plan with the example template?'))) return;
+    const lineas = [
+      t('// Example plan. Lines starting with // are comments and are ignored.'),
+      t('// Roles are created in the order written, highest first.'),
+      '## Role: Admin | color: #E74C3C | permissions: Administrator | hoist',
+      '## Role: Moderator | color: #3498DB | permissions: KickMembers, ManageMessages | mentionable: no',
+      '## Role: Member | color: #95A5A6',
+      '',
+      t('// A variable is declared once and used as $name.'),
+      '@var staff = Moderator',
+      '',
+      t('// A category and its channels (written right below it).'),
+      '## Category: Welcome | description: "Start here"',
+      '- text: rules | description: "Server rules" | read only: Member',
+      '- announcements: news | description: generate: short news channel for members',
+      '',
+      t('// Private category: only these roles can see it.'),
+      '## Category: Staff | hide from: @everyone | view: Admin, $staff',
+      '- text: staff-chat | description: "Private chat for the team"',
+      '',
+      t('// A range creates several channels at once: Table-01 … Table-03.'),
+      '## Category: Voice',
+      '- voice: Table-{01..03} | description: "Voice room {n}"',
+      '',
+      t('Any other line is free text: ARGUS will not build it, but the assistant can read it.'),
+    ];
+    escribirEnEditor(lineas.join('\n'));
+  };
+
   const construir = async () => {
     if (!guildId || construyendo || enviando || aplicando || !agente || !modelo) return;
     setConstruyendo(true);
@@ -439,10 +470,37 @@ const ChatAsistente: React.FC = () => {
               {planPrevio !== null && (
                 <Button variante="secundario" tamano="sm" onClick={deshacerPlan}><Undo2 size={14} /> {t('Undo')}</Button>
               )}
+              <Button variante="secundario" tamano="sm" onClick={() => setManualAbierto((v) => !v)}><BookOpen size={14} /> {t('Manual')}</Button>
+              <Button variante="secundario" tamano="sm" onClick={insertarPlantilla}><FilePlus size={14} /> {t('Insert template')}</Button>
               <Button variante="secundario" tamano="sm" onClick={() => { void importar(); }}><Upload size={14} /> {t('Import .md')}</Button>
               <Button variante="secundario" tamano="sm" onClick={() => { void exportar(); }}><Download size={14} /> {t('Export .md')}</Button>
             </div>
           </header>
+          {manualAbierto && (
+            <div className="asistente__aviso" role="region" aria-label={t('Plan manual')} style={{ display: 'block', maxHeight: '40%', overflow: 'auto' }}>
+              <strong>{t('Plan manual')}</strong>
+              <p>{t('Write one item per line. Lines that do not follow the syntax are free text: ARGUS keeps them but does not build them.')}</p>
+              <ul>
+                <li><strong>{t('Roles')}</strong>: <code>## Role: Name | color: #RRGGBB | permissions: ManageMessages, KickMembers | hoist | mentionable: no</code></li>
+                <li><strong>{t('Categories')}</strong>: <code>## Category: Name | description: "text"</code></li>
+                <li><strong>{t('Private category')}</strong>: <code>## Category: Staff | hide from: @everyone | view: Admin, Moderator</code></li>
+                <li><strong>{t('Channels')}</strong>: <code>- text: name</code>, <code>- voice: name</code>, <code>- announcements: name</code>, <code>- forum: name</code>. {t('They belong to the last category above them.')}</li>
+                <li><strong>{t('Ranges')}</strong>: <code>- voice: Table-{'{01..05}'}</code> {t('creates Table-01 … Table-05; use')} <code>{'{n}'}</code> {t('in a quoted description for the number.')}</li>
+                <li><strong>{t('Literal description')}</strong>: <code>description: "Welcome!"</code></li>
+                <li><strong>{t('AI-written description')}</strong>: <code>description: generate: short hint</code></li>
+                <li><strong>{t('Permissions')}</strong>: <code>view: Role1, Role2</code> · <code>write: Role</code> · <code>read only: Role</code> · <code>hide from: @everyone</code></li>
+                <li><strong>{t('Variables and comments')}</strong>: <code>@var name = value</code> {t('used as $name;')} <code>// {t('comment')}</code></li>
+                <li><strong>{t('Free text')}</strong>: {t('any other line is notes for you and the assistant; it is never built.')}</li>
+              </ul>
+              <strong>{t('Tips to spend fewer tokens')}</strong>
+              <ul>
+                <li>{t('Use the structured syntax and press Build from plan: it builds without asking the AI.')}</li>
+                <li>{t('Use ranges instead of listing similar channels one by one.')}</li>
+                <li>{t('Write literal descriptions; use generate: only where you really want the AI to write.')}</li>
+                <li>{t('Keep the plan short and remove free text you no longer need.')}</li>
+              </ul>
+            </div>
+          )}
           <textarea
             className="ui-control asistente__plan"
             ref={areaPlan}
@@ -452,6 +510,12 @@ const ChatAsistente: React.FC = () => {
             placeholder={t('Describe your server in Markdown: categories, channels with their description, roles with permissions, and the permissions of each role in each channel.')}
             onChange={(e) => cambiarPlan(e.target.value)}
           />
+          {estructura && estructura.avisos.length > 0 && (
+            <div className="asistente__aviso" role="note" style={{ maxHeight: '20%', overflow: 'auto' }}>
+              <TriangleAlert size={14} />
+              <span><strong>{t('Plan warnings')}</strong>{estructura.avisos.map((a, i) => <small key={i} style={{ display: 'block' }}>{t('Line {warning}', { warning: a })}</small>)}</span>
+            </div>
+          )}
           <footer className="asistente__pie">
             <span>{t('{count} characters', { count: plan.length.toLocaleString() })}</span>
             <span role="status">{textoGuardado}</span>
