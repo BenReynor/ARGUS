@@ -417,7 +417,7 @@ Separar **construir** el servidor de **gestionarlo**. Nueva pestaña **Moderatio
 - [x] Buscar mensajes (herramienta de lectura)
   criterio: nueva herramienta MCP de lectura `buscar_mensajes` (en `HERRAMIENTAS_LECTURA`) con `texto` (sin distinguir mayúsculas ni tildes), `canales` opcional (IDs o nombres; por defecto todos los de texto que el bot puede leer), `autor` opcional y `limite_por_canal` (por defecto 100, máximo 500); como los bots no pueden usar la búsqueda de Discord, lee el historial reciente de cada canal y filtra en local; devuelve las coincidencias (canal, autor con id y nombre, id del mensaje, enlace, fecha y fragmento) y cuántos mensajes revisó por canal; tests contra el Discord falso (coincidencias en dos canales, filtro por autor, sin resultados, límite)
 
-- [ ] Avisos (warnings)
+- [x] Avisos (warnings)
   criterio: migración con una tabla de avisos (guild_id, user_id, motivo, mensaje_id opcional, autor del aviso, fecha); nueva herramienta de escritura `avisar` (user_id, motivo, mensaje_id opcional, `dm` por defecto true) que guarda el aviso y, si `dm`, envía al usuario un DM con el motivo y el número de avisos que lleva (si el DM falla, el aviso se guarda igual y se informa); nueva herramienta de lectura `listar_avisos` (user_id opcional) con el recuento por usuario y los últimos avisos; ambas clasificadas en las listas de lectura/escritura y documentadas por `firmas_escritura`; `ejecutar_accion` y las propuestas aceptan `avisar` (con el usuario por nombre o id); tests de Rust (guardar, contar, DM fallido, listar)
 
 - [ ] Prompt y conversación de moderación
