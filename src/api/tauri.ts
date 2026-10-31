@@ -3,7 +3,7 @@ import { listen, Event } from '@tauri-apps/api/event';
 
 import type {
   BotConfig, BotRegistrado, BotStatus, Config, Guild, GuildSettings, Channel, Member, Role, ServerMap,
-  AgenteIa, Propuesta, EventoPropuesta, AvanceAccion, ResumenPropuesta, EventoAsistente, ConversacionAsistente,
+  AgenteIa, Propuesta, EventoPropuesta, ResumenPlan, ResultadoConstruccion, AvanceAccion, ResumenPropuesta, EventoAsistente, ConversacionAsistente,
 } from '../types';
 
 export type { BotStatus, Config, Guild, Channel, Member, Role, ServerMap };
@@ -167,7 +167,10 @@ export const guardarConversacion = (guildId: string, agente: string, modelo: str
   invoke<void>('guardar_conversacion', { guildId, agente, modelo, mensajes });
 export const nuevaConversacion = (guildId: string) => invoke<void>('nueva_conversacion', { guildId });
 export const aplicarPropuesta = (propuesta: Propuesta) => invoke<ResumenPropuesta>('aplicar_propuesta', { propuesta });
-export const cancelarAsistente = () => invoke<void>('cancelar_asistente');
+export const resumirPlan = (plan: string) => invoke<ResumenPlan>('resumir_plan', { plan });
+export const construirDesdePlan = (agente: string, modelo: string, plan?: string) =>
+  invoke<ResultadoConstruccion>('construir_desde_plan', { agente, modelo, plan });
+export const cancelarAsistente =() => invoke<void>('cancelar_asistente');
 
 export const onAsistenteEvento = (cb: (e: EventoAsistente) => void) =>
   listen<EventoAsistente>('asistente-evento', (event: Event<EventoAsistente>) => cb(event.payload));

@@ -770,6 +770,100 @@ const EJEMPLO_PROPUESTA: &str = r##"{
   ]
 }"##;
 
+/// Máximo de elementos por lista en los resúmenes compactos del prompt.
+const MAX_RESUMEN: usize = 40;
+/// Máximo de caracteres de cada resumen compacto.
+const MAX_RESUMEN_CHARS: usize = 3000;
+
+fn recortar_texto(mut s: String, max: usize) -> String {
+    if s.chars().count() > max {
+        s = s.chars().take(max).collect();
+        s.push('…');
+    }
+    s
+}
+
+fn lista_recortada<'a>(nombres: impl Iterator<Item = &'a str>) -> String {
+    let todos: Vec<&str> = nombres.collect();
+    let mut s = todos
+        .iter()
+        .take(MAX_RESUMEN)
+        .copied()
+        .collect::<Vec<_>>()
+        .join(", ");
+    if todos.len() > MAX_RESUMEN {
+        s.push_str(&format!(", +{} more", todos.len() - MAX_RESUMEN));
+    }
+    s
+}
+
+/// Resumen compacto del mapa: categorías con sus canales y roles (recortado).
+pub fn resumen_mapa(mapa: &crate::state::ServerMap) -> String {
+    let mut ordenados: Vec<&crate::state::Channel> = mapa.channels.iter().collect();
+    ordenados.sort_by_key(|c| c.position);
+    let categorias: Vec<&crate::state::Channel> = ordenados
+        .iter()
+        .copied()
+        .filter(|c| c.channel_type == 4)
+        .collect();
+    let mut s = String::new();
+    for c in categorias.iter().take(MAX_RESUMEN) {
+        let hijos = ordenados
+            .iter()
+            .filter(|h| h.channel_type != 4 && h.parent_id.as_deref() == Some(c.id.as_str()))
+            .map(|h| h.name.as_str());
+        s.push_str(&format!("- {}: {}\n", c.name, lista_recortada(hijos)));
+    }
+    if categorias.len() > MAX_RESUMEN {
+        s.push_str(&format!(
+            "- (+{} more categories)\n",
+            categorias.len() - MAX_RESUMEN
+        ));
+    }
+    let sueltos = ordenados.iter().filter(|c| {
+        c.channel_type != 4
+            && c.parent_id
+                .as_deref()
+                .is_none_or(|p| !categorias.iter().any(|k| k.id == p))
+    });
+    let sueltos = lista_recortada(sueltos.map(|c| c.name.as_str()));
+    if !sueltos.is_empty() {
+        s.push_str(&format!("- (no category): {sueltos}\n"));
+    }
+    let mut roles: Vec<&crate::state::Role> = mapa.roles.iter().collect();
+    roles.sort_by_key(|r| std::cmp::Reverse(r.position));
+    s.push_str(&format!(
+        "Roles: {}\n",
+        lista_recortada(roles.iter().map(|r| r.name.as_str()))
+    ));
+    recortar_texto(s, MAX_RESUMEN_CHARS)
+}
+
+/// Resumen compacto del plan ya analizado (roles, categorías con canales y texto libre).
+pub fn resumen_plan(plan: &crate::plan_estructurado::PlanEstructurado) -> String {
+    let mut s = String::new();
+    if !plan.roles.is_empty() {
+        s.push_str(&format!(
+            "Roles: {}\n",
+            lista_recortada(plan.roles.iter().map(|r| r.nombre.as_str()))
+        ));
+    }
+    for c in plan.categorias.iter().take(MAX_RESUMEN) {
+        s.push_str(&format!(
+            "- {}: {}\n",
+            c.nombre,
+            lista_recortada(c.canales.iter().map(|k| k.nombre.as_str()))
+        ));
+    }
+    if !plan.texto_libre.is_empty() {
+        s.push_str("Free text (not structured):\n");
+        for l in plan.texto_libre.iter().take(MAX_RESUMEN) {
+            s.push_str(&format!("  {}\n", l.trim()));
+        }
+    }
+    recortar_texto(s, MAX_RESUMEN_CHARS)
+}
+
 /// Prompt que se le da al agente. `servidor` es (id, nombre) del servidor activo.
 pub fn prompt_asistente(
     modo: ModoAsistente,
@@ -778,6 +872,20 @@ pub fn prompt_asistente(
     contexto: &str,
     idioma: &str,
     mensaje: &str,
+) -> String {
+    prompt_asistente_con_mapa(modo, servidor, plan, contexto, idioma, mensaje, "")
+}
+
+/// Como `prompt_asistente`; en modo Execute añade el plan ya analizado y, si
+/// `mapa` no está vacío, el resumen compacto del mapa del servidor.
+pub fn prompt_asistente_con_mapa(
+    modo: ModoAsistente,
+    servidor: (&str, &str),
+    plan: &str,
+    contexto: &str,
+    idioma: &str,
+    mensaje: &str,
+    mapa: &str,
 ) -> String {
     let (id, nombre) = servidor;
     let contexto = if contexto.trim().is_empty() {
@@ -811,6 +919,21 @@ permissions, settings, audit log, messages...). Never try to change the server y
 <plan>\n{plan}\n</plan>\n"
     );
     if modo == ModoAsistente::Execute {
+        let analizado = crate::plan_estructurado::analizar(plan);
+        if analizado.tiene_estructura() || !analizado.texto_libre.is_empty() {
+            p.push_str(&format!(
+                "\n## Parsed plan (ARGUS already analysed the plan text; no need to re-read it)\n\
+<parsed_plan>\n{}</parsed_plan>\n",
+                resumen_plan(&analizado)
+            ));
+        }
+        if !mapa.trim().is_empty() {
+            p.push_str(&format!(
+                "\n## Server map (compact snapshot of what exists now; use your read tools only \
+for details missing here)\n<server_map>\n{}</server_map>\n",
+                mapa.trim_end().to_string() + "\n"
+            ));
+        }
         p.push_str(&format!(
             "\n## Execute mode\n\
 Study the server with your read tools, compare it with the plan and work out what has to \
@@ -939,13 +1062,18 @@ pub async fn enviar_al_asistente(
             .await
             .map_err(|e| e.to_string())?;
         let sesion = previa.as_ref().and_then(|c| c.session_id.clone());
-        let prompt = prompt_asistente(
+        let mapa = {
+            let mapas = state.server_maps.lock().unwrap();
+            mapas.get(&gid).map(resumen_mapa).unwrap_or_default()
+        };
+        let prompt = prompt_asistente_con_mapa(
             modo,
             (&gid, &nombre_servidor),
             &plan,
             &contexto,
             &idioma,
             &mensaje,
+            &mapa,
         );
         let ruta = buscar_binario(&agente, &carpetas_busqueda())
             .ok_or_else(|| format!("{agente} is not installed"))?;
@@ -1014,6 +1142,124 @@ pub async fn enviar_al_asistente(
                 .map_err(|e| e.to_string())?;
         }
         Ok(nueva_sesion)
+    }
+    .await;
+    localizar_error(&state, r)
+}
+
+/// Qué estructura tiene un plan (para decidir si se ofrece «Build from plan»).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ResumenPlan {
+    pub roles: usize,
+    pub categorias: usize,
+    pub canales: usize,
+    pub texto_libre: usize,
+    pub tiene_estructura: bool,
+}
+
+#[tauri::command]
+pub fn resumir_plan(plan: String) -> ResumenPlan {
+    let p = crate::plan_estructurado::analizar(&plan);
+    ResumenPlan {
+        roles: p.roles.len(),
+        categorias: p.categorias.len(),
+        canales: p.categorias.iter().map(|c| c.canales.len()).sum(),
+        texto_libre: p.texto_libre.len(),
+        tiene_estructura: p.tiene_estructura(),
+    }
+}
+
+/// Resultado de «Build from plan»: la propuesta compilada y de dónde salió.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ResultadoConstruccion {
+    pub propuesta: crate::propuesta::Propuesta,
+    pub validacion: crate::propuesta::Validacion,
+    /// Acciones que salieron de la estructura del plan.
+    pub desde_estructura: usize,
+    /// Descripciones de canal que escribió la IA.
+    pub descripciones_ia: usize,
+    /// Líneas de texto libre del plan (no estructuradas).
+    pub texto_libre: usize,
+    pub avisos: Vec<String>,
+}
+
+/// Compila la estructura del plan (en local), escribe las descripciones
+/// pendientes con una llamada barata y devuelve la propuesta para aprobarla
+/// con `aplicar_propuesta`.
+#[tauri::command]
+pub async fn construir_desde_plan(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    agente: String,
+    modelo: String,
+    plan: Option<String>,
+) -> Result<ResultadoConstruccion, String> {
+    let r = async {
+        let gid = state
+            .get_active_guild()
+            .ok_or("No active server: choose one first")?;
+        let idioma = crate::i18n::idioma(&state);
+        let (bot_id, pool) = bot_y_pool(&app, &state).await?;
+        let plan = match plan {
+            Some(p) => p,
+            None => crate::db::leer_plan(&pool, &bot_id, &gid)
+                .await
+                .map_err(|e| e.to_string())?,
+        };
+        let contexto = crate::db::leer_contexto(&pool, &bot_id, &gid)
+            .await
+            .map_err(|e| e.to_string())?;
+        let analizado = crate::plan_estructurado::analizar(&plan);
+        if !analizado.tiene_estructura() {
+            return Err("The plan has no structure to build from".to_string());
+        }
+        let (roles, canales) = {
+            let mapas = state.server_maps.lock().unwrap();
+            mapas
+                .get(&gid)
+                .map(|m| (m.roles.clone(), m.channels.clone()))
+                .unwrap_or_default()
+        };
+        let mut comp = crate::plan_compilar::compilar(
+            &analizado,
+            &crate::plan_compilar::Existentes {
+                roles: &roles,
+                canales: &canales,
+            },
+        );
+        let desde_estructura = comp.propuesta.acciones.len();
+        let mut descripciones_ia = 0;
+        if !comp.pendientes.is_empty() {
+            let ruta = buscar_binario(&agente, &carpetas_busqueda())
+                .ok_or_else(|| format!("{agente} is not installed"))?;
+            let cancelar = std::sync::Arc::new(tokio::sync::Notify::new());
+            let _turno = Turno::tomar(cancelar)?;
+            descripciones_ia = crate::plan_descripciones::escribir_descripciones(
+                &mut comp,
+                &contexto,
+                &idioma,
+                &agente,
+                &ruta,
+                &modelo,
+                std::time::Duration::from_secs(300),
+            )
+            .await;
+        }
+        let validacion = crate::propuesta::validar_en_estado(&state, &comp.propuesta);
+        let mut avisos: Vec<String> = analizado
+            .avisos
+            .iter()
+            .map(|a| format!("{}: {}", a.linea, crate::i18n::tr(&idioma, &a.mensaje)))
+            .collect();
+        avisos.extend(comp.avisos.iter().map(|a| crate::i18n::tr(&idioma, a)));
+        Ok(ResultadoConstruccion {
+            propuesta: comp.propuesta,
+            validacion,
+            desde_estructura,
+            descripciones_ia,
+            texto_libre: analizado.texto_libre.len(),
+            avisos,
+        })
     }
     .await;
     localizar_error(&state, r)
@@ -1676,6 +1922,63 @@ mod tests_prompt {
         ] {
             assert!(p.contains(campo), "falta {campo}");
         }
+    }
+
+    #[test]
+    fn execute_recibe_el_plan_analizado_y_el_mapa_compacto() {
+        let plan = "## Rol: Moderators\n## Categoría: Staff\n- texto: mod-chat\n";
+        let p = prompt_asistente_con_mapa(
+            ModoAsistente::Execute,
+            ("1", "S"),
+            plan,
+            "",
+            "en",
+            "build",
+            "- Lobby: general\nRoles: Admin\n",
+        );
+        assert!(p.contains("<parsed_plan>"));
+        assert!(p.contains("<server_map>") && p.contains("- Lobby: general"));
+        let leer = prompt_asistente_con_mapa(
+            ModoAsistente::Read,
+            ("1", "S"),
+            plan,
+            "",
+            "en",
+            "hi",
+            "- Lobby: general\n",
+        );
+        assert!(!leer.contains("<server_map>") && !leer.contains("<parsed_plan>"));
+    }
+
+    #[test]
+    fn el_resumen_del_mapa_se_recorta() {
+        use crate::state::{Channel, Guild, ServerMap};
+        let canal = |i: usize, t: u8, parent: Option<&str>| Channel {
+            id: i.to_string(),
+            name: format!("c{i}"),
+            channel_type: t,
+            parent_id: parent.map(String::from),
+            position: i as i32,
+            overwrites: None,
+            permissions_bitfield: None,
+        };
+        let mut channels = vec![canal(1, 4, None)];
+        channels.extend((2..300).map(|i| canal(i, 0, Some("1"))));
+        let mapa = ServerMap {
+            guild: serde_json::from_value::<Guild>(serde_json::json!({
+                "id": "1", "name": "S", "icon": null, "member_count": 0, "joined_at": null
+            }))
+            .unwrap(),
+            channels,
+            members: vec![],
+            roles: vec![],
+            categories: Default::default(),
+            last_updated: String::new(),
+        };
+        let r = resumen_mapa(&mapa);
+        assert!(r.starts_with("- c1: c2, c3"));
+        assert!(r.contains("more"));
+        assert!(r.chars().count() <= MAX_RESUMEN_CHARS + 1);
     }
 
     #[test]

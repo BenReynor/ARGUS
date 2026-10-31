@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
-import { Check, CircleDashed, Download, Loader2, Square, TriangleAlert, Upload, X } from 'lucide-react';
+import { Check, CircleDashed, Download, Hammer, Loader2, Square, TriangleAlert, Upload, X } from 'lucide-react';
 import { useActiveGuildId, useShowNotification } from '../store/useStore';
 import {
   listarAgentesIa, enviarAlAsistente, leerPlanServidor, guardarPlanServidor, leerConversacion,
-  guardarConversacion, nuevaConversacion, aplicarPropuesta, cancelarAsistente,
+  guardarConversacion, nuevaConversacion, aplicarPropuesta, cancelarAsistente, resumirPlan, construirDesdePlan,
   onAsistenteEvento, onAsistentePropuesta, onAsistenteAccion, onAsistenteResumen,
 } from '../api/tauri';
-import type { AccionPropuesta, AgenteIa, AvanceAccion, EstadoAccion, EventoPropuesta, ResumenPropuesta } from '../types';
+import type { AccionPropuesta, AgenteIa, AvanceAccion, EstadoAccion, EventoPropuesta, ResultadoConstruccion, ResumenPlan, ResumenPropuesta } from '../types';
 import { Badge, Button, Cargando, EstadoVacio, ErrorPanel, Input, Select } from './ui';
 import { t } from '../i18n';
 import { RespuestasDiscord } from './RespuestasDiscord';
@@ -81,6 +81,11 @@ const ChatAsistente: React.FC = () => {
   const [avances, setAvances] = useState<Record<number, AvanceAccion>>({});
   const [resumen, setResumen] = useState<ResumenPropuesta | null>(null);
   const [errorAplicar, setErrorAplicar] = useState<string | null>(null);
+
+  const [estructura, setEstructura] = useState<ResumenPlan | null>(null);
+  const [construyendo, setConstruyendo] = useState(false);
+  // Origen de la propuesta mostrada cuando sale de «Build from plan» (se compara por referencia).
+  const [construccion, setConstruccion] = useState<{ ev: EventoPropuesta; res: ResultadoConstruccion } | null>(null);
 
   const [ancho, setAncho] = useState(50);
   const contenedor = useRef<HTMLDivElement>(null);
@@ -243,6 +248,37 @@ const ChatAsistente: React.FC = () => {
     turnoPrevio.current = enviando;
   }, [enviando]);
 
+  // ¿Tiene el plan estructura? Decide si se ofrece «Build from plan».
+  useEffect(() => {
+    if (!plan.trim()) { setEstructura(null); return; }
+    let vigente = true;
+    const espera = setTimeout(() => {
+      resumirPlan(plan).then((r) => { if (vigente) setEstructura(r); }).catch(() => { if (vigente) setEstructura(null); });
+    }, 300);
+    return () => { vigente = false; clearTimeout(espera); };
+  }, [plan]);
+
+  const construir = async () => {
+    if (!guildId || construyendo || enviando || aplicando || !agente || !modelo) return;
+    setConstruyendo(true);
+    setPropuesta(null);
+    setResumen(null);
+    setAvances({});
+    setErrorAplicar(null);
+    setSinSesion(false);
+    try {
+      const res = await construirDesdePlan(agente, modelo, plan);
+      const ev: EventoPropuesta = { propuesta: res.propuesta, validacion: res.validacion };
+      setConstruccion({ ev, res });
+      setPropuesta(ev);
+    } catch (e) {
+      setConstruccion(null);
+      showNotification(mensajeError(e, t('Could not build from the plan')), 'error');
+    } finally {
+      setConstruyendo(false);
+    }
+  };
+
   const detener = () => { void cancelarAsistente().catch(() => {}); };
 
   const reiniciar = async (id: string) => {
@@ -358,6 +394,11 @@ const ChatAsistente: React.FC = () => {
           <header className="asistente__cabecera">
             <h3>{t('Server plan')}</h3>
             <div className="asistente__acciones">
+              {modo === 'execute' && estructura?.tiene_estructura && (
+                <Button tamano="sm" disabled={construyendo || enviando || aplicando || !modelo} onClick={() => { void construir(); }}>
+                  {construyendo ? <Loader2 size={14} className="asistente__giro" /> : <Hammer size={14} />} {construyendo ? t('Building…') : t('Build from plan')}
+                </Button>
+              )}
               <Button variante="secundario" tamano="sm" onClick={() => { void importar(); }}><Upload size={14} /> {t('Import .md')}</Button>
               <Button variante="secundario" tamano="sm" onClick={() => { void exportar(); }}><Download size={14} /> {t('Export .md')}</Button>
             </div>
@@ -448,6 +489,25 @@ const ChatAsistente: React.FC = () => {
               <section className="asistente__propuesta" aria-label={t('Proposal')}>
                 <h4>{t('Proposal')}</h4>
                 {propuesta.propuesta.resumen && <p>{propuesta.propuesta.resumen}</p>}
+                {construccion && construccion.ev === propuesta && (
+                  <>
+                    <p>{t('{actions} actions from the plan structure, {descriptions} descriptions written by the AI', {
+                      actions: construccion.res.desde_estructura, descriptions: construccion.res.descripciones_ia,
+                    })}</p>
+                    {construccion.res.texto_libre > 0 && (
+                      <div className="asistente__aviso" role="note">
+                        <TriangleAlert size={16} />
+                        <span>{t('The plan also has {count} lines of free text that were not built. Ask the assistant in the chat to handle them.', { count: construccion.res.texto_libre })}</span>
+                      </div>
+                    )}
+                    {construccion.res.avisos.length > 0 && (
+                      <div className="asistente__aviso" role="note">
+                        <TriangleAlert size={16} />
+                        <span><strong>{t('Plan warnings')}</strong>{construccion.res.avisos.map((a, i) => <small key={i} style={{ display: 'block' }}>{a}</small>)}</span>
+                      </div>
+                    )}
+                  </>
+                )}
                 <div className="asistente__chips">
                   {propuesta.validacion.cambios.map((c) => <Badge key={c} tono="acento">{c}</Badge>)}
                 </div>

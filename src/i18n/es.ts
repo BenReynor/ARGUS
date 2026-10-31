@@ -634,4 +634,12 @@ export const es: Record<string, string> = {
   'Done': 'Hecha',
   'Error': 'Error',
   'Skipped': 'Omitida',
+  'Build from plan': 'Construir desde el plan',
+  'Building…': 'Construyendo…',
+  'Could not build from the plan': 'No se pudo construir desde el plan',
+  '{actions} actions from the plan structure, {descriptions} descriptions written by the AI':
+    '{actions} acciones salidas de la estructura del plan, {descriptions} descripciones escritas por la IA',
+  'The plan also has {count} lines of free text that were not built. Ask the assistant in the chat to handle them.':
+    'El plan también tiene {count} líneas de texto libre que no se han construido. Pídeselo al asistente en el chat.',
+  'Plan warnings': 'Avisos del plan',
 };
