@@ -13,7 +13,7 @@ const mensajeError = (e: unknown, defecto: string) => (typeof e === 'string' ? e
 /** Los modelos gratis de opencode: el proveedor `opencode/` o los que terminan en `-free`. */
 const esGratis = (agente: string, modelo: string) => agente === 'opencode' && (modelo.startsWith('opencode/') || modelo.endsWith('-free') || modelo.endsWith(':free'));
 
-export const RespuestasDiscord: React.FC = () => {
+export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> = ({ onAbrirPersonalidad }) => {
   const guildId = useActiveGuildId();
   const showNotification = useShowNotification();
 
@@ -134,17 +134,15 @@ export const RespuestasDiscord: React.FC = () => {
         </div>
         {gratis.length > 0 && <small>{t('Tip: a free opencode model is enough to chat.')}</small>}
 
-        <label>
-          <span>{t('Personality')}</span>
-          <textarea
-            className="ui-control"
-            rows={6}
-            value={ajustes.chat_personalidad}
-            aria-label={t('Personality')}
-            placeholder={t('Example: You are Luna, the friendly assistant of this server. Be brief and cheerful. Never give medical advice.')}
-            onChange={(e) => cambiar({ chat_personalidad: e.target.value })}
-          />
-        </label>
+        <div>
+          <strong>{t('Personality')}</strong>
+          <p style={{ margin: 'var(--sp-1) 0', whiteSpace: 'pre-wrap' }}>
+            {ajustes.chat_personalidad.trim()
+              ? (ajustes.chat_personalidad.length > 160 ? `${ajustes.chat_personalidad.slice(0, 160)}…` : ajustes.chat_personalidad)
+              : <em>{t('No personality set yet.')}</em>}
+          </p>
+          <Button variante="secundario" onClick={onAbrirPersonalidad}>{t('Edit in Context & personality')}</Button>
+        </div>
 
         <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
           <legend>{t('Allowed channels')}</legend>

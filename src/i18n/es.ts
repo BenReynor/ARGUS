@@ -601,6 +601,24 @@ export const es: Record<string, string> = {
   'Export .md': 'Exportar .md',
   'Describe your server in Markdown: categories, channels with their description, roles with permissions, and the permissions of each role in each channel.':
     'Describe tu servidor en Markdown: categorías, canales con su descripción, roles con sus permisos y los permisos de cada rol en cada canal.',
+  // Contexto y personalidad (ContextoPersonalidad.tsx)
+  'Context & personality': 'Contexto y personalidad',
+  'Server context': 'Contexto del servidor',
+  'Bot personality': 'Personalidad del bot',
+  'Could not save the server context': 'No se pudo guardar el contexto del servidor',
+  'Could not save the personality': 'No se pudo guardar la personalidad',
+  'Could not load the context and personality': 'No se pudo cargar el contexto y la personalidad',
+  'Replace the current context with the imported file?': '¿Reemplazar el contexto actual con el archivo importado?',
+  'Context exported': 'Contexto exportado',
+  'Could not export the context': 'No se pudo exportar el contexto',
+  'Pick a server in the left column to edit its context and personality.': 'Elige un servidor en la columna izquierda para editar su contexto y personalidad.',
+  'Describe your server (rules, tone, channels, people). The bot reads this when it replies. Markdown is supported.':
+    'Describe tu servidor (reglas, tono, canales, personas). El bot lo lee al responder. Se admite Markdown.',
+  '# About this server\nA friendly community about board games.\n\n## Rules\n- Be kind.\n- No spam.\n\n## Channels\n- #general: casual chat\n- #events: weekly game nights':
+    '# Sobre este servidor\nUna comunidad amable de juegos de mesa.\n\n## Reglas\n- Sé amable.\n- Nada de spam.\n\n## Canales\n- #general: charla informal\n- #eventos: noches de juegos semanales',
+  'How the bot speaks and behaves when it replies on Discord.': 'Cómo habla y se comporta el bot cuando responde en Discord.',
+  'No personality set yet.': 'Aún no hay personalidad.',
+  'Edit in Context & personality': 'Editar en Contexto y personalidad',
   'Unsaved changes…': 'Cambios sin guardar…',
   'Saved': 'Guardado',
   'Not saved': 'Sin guardar',

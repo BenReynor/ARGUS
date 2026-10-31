@@ -159,7 +159,10 @@ export const listarAgentesIa = () => invoke<AgenteIa[]>('listar_agentes_ia');
 export const enviarAlAsistente = (mensaje: string, agente: string, modelo: string, modo: 'read' | 'plan' | 'execute', plan?: string) =>
   invoke<string | null>('enviar_al_asistente', { mensaje, agente, modelo, modo, plan });
 export const leerPlanServidor = (guildId: string) => invoke<string>('leer_plan_servidor', { guildId });
-export const guardarPlanServidor = (guildId: string, contenido: string) =>
+export const leerContextoServidor = (guildId: string) => invoke<string>('leer_contexto_servidor', { guildId });
+export const guardarContextoServidor = (guildId: string, contenido: string) =>
+  invoke<void>('guardar_contexto_servidor', { guildId, contenido });
+export const guardarPlanServidor =(guildId: string, contenido: string) =>
   invoke<void>('guardar_plan_servidor', { guildId, contenido });
 export const leerConversacion = (guildId: string, agente?: string) =>
   invoke<ConversacionAsistente | null>('leer_conversacion', { guildId, agente });

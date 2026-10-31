@@ -12,6 +12,7 @@ import type { AccionPropuesta, AgenteIa, AvanceAccion, CambiosPlan, EstadoAccion
 import { Badge, Button, Cargando, EstadoVacio, ErrorPanel, Input, Select } from './ui';
 import { t } from '../i18n';
 import { RespuestasDiscord } from './RespuestasDiscord';
+import { ContextoPersonalidad } from './ContextoPersonalidad';
 import './Asistente.css';
 
 type Modo = 'read' | 'plan' | 'execute';
@@ -683,15 +684,16 @@ const FilaAccion: React.FC<{ texto: string; avance?: AvanceAccion; activa: boole
 };
 
 export const AsistenteView: React.FC = () => {
-  const [pestana, setPestana] = useState<'chat' | 'discord'>('chat');
+  type Pestana = 'chat' | 'contexto' | 'discord';
+  const [pestana, setPestana] = useState<Pestana>('chat');
   return (
     <div className="vista vista--llena" style={{ padding: 0 }}>
       <div className="pestanas" role="tablist" aria-label={t('Assistant sections')} style={{ margin: 0, padding: '0 var(--sp-3)' }}>
-        {([['chat', t('Chat')], ['discord', t('Discord replies')]] as ['chat' | 'discord', string][]).map(([id, etiqueta]) => (
+        {([['chat', t('Chat')], ['contexto', t('Context & personality')], ['discord', t('Discord replies')]] as [Pestana, string][]).map(([id, etiqueta]) => (
           <button key={id} role="tab" aria-selected={pestana === id} className="pestanas__tab" onClick={() => setPestana(id)}>{etiqueta}</button>
         ))}
       </div>
-      {pestana === 'chat' ? <ChatAsistente /> : <RespuestasDiscord />}
+      {pestana === 'chat' ? <ChatAsistente /> : pestana === 'contexto' ? <ContextoPersonalidad /> : <RespuestasDiscord onAbrirPersonalidad={() => setPestana('contexto')} />}
     </div>
   );
 };
