@@ -909,20 +909,22 @@ pub async fn leer_conversacion(
     pool: &SqlitePool,
     bot_id: &str,
     guild_id: &str,
+    tipo: &str,
     agente: Option<&str>,
 ) -> Result<Option<ConversacionAsistente>> {
     let row = sqlx::query(
         "SELECT agente, modelo, session_id, mensajes FROM conversacion_asistente
-         WHERE bot_id = ? AND guild_id = ?",
+         WHERE bot_id = ? AND guild_id = ? AND tipo = ?",
     )
     .bind(bot_id)
     .bind(guild_id)
+    .bind(tipo)
     .fetch_optional(pool)
     .await?;
     let Some(r) = row else { return Ok(None) };
     let guardado: String = r.get("agente");
     if agente.is_some_and(|a| a != guardado) {
-        borrar_conversacion(pool, bot_id, guild_id).await?;
+        borrar_conversacion(pool, bot_id, guild_id, tipo).await?;
         return Ok(None);
     }
     let mensajes: String = r.get("mensajes");
@@ -938,18 +940,20 @@ pub async fn guardar_conversacion(
     pool: &SqlitePool,
     bot_id: &str,
     guild_id: &str,
+    tipo: &str,
     c: &ConversacionAsistente,
 ) -> Result<()> {
     sqlx::query(
         "INSERT INTO conversacion_asistente
-            (bot_id, guild_id, agente, modelo, session_id, mensajes, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(bot_id, guild_id) DO UPDATE SET agente = excluded.agente,
+            (bot_id, guild_id, tipo, agente, modelo, session_id, mensajes, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(bot_id, guild_id, tipo) DO UPDATE SET agente = excluded.agente,
             modelo = excluded.modelo, session_id = excluded.session_id,
             mensajes = excluded.mensajes, updated_at = excluded.updated_at",
     )
     .bind(bot_id)
     .bind(guild_id)
+    .bind(tipo)
     .bind(&c.agente)
     .bind(&c.modelo)
     .bind(&c.session_id)
@@ -960,13 +964,128 @@ pub async fn guardar_conversacion(
     Ok(())
 }
 
-pub async fn borrar_conversacion(pool: &SqlitePool, bot_id: &str, guild_id: &str) -> Result<()> {
-    sqlx::query("DELETE FROM conversacion_asistente WHERE bot_id = ? AND guild_id = ?")
-        .bind(bot_id)
-        .bind(guild_id)
-        .execute(pool)
-        .await?;
+pub async fn borrar_conversacion(
+    pool: &SqlitePool,
+    bot_id: &str,
+    guild_id: &str,
+    tipo: &str,
+) -> Result<()> {
+    sqlx::query(
+        "DELETE FROM conversacion_asistente WHERE bot_id = ? AND guild_id = ? AND tipo = ?",
+    )
+    .bind(bot_id)
+    .bind(guild_id)
+    .bind(tipo)
+    .execute(pool)
+    .await?;
     Ok(())
+}
+
+/// Un aviso guardado a un miembro.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Aviso {
+    pub id: i64,
+    pub guild_id: String,
+    pub user_id: String,
+    pub motivo: String,
+    pub mensaje_id: Option<String>,
+    pub autor: String,
+    pub fecha: String,
+}
+
+/// Guarda un aviso y devuelve cuántos lleva ya el usuario (incluido este).
+pub async fn guardar_aviso(
+    pool: &SqlitePool,
+    guild_id: &str,
+    user_id: &str,
+    motivo: &str,
+    mensaje_id: Option<&str>,
+    autor: &str,
+) -> Result<(Aviso, i64)> {
+    let fecha = chrono::Utc::now().to_rfc3339();
+    let res = sqlx::query(
+        "INSERT INTO avisos (guild_id, user_id, motivo, mensaje_id, autor, fecha) VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(guild_id)
+    .bind(user_id)
+    .bind(motivo)
+    .bind(mensaje_id)
+    .bind(autor)
+    .bind(&fecha)
+    .execute(pool)
+    .await?;
+    let total = contar_avisos(pool, guild_id, user_id).await?;
+    let aviso = Aviso {
+        id: res.last_insert_rowid(),
+        guild_id: guild_id.into(),
+        user_id: user_id.into(),
+        motivo: motivo.into(),
+        mensaje_id: mensaje_id.map(String::from),
+        autor: autor.into(),
+        fecha,
+    };
+    Ok((aviso, total))
+}
+
+pub async fn contar_avisos(pool: &SqlitePool, guild_id: &str, user_id: &str) -> Result<i64> {
+    let row = sqlx::query("SELECT COUNT(*) AS n FROM avisos WHERE guild_id = ? AND user_id = ?")
+        .bind(guild_id)
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?;
+    Ok(row.get("n"))
+}
+
+/// Recuento de avisos por usuario del servidor (o solo de `user_id`), de más a menos.
+pub async fn recuento_avisos(
+    pool: &SqlitePool,
+    guild_id: &str,
+    user_id: Option<&str>,
+) -> Result<Vec<(String, i64)>> {
+    let rows = sqlx::query(
+        "SELECT user_id, COUNT(*) AS n FROM avisos WHERE guild_id = ? AND (? IS NULL OR user_id = ?)
+         GROUP BY user_id ORDER BY n DESC, user_id",
+    )
+    .bind(guild_id)
+    .bind(user_id)
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| (r.get("user_id"), r.get("n")))
+        .collect())
+}
+
+/// Últimos `limite` avisos del servidor (o solo de `user_id`), el más reciente primero.
+pub async fn ultimos_avisos(
+    pool: &SqlitePool,
+    guild_id: &str,
+    user_id: Option<&str>,
+    limite: i64,
+) -> Result<Vec<Aviso>> {
+    let rows = sqlx::query(
+        "SELECT id, guild_id, user_id, motivo, mensaje_id, autor, fecha FROM avisos
+         WHERE guild_id = ? AND (? IS NULL OR user_id = ?) ORDER BY id DESC LIMIT ?",
+    )
+    .bind(guild_id)
+    .bind(user_id)
+    .bind(user_id)
+    .bind(limite)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| Aviso {
+            id: r.get("id"),
+            guild_id: r.get("guild_id"),
+            user_id: r.get("user_id"),
+            motivo: r.get("motivo"),
+            mensaje_id: r.get("mensaje_id"),
+            autor: r.get("autor"),
+            fecha: r.get("fecha"),
+        })
+        .collect())
 }
 
 #[cfg(test)]
@@ -1040,26 +1159,27 @@ mod asistente_datos_tests {
         assert_eq!(leer_plan(&pool, "b1", "g1").await.unwrap(), "uno");
         assert_eq!(leer_plan(&pool, "b1", "g2").await.unwrap(), "dos");
         assert_eq!(leer_plan(&pool, "b2", "g1").await.unwrap(), "tres");
-        guardar_conversacion(&pool, "b1", "g1", &conv("claude", Some("s1")))
+        const T: &str = "construccion";
+        guardar_conversacion(&pool, "b1", "g1", T, &conv("claude", Some("s1")))
             .await
             .unwrap();
-        guardar_conversacion(&pool, "b1", "g2", &conv("opencode", Some("s2")))
+        guardar_conversacion(&pool, "b1", "g2", T, &conv("opencode", Some("s2")))
             .await
             .unwrap();
-        let a = leer_conversacion(&pool, "b1", "g1", None).await.unwrap();
-        let b = leer_conversacion(&pool, "b1", "g2", None).await.unwrap();
+        let a = leer_conversacion(&pool, "b1", "g1", T, None).await.unwrap();
+        let b = leer_conversacion(&pool, "b1", "g2", T, None).await.unwrap();
         assert_eq!(a.unwrap().session_id.as_deref(), Some("s1"));
         assert_eq!(b.unwrap().session_id.as_deref(), Some("s2"));
-        assert!(leer_conversacion(&pool, "b2", "g1", None)
+        assert!(leer_conversacion(&pool, "b2", "g1", T, None)
             .await
             .unwrap()
             .is_none());
-        borrar_conversacion(&pool, "b1", "g1").await.unwrap();
-        assert!(leer_conversacion(&pool, "b1", "g1", None)
+        borrar_conversacion(&pool, "b1", "g1", T).await.unwrap();
+        assert!(leer_conversacion(&pool, "b1", "g1", T, None)
             .await
             .unwrap()
             .is_none());
-        assert!(leer_conversacion(&pool, "b1", "g2", None)
+        assert!(leer_conversacion(&pool, "b1", "g2", T, None)
             .await
             .unwrap()
             .is_some());
@@ -1068,11 +1188,49 @@ mod asistente_datos_tests {
     }
 
     #[tokio::test]
+    async fn construccion_y_moderacion_no_se_mezclan() {
+        let (pool, ruta) = pool_temporal("tipos").await;
+        let (c, m) = ("construccion", "moderacion");
+        guardar_conversacion(&pool, "b1", "g1", c, &conv("claude", Some("sc")))
+            .await
+            .unwrap();
+        assert!(leer_conversacion(&pool, "b1", "g1", m, None)
+            .await
+            .unwrap()
+            .is_none());
+        guardar_conversacion(&pool, "b1", "g1", m, &conv("claude", Some("sm")))
+            .await
+            .unwrap();
+        let lc = leer_conversacion(&pool, "b1", "g1", c, None).await.unwrap();
+        let lm = leer_conversacion(&pool, "b1", "g1", m, None).await.unwrap();
+        assert_eq!(lc.unwrap().session_id.as_deref(), Some("sc"));
+        assert_eq!(lm.unwrap().session_id.as_deref(), Some("sm"));
+        // cambiar de agente en moderación no toca la de construcción
+        assert!(leer_conversacion(&pool, "b1", "g1", m, Some("opencode"))
+            .await
+            .unwrap()
+            .is_none());
+        assert!(leer_conversacion(&pool, "b1", "g1", c, None)
+            .await
+            .unwrap()
+            .is_some());
+        borrar_conversacion(&pool, "b1", "g1", c).await.unwrap();
+        assert!(leer_conversacion(&pool, "b1", "g1", c, None)
+            .await
+            .unwrap()
+            .is_none());
+        pool.close().await;
+        let _ = std::fs::remove_file(ruta);
+    }
+
+    #[tokio::test]
     async fn conversacion_guarda_sesion_y_mensajes() {
         let (pool, ruta) = pool_temporal("conv").await;
         let c = conv("claude", Some("sess-9"));
-        guardar_conversacion(&pool, "b1", "g1", &c).await.unwrap();
-        let leida = leer_conversacion(&pool, "b1", "g1", Some("claude"))
+        guardar_conversacion(&pool, "b1", "g1", "construccion", &c)
+            .await
+            .unwrap();
+        let leida = leer_conversacion(&pool, "b1", "g1", "construccion", Some("claude"))
             .await
             .unwrap();
         assert_eq!(leida, Some(c));
@@ -1083,15 +1241,21 @@ mod asistente_datos_tests {
     #[tokio::test]
     async fn cambiar_de_agente_descarta_la_conversacion() {
         let (pool, ruta) = pool_temporal("cambio").await;
-        guardar_conversacion(&pool, "b1", "g1", &conv("claude", Some("s1")))
-            .await
-            .unwrap();
-        let otra = leer_conversacion(&pool, "b1", "g1", Some("opencode"))
+        guardar_conversacion(
+            &pool,
+            "b1",
+            "g1",
+            "construccion",
+            &conv("claude", Some("s1")),
+        )
+        .await
+        .unwrap();
+        let otra = leer_conversacion(&pool, "b1", "g1", "construccion", Some("opencode"))
             .await
             .unwrap();
         assert!(otra.is_none());
         // ya no queda nada, ni siquiera volviendo al agente anterior
-        assert!(leer_conversacion(&pool, "b1", "g1", None)
+        assert!(leer_conversacion(&pool, "b1", "g1", "construccion", None)
             .await
             .unwrap()
             .is_none());

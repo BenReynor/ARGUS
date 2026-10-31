@@ -881,6 +881,158 @@ pub fn resumen_plan(plan: &crate::plan_estructurado::PlanEstructurado) -> String
     recortar_texto(s, MAX_RESUMEN_CHARS)
 }
 
+/// Tipo de conversación del asistente: construir el servidor o moderarlo.
+/// Cada tipo tiene su propia conversación y sesión por servidor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TipoAsistente {
+    Construccion,
+    Moderacion,
+}
+
+impl TipoAsistente {
+    /// Valor guardado en la BD.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TipoAsistente::Construccion => "construccion",
+            TipoAsistente::Moderacion => "moderacion",
+        }
+    }
+
+    /// `None` (o vacío) = construcción, para compatibilidad con el frontend previo.
+    pub fn desde(s: Option<&str>) -> Result<Self, String> {
+        match s.map(str::trim) {
+            None | Some("") | Some("construccion") => Ok(TipoAsistente::Construccion),
+            Some("moderacion") => Ok(TipoAsistente::Moderacion),
+            Some(otro) => Err(format!("Unknown assistant type: {otro}")),
+        }
+    }
+}
+
+/// Mensajes por canal que lee el asistente de moderación si no se indica otra cosa.
+pub const LIMITE_POR_CANAL: u32 = 100;
+
+/// Acciones que puede proponer el asistente de moderación (y solo esas).
+pub const ACCIONES_MODERACION: &[&str] = &[
+    "avisar",
+    "silenciar",
+    "expulsar",
+    "banear",
+    "desbanear",
+    "borrar_mensajes",
+    "dar_rol",
+    "quitar_rol",
+    "cambiar_apodo",
+];
+
+/// Error si la propuesta contiene alguna acción que no es de moderación.
+pub fn comprobar_acciones_moderacion(p: &crate::propuesta::Propuesta) -> Result<(), String> {
+    match p
+        .acciones
+        .iter()
+        .find(|a| !ACCIONES_MODERACION.contains(&a.herramienta.as_str()))
+    {
+        Some(a) => Err(format!(
+            "The moderation assistant can only propose moderation actions, not {herramienta}",
+            herramienta = a.herramienta
+        )),
+        None => Ok(()),
+    }
+}
+
+/// Prompt según el tipo de conversación. El de construcción es
+/// `prompt_asistente_con_mapa`; el de moderación ignora el plan y el mapa.
+#[allow(clippy::too_many_arguments)]
+pub fn prompt_asistente_tipo(
+    tipo: TipoAsistente,
+    modo: ModoAsistente,
+    servidor: (&str, &str),
+    plan: &str,
+    contexto: &str,
+    idioma: &str,
+    mensaje: &str,
+    mapa: &str,
+    limite_por_canal: u32,
+) -> String {
+    match tipo {
+        TipoAsistente::Construccion => {
+            prompt_asistente_con_mapa(modo, servidor, plan, contexto, idioma, mensaje, mapa)
+        }
+        TipoAsistente::Moderacion => {
+            prompt_moderacion(modo, servidor, contexto, idioma, mensaje, limite_por_canal)
+        }
+    }
+}
+
+/// Prompt del asistente de moderación: miembros, mensajes y sanciones.
+pub fn prompt_moderacion(
+    modo: ModoAsistente,
+    servidor: (&str, &str),
+    contexto: &str,
+    idioma: &str,
+    mensaje: &str,
+    limite_por_canal: u32,
+) -> String {
+    let (id, nombre) = servidor;
+    let lengua = if crate::i18n::normalizar(idioma) == "es" {
+        "Spanish"
+    } else {
+        "English"
+    };
+    let contexto = if contexto.trim().is_empty() {
+        "(The user has not written a context for this server yet.)"
+    } else {
+        contexto
+    };
+    let limite = limite_por_canal.clamp(1, 500);
+    let mut p = format!(
+        "You are the moderation assistant built into ARGUS, a desktop app to administer Discord \
+servers with the user's own bot. You reach the server through the ARGUS MCP tools. You focus on \
+members, their messages and sanctions; you do not build or restructure the server.\n\n\
+## Active server\n\
+The active server is \"{nombre}\" (id {id}). Pass guild_id \"{id}\" in every tool call.\n\n\
+## Rules\n\
+- You cannot modify anything: you only have read tools. Never try to sanction anyone yourself.\n\
+- Always reply in {lengua}, the language of the ARGUS interface.\n\
+- Tools to use: `buscar_mensajes` (find who said something), `leer_mensajes` (read a channel), \
+`listar_avisos` (warnings a member already has), plus the member and role read tools.\n\
+- Read at most {limite} messages per channel (`limite_por_canal` = {limite}) unless the user asks \
+for more.\n\
+- Base every conclusion on evidence. For each relevant message cite the author (name and id), \
+the date and the message link. If the evidence is not enough, say so clearly instead of guessing.\n\n\
+## Server context\n<context>\n{contexto}\n</context>\n"
+    );
+    if modo == ModoAsistente::Execute {
+        p.push_str(&format!(
+            "\n## Execute mode\n\
+Investigate with your read tools, then explain briefly what you found and END your answer with \
+ONE ```json block containing a `Propuesta`. ARGUS validates it, shows it to the user and, only if \
+the user approves, executes exactly those actions.\n\n\
+Format: {{\"resumen\": string, \"acciones\": [{{\"herramienta\": string, \"args\": object, \
+\"descripcion\": string}}]}}\n\
+- `herramienta` must be one of these moderation tools and nothing else: {acciones}. Never propose \
+changes to the structure of the server (channels, categories, roles, permissions, settings).\n\
+- Do not include `guild_id` and never use `elegir_servidor`: the active server is used.\n\
+- In `descripcion` name the member and give the reason, citing the message when there is one.\n\
+- Only propose what the user asked for or what the evidence clearly supports.\n\
+- Use exactly these arguments for each tool (required ones must be present):\n{firmas}\n\n\
+Example of a valid answer block (warn a member and delete a message):\n```json\n{ejemplo}\n```\n",
+            acciones = ACCIONES_MODERACION.join(", "),
+            firmas = crate::mcp::firmas_de(ACCIONES_MODERACION),
+            ejemplo = EJEMPLO_MODERACION,
+        ));
+    } else {
+        p.push_str(
+            "\n## Read mode\nAnswer with an analysis of the members and messages the user asks \
+about, citing the evidence (author, date and link of each relevant message) and saying when there \
+is not enough proof. Do not produce a JSON proposal.\n",
+        );
+    }
+    p.push_str(&format!("\n## User message\n{mensaje}\n"));
+    p
+}
+
+const EJEMPLO_MODERACION: &str = r#"{"resumen":"Warn Ana and delete her spam","acciones":[{"herramienta":"avisar","args":{"user_id":"Ana","motivo":"Spam in #general","mensaje_id":"123456789012345678"},"descripcion":"Warn Ana: spam in #general"},{"herramienta":"borrar_mensajes","args":{"channel_id":"987654321098765432","message_ids":["123456789012345678","123456789012345679"]},"descripcion":"Delete Ana's two spam messages"}]}"#;
+
 /// Prompt que se le da al agente. `servidor` es (id, nombre) del servidor activo.
 pub fn prompt_asistente(
     modo: ModoAsistente,
@@ -1184,15 +1336,21 @@ pub async fn enviar_al_asistente(
     modelo: String,
     modo: String,
     plan: Option<String>,
+    tipo: Option<String>,
+    limite_por_canal: Option<u32>,
 ) -> Result<Option<String>, String> {
     use tauri::Emitter;
     let r = async {
+        let tipo = TipoAsistente::desde(tipo.as_deref())?;
         let modo = match modo.as_str() {
             "read" | "Read" => ModoAsistente::Read,
             "plan" | "Plan" => ModoAsistente::Plan,
             "execute" | "Execute" => ModoAsistente::Execute,
             _ => return Err(format!("Unknown assistant mode: {modo}")),
         };
+        if tipo == TipoAsistente::Moderacion && modo == ModoAsistente::Plan {
+            return Err("The moderation assistant has no Plan mode".to_string());
+        }
         let gid = state
             .get_active_guild()
             .ok_or("No active server: choose one first")?;
@@ -1213,15 +1371,17 @@ pub async fn enviar_al_asistente(
             .await
             .map_err(|e| e.to_string())?;
         // Reanuda la sesión guardada; con otro agente se descarta.
-        let previa = crate::db::leer_conversacion(&pool, &bot_id, &gid, Some(&agente))
-            .await
-            .map_err(|e| e.to_string())?;
+        let previa =
+            crate::db::leer_conversacion(&pool, &bot_id, &gid, tipo.as_str(), Some(&agente))
+                .await
+                .map_err(|e| e.to_string())?;
         let sesion = previa.as_ref().and_then(|c| c.session_id.clone());
         let mapa = {
             let mapas = state.server_maps.lock().unwrap();
             mapas.get(&gid).map(resumen_mapa).unwrap_or_default()
         };
-        let prompt = prompt_asistente_con_mapa(
+        let prompt = prompt_asistente_tipo(
+            tipo,
             modo,
             (&gid, &nombre_servidor),
             &plan,
@@ -1229,6 +1389,7 @@ pub async fn enviar_al_asistente(
             &idioma,
             &mensaje,
             &mapa,
+            limite_por_canal.unwrap_or(LIMITE_POR_CANAL),
         );
         let ruta = buscar_binario(&agente, &carpetas_busqueda())
             .ok_or_else(|| format!("{agente} is not installed"))?;
@@ -1267,7 +1428,17 @@ pub async fn enviar_al_asistente(
                 {
                     // La propuesta (o su error) sale antes del fin de la respuesta.
                     match propuesta_de_respuesta(&respuesta, |p| {
-                        crate::propuesta::validar_en_estado(&state, p)
+                        let mut v = crate::propuesta::validar_en_estado(&state, p);
+                        if tipo == TipoAsistente::Moderacion {
+                            if let Err(mensaje) = comprobar_acciones_moderacion(p) {
+                                v.errores.push(crate::propuesta::ErrorValidacion {
+                                    indice: 0,
+                                    herramienta: "moderacion".into(),
+                                    mensaje,
+                                });
+                            }
+                        }
+                        v
                     }) {
                         Ok(ev) => {
                             if let Err(err) = app.emit(EVENTO_PROPUESTA, ev) {
@@ -1304,7 +1475,7 @@ pub async fn enviar_al_asistente(
             });
             c.session_id = Some(id.clone());
             c.modelo = modelo.clone();
-            crate::db::guardar_conversacion(&pool, &bot_id, &gid, &c)
+            crate::db::guardar_conversacion(&pool, &bot_id, &gid, tipo.as_str(), &c)
                 .await
                 .map_err(|e| e.to_string())?;
         }
@@ -1449,6 +1620,60 @@ async fn bot_y_pool(
     Ok((bot.id, pool))
 }
 
+/// Aviso reciente de un miembro, con su recuento en el servidor.
+#[derive(Debug, Clone, Serialize)]
+pub struct AvisoReciente {
+    pub user_id: String,
+    pub total: i64,
+    pub motivo: String,
+    pub fecha: String,
+}
+
+/// Avisos recientes del servidor: un registro por usuario (último motivo y
+/// cuántos avisos lleva), del más reciente al más antiguo.
+#[tauri::command]
+pub async fn listar_avisos_recientes(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    guild_id: String,
+) -> Result<Vec<AvisoReciente>, String> {
+    let r = async {
+        let (_, pool) = bot_y_pool(&app, &state).await?;
+        avisos_recientes(&pool, &guild_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    .await;
+    localizar_error(&state, r)
+}
+
+pub async fn avisos_recientes(
+    pool: &sqlx::SqlitePool,
+    guild_id: &str,
+) -> anyhow::Result<Vec<AvisoReciente>> {
+    let recuento: HashMap<String, i64> = crate::db::recuento_avisos(pool, guild_id, None)
+        .await?
+        .into_iter()
+        .collect();
+    let mut vistos = std::collections::HashSet::new();
+    let mut salida = Vec::new();
+    for a in crate::db::ultimos_avisos(pool, guild_id, None, 200).await? {
+        if !vistos.insert(a.user_id.clone()) {
+            continue;
+        }
+        salida.push(AvisoReciente {
+            total: recuento.get(&a.user_id).copied().unwrap_or(1),
+            user_id: a.user_id,
+            motivo: a.motivo,
+            fecha: a.fecha,
+        });
+        if salida.len() >= 20 {
+            break;
+        }
+    }
+    Ok(salida)
+}
+
 /// Plan (Markdown) del servidor para el bot activo; vacío si no hay.
 #[tauri::command]
 pub async fn leer_plan_servidor(
@@ -1525,10 +1750,12 @@ pub async fn leer_conversacion(
     state: tauri::State<'_, AppState>,
     guild_id: String,
     agente: Option<String>,
+    tipo: Option<String>,
 ) -> Result<Option<crate::db::ConversacionAsistente>, String> {
     let r = async {
+        let tipo = TipoAsistente::desde(tipo.as_deref())?;
         let (bot, pool) = bot_y_pool(&app, &state).await?;
-        crate::db::leer_conversacion(&pool, &bot, &guild_id, agente.as_deref())
+        crate::db::leer_conversacion(&pool, &bot, &guild_id, tipo.as_str(), agente.as_deref())
             .await
             .map_err(|e| e.to_string())
     }
@@ -1546,19 +1773,22 @@ pub async fn guardar_conversacion(
     agente: String,
     modelo: String,
     mensajes: serde_json::Value,
+    tipo: Option<String>,
 ) -> Result<(), String> {
     let r = async {
+        let tipo = TipoAsistente::desde(tipo.as_deref())?;
         let (bot, pool) = bot_y_pool(&app, &state).await?;
-        let previa = crate::db::leer_conversacion(&pool, &bot, &guild_id, Some(&agente))
-            .await
-            .map_err(|e| e.to_string())?;
+        let previa =
+            crate::db::leer_conversacion(&pool, &bot, &guild_id, tipo.as_str(), Some(&agente))
+                .await
+                .map_err(|e| e.to_string())?;
         let c = crate::db::ConversacionAsistente {
             session_id: previa.and_then(|p| p.session_id),
             agente,
             modelo,
             mensajes,
         };
-        crate::db::guardar_conversacion(&pool, &bot, &guild_id, &c)
+        crate::db::guardar_conversacion(&pool, &bot, &guild_id, tipo.as_str(), &c)
             .await
             .map_err(|e| e.to_string())
     }
@@ -1572,10 +1802,12 @@ pub async fn nueva_conversacion(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     guild_id: String,
+    tipo: Option<String>,
 ) -> Result<(), String> {
     let r = async {
+        let tipo = TipoAsistente::desde(tipo.as_deref())?;
         let (bot, pool) = bot_y_pool(&app, &state).await?;
-        crate::db::borrar_conversacion(&pool, &bot, &guild_id)
+        crate::db::borrar_conversacion(&pool, &bot, &guild_id, tipo.as_str())
             .await
             .map_err(|e| e.to_string())
     }
@@ -2056,6 +2288,76 @@ mod tests_prompt {
 
     fn validar(p: &Propuesta) -> crate::propuesta::Validacion {
         validar_acciones(p, &Nombres::default())
+    }
+
+    fn moderacion(modo: ModoAsistente) -> String {
+        prompt_asistente_tipo(
+            TipoAsistente::Moderacion,
+            modo,
+            ("123456789", "Mi Servidor"),
+            "PLAN SECRETO DE CONSTRUCCION",
+            "Tema: piratas",
+            "es",
+            "Expulsa a Ana",
+            "MAPA",
+            50,
+        )
+    }
+
+    #[test]
+    fn prompt_moderacion_read_pide_pruebas_y_no_propone() {
+        let p = moderacion(ModoAsistente::Read);
+        for t in ["buscar_mensajes", "leer_mensajes", "listar_avisos"] {
+            assert!(p.contains(t), "{t}");
+        }
+        assert!(p.contains("123456789") && p.contains("Mi Servidor"));
+        assert!(p.contains("at most 50 messages per channel"));
+        assert!(p.contains("author") && p.contains("date") && p.contains("link"));
+        assert!(p.contains("not enough"));
+        assert!(p.contains("Spanish"));
+        assert!(p.contains("Expulsa a Ana"));
+        assert!(!p.contains("```json"));
+        assert!(!p.contains("PLAN SECRETO"));
+    }
+
+    #[test]
+    fn prompt_moderacion_execute_solo_acciones_de_moderacion() {
+        let p = moderacion(ModoAsistente::Execute);
+        assert!(p.contains(&ACCIONES_MODERACION.join(", ")));
+        assert!(p.contains("Never propose changes to the structure"));
+        assert!(p.contains("```json"));
+        assert!(!p.contains("crear_canal"));
+        assert!(!p.contains("ordenar_roles"));
+        // el ejemplo del prompt es una propuesta válida y de moderación
+        let ej: Propuesta = serde_json::from_str(EJEMPLO_MODERACION).unwrap();
+        assert!(comprobar_acciones_moderacion(&ej).is_ok());
+        let v = validar(&ej);
+        assert!(v.errores.is_empty(), "{:?}", v.errores);
+        // el prompt de construcción sigue siendo distinto
+        let c = prompt(ModoAsistente::Execute, "en");
+        assert!(c.contains("crear_canal") && !c.contains("moderation assistant"));
+    }
+
+    #[test]
+    fn moderacion_rechaza_cambios_de_estructura() {
+        let p: Propuesta = serde_json::from_str(
+            r#"{"resumen":"x","acciones":[{"herramienta":"crear_canal","args":{"nombre":"a"},"descripcion":"d"}]}"#,
+        )
+        .unwrap();
+        assert!(comprobar_acciones_moderacion(&p).is_err());
+    }
+
+    #[test]
+    fn tipo_de_asistente_se_lee_del_texto() {
+        assert_eq!(
+            TipoAsistente::desde(None).unwrap(),
+            TipoAsistente::Construccion
+        );
+        assert_eq!(
+            TipoAsistente::desde(Some("moderacion")).unwrap(),
+            TipoAsistente::Moderacion
+        );
+        assert!(TipoAsistente::desde(Some("otro")).is_err());
     }
 
     #[test]

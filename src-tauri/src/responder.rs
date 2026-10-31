@@ -17,8 +17,8 @@ use twilight_model::id::Id;
 
 use crate::asistente::{clasificar_error, OrdenAgente};
 use crate::chat::{
-    confirmacion_de, debe_responder, orden_chat, prompt_chat, separar_orden, Confirmacion,
-    MensajeContexto, MensajeEntrante,
+    confirmacion_de, debe_responder, orden_chat, prompt_chat, separar_orden_tipo, Confirmacion,
+    MensajeContexto, MensajeEntrante, TipoOrden,
 };
 use crate::db::GuildSettings;
 use crate::discord::{build_client, traducir_error, MAX_LONGITUD_MENSAJE};
@@ -515,8 +515,8 @@ impl Conversador {
         }
         match resultado {
             Ok(orden) => {
-                if let Some(orden) = orden {
-                    self.preparar_orden(&e, ajustes, &orden).await;
+                if let Some((tipo, orden)) = orden {
+                    self.preparar_orden(&e, ajustes, tipo, &orden).await;
                 }
                 Resultado::Respondido
             }
@@ -621,7 +621,7 @@ impl Conversador {
         &self,
         e: &Entrada,
         ajustes: &GuildSettings,
-    ) -> Result<Option<String>, String> {
+    ) -> Result<Option<(TipoOrden, String)>, String> {
         let base = self.base_url.as_deref();
         let canal = e.msg.canal_id.to_string();
         let agente = ajustes.chat_agente.as_str();
@@ -653,14 +653,20 @@ impl Conversador {
         let orden = orden_chat(agente, &ruta, &ajustes.chat_modelo, &prompt)?;
         let respuesta = ejecutar_texto(&orden, self.limite).await?;
         // La línea `ORDEN:` nunca se publica; se prepara su propuesta aparte.
-        let (visible, orden) = separar_orden(&respuesta, autorizado);
+        let (visible, orden) = separar_orden_tipo(&respuesta, autorizado);
         self.enviar(e, &visible).await?;
         Ok(orden)
     }
 
     /// Prepara la propuesta de una orden y la publica como respuesta al mensaje.
     /// Todo lo que falle queda en Logs y se avisa en el canal con el motivo.
-    async fn preparar_orden(&self, e: &Entrada, ajustes: &GuildSettings, orden: &str) {
+    async fn preparar_orden(
+        &self,
+        e: &Entrada,
+        ajustes: &GuildSettings,
+        tipo: TipoOrden,
+        orden: &str,
+    ) {
         let idioma = (self.ordenes.idioma)();
         self.log(format!(
             "[ORDER] Order from {} in {} #{}: {}",
@@ -687,7 +693,7 @@ impl Conversador {
             return;
         }
         let inicio = Instant::now();
-        match self.construir(e, ajustes, orden, &idioma).await {
+        match self.construir(e, ajustes, tipo, orden, &idioma).await {
             Ok(ev) => {
                 self.publicar_propuesta(e, ajustes, ev, "", &idioma, inicio)
                     .await
@@ -912,12 +918,18 @@ impl Conversador {
         &self,
         e: &Entrada,
         ajustes: &GuildSettings,
+        tipo: TipoOrden,
         orden: &str,
         idioma: &str,
     ) -> Result<crate::asistente::EventoPropuesta, String> {
         use crate::asistente::{
-            orden_agente, prompt_asistente, propuesta_de_respuesta, texto_del_constructor,
-            ModoAsistente,
+            comprobar_acciones_moderacion, orden_agente, prompt_asistente_tipo,
+            propuesta_de_respuesta, texto_del_constructor, ModoAsistente, TipoAsistente,
+            LIMITE_POR_CANAL,
+        };
+        let tipo_asistente = match tipo {
+            TipoOrden::Estructura => TipoAsistente::Construccion,
+            TipoOrden::Moderacion => TipoAsistente::Moderacion,
         };
         let agente = ajustes.ordenes_agente.as_str();
         let ruta = (self.buscar_agente)(agente)
@@ -926,13 +938,16 @@ impl Conversador {
         let plan = (self.ordenes.leer_plan)(e.guild_id).await;
         let contexto = (self.ordenes.leer_contexto)(e.guild_id).await;
         let gid = e.guild_id.to_string();
-        let prompt = prompt_asistente(
+        let prompt = prompt_asistente_tipo(
+            tipo_asistente,
             ModoAsistente::Execute,
             (&gid, &e.servidor),
             &plan,
             &contexto,
             idioma,
             orden,
+            "",
+            LIMITE_POR_CANAL,
         );
         let lanzar = orden_agente(
             agente,
@@ -947,7 +962,17 @@ impl Conversador {
         let texto = texto_del_constructor(&lanzar, agente, self.limite_constructor).await?;
         let nombres = (self.ordenes.nombres)(e.guild_id);
         propuesta_de_respuesta(&texto, |p| {
-            crate::propuesta::validar_traducida(p, &nombres, idioma)
+            let mut v = crate::propuesta::validar_traducida(p, &nombres, idioma);
+            if tipo_asistente == TipoAsistente::Moderacion {
+                if let Err(mensaje) = comprobar_acciones_moderacion(p) {
+                    v.errores.push(crate::propuesta::ErrorValidacion {
+                        indice: 0,
+                        herramienta: "moderacion".into(),
+                        mensaje: crate::i18n::tr(idioma, &mensaje),
+                    });
+                }
+            }
+            v
         })
     }
 
@@ -1276,6 +1301,10 @@ mod tests {
     /// Agente que sirve de chat (responde con una orden) y de constructor (imprime
     /// `constructor` en stream-json). Guarda lo recibido junto al script.
     fn agente_con_orden(nombre: &str, constructor: &str) -> PathBuf {
+        agente_con_marca(nombre, "ORDEN:", constructor)
+    }
+
+    fn agente_con_marca(nombre: &str, marca: &str, constructor: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("argus-test-{}-{nombre}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let ruta = dir.join("agente.sh");
@@ -1289,7 +1318,7 @@ case "$*" in
   ;;
 *)
   cat > /dev/null
-  printf 'Voy a prepararlo.\nORDEN: crea un rol Mods\n'
+  printf 'Voy a prepararlo.\n{marca} crea un rol Mods\n'
   ;;
 esac
 "#
@@ -1356,6 +1385,57 @@ EOF"#;
         assert!(logs
             .iter()
             .any(|l| l.starts_with("[ORDER] Proposal for Ana")));
+    }
+
+    const PROPUESTA_MODERACION: &str = r#"cat <<'EOF'
+{"type":"assistant","message":{"content":[{"type":"text","text":"Visto\n```json\n{\"resumen\":\"Avisar a Ana\",\"acciones\":[{\"herramienta\":\"avisar\",\"args\":{\"user_id\":\"1001\",\"motivo\":\"Spam\"},\"descripcion\":\"Warn Ana\"}]}\n```"}]}}
+EOF"#;
+
+    #[tokio::test]
+    async fn una_orden_de_moderacion_usa_el_prompt_de_moderacion() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let agente = agente_con_marca("orden-mod", "ORDEN[moderacion]:", PROPUESTA_MODERACION);
+        let dir = agente.parent().unwrap().to_path_buf();
+        let (c, _) = conversador(&server, agente, LIMITE_AGENTE);
+        c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), 3, "{t:?}");
+        assert!(t[2].starts_with("Avisar a Ana"), "{}", t[2]);
+        assert!(!t.iter().any(|x| x.contains("ORDEN")));
+        let stdin = std::fs::read_to_string(dir.join("stdin.txt")).unwrap();
+        assert!(stdin.contains("moderation assistant"), "{stdin}");
+        assert!(stdin.contains("crea un rol Mods"));
+        assert!(!stdin.contains("PLAN-DEL-SERVIDOR"), "{stdin}");
+    }
+
+    #[tokio::test]
+    async fn una_orden_de_estructura_usa_el_prompt_de_construccion() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let agente = agente_con_marca("orden-est", "ORDEN[estructura]:", PROPUESTA_OK);
+        let dir = agente.parent().unwrap().to_path_buf();
+        let (c, _) = conversador(&server, agente, LIMITE_AGENTE);
+        c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
+        let stdin = std::fs::read_to_string(dir.join("stdin.txt")).unwrap();
+        assert!(stdin.contains("PLAN-DEL-SERVIDOR"), "{stdin}");
+        assert!(!stdin.contains("moderation assistant"), "{stdin}");
+    }
+
+    #[tokio::test]
+    async fn una_orden_de_moderacion_rechaza_acciones_de_estructura() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let agente = agente_con_marca("orden-mod-mal", "ORDEN[moderacion]:", PROPUESTA_OK);
+        let (c, _) = conversador(&server, agente, LIMITE_AGENTE);
+        c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
+        let t = textos(&envios(&server).await);
+        assert!(
+            t.last()
+                .unwrap()
+                .contains("I could not prepare the proposal"),
+            "{t:?}"
+        );
     }
 
     #[tokio::test]

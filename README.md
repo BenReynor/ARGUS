@@ -41,6 +41,12 @@ things you do from the app.
   structured syntax that ARGUS builds without AI: see
   [docs/PLAN_SERVIDOR.md](docs/PLAN_SERVIDOR.md) (also in
   [Spanish](docs/PLAN_SERVIDOR.es.md)).
+- **Moderation with AI:** in the **Moderation** tab, ask in plain words to kick,
+  mute or warn members, search who said a word, or analyse a conversation
+  ("read #trial and tell me who is guilty", with quoted evidence). Warnings are
+  kept by ARGUS and sent to the user by DM with their count. You choose how many
+  messages are read per channel, and nothing is applied until you approve it. See
+  [docs/ASISTENTE.md](docs/ASISTENTE.md).
 - **Chat on Discord with a personality:** per server, turn on replies, pick an
   agent and model (a free opencode model is enough to chat) and write the bot's
   personality. It answers only when mentioned or replied to, and only while ARGUS

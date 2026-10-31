@@ -41,6 +41,12 @@ mismo que tú desde la app.
   también admite una sintaxis estructurada que ARGUS construye sin IA: ver
   [docs/PLAN_SERVIDOR.es.md](docs/PLAN_SERVIDOR.es.md) (en
   [inglés](docs/PLAN_SERVIDOR.md)).
+- **Moderación con IA:** en la pestaña **Moderation** pide con tus palabras
+  expulsar, silenciar o avisar a miembros, buscar quién dijo una palabra o
+  analizar una conversación («lee #juicio y dime quién es culpable», con las
+  pruebas citadas). ARGUS guarda los avisos y se los manda al usuario por DM con
+  su recuento. Tú eliges cuántos mensajes se leen por canal y nada se aplica
+  hasta que lo apruebas. Ver [docs/ASISTENTE.md](docs/ASISTENTE.md) (en inglés).
 - **Conversar en Discord con personalidad:** por servidor, activa las respuestas,
   elige agente y modelo (un modelo gratis de opencode basta para conversar) y
   escribe la personalidad del bot. Solo responde cuando lo mencionan o le

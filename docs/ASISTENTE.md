@@ -197,6 +197,67 @@ close ARGUS before applying, it disappears.
 
 Tip: try a plan on a **test server** first, and apply large builds in stages.
 
+## Moderation: manage members and messages
+
+The **AI Assistant** section has the tabs **Build** (plan + build chat, described
+above), **Moderation**, **Context & personality** and **Discord replies**.
+**Moderation** is for *managing* the server instead of building it. It reuses the
+same chat (agent, model, **Read / Execute**, **Stop**, **New conversation**) but
+with its own conversation per server, so it never mixes with the build chat. A side
+panel lists the server's **recent warnings** (user, number of warnings, last
+reason).
+
+In Read mode the agent only talks and analyses. In Execute mode it proposes
+moderation actions: warn, mute (timeout), kick, ban, unban, delete messages, give or
+remove a role and change a nickname. It never proposes structure changes
+(channels, categories, roles themselves).
+
+### Examples
+
+- **Kick:** "Kick Mario for spamming invites" → a proposal with one *kick* action,
+  showing the member's name and the reason.
+- **Mute:** "Mute Lucía for one hour, she keeps insulting people" → a proposal with
+  a *timeout* of one hour and the reason.
+- **Warn whoever said a word** (Execute): "Warn whoever said "hello" in #general" →
+  the agent searches the recent messages, finds the authors and proposes one
+  *warn* action per person, with the reason. After **Apply**, each user gets a DM
+  and appears in the recent warnings.
+- **Search** (Read): "Did anyone say "hello"?" or "Read #general and summarise who
+  talked about what".
+- **Analyse a trial** (Read): "Read #trial and tell me who is innocent and who is
+  guilty". The agent quotes its evidence (author, date and link of each relevant
+  message) and says so when there is not enough evidence. Nothing is changed.
+
+### How warnings work
+
+Discord has no warnings, so ARGUS keeps its own, stored locally on your computer
+with the user, the reason, the message that caused it (if any), who issued it and
+the date.
+
+- **DM:** when a warning is applied, ARGUS sends the user a direct message with the
+  reason and **how many warnings they have so far**. If the DM fails (the user
+  blocks DMs from server members, for example) the warning is saved anyway and
+  ARGUS tells you.
+- **Count:** the agent can read the warnings (per user count and latest ones), so
+  you can ask "who has more than 3 warnings?". The side panel shows the same data.
+
+### Messages to read per channel
+
+The **Messages to read per channel** field (default 100) limits how many recent
+messages the agent reads in each channel when it searches or analyses. Bots cannot
+use Discord's own search, so ARGUS reads the recent history of each channel and
+filters it locally. Anything older than that limit is not seen: raise the number
+to go further back (it costs more time and more text sent to the AI provider).
+
+### Nothing is applied without your approval
+
+The agent only has read tools. In Execute mode it returns a **proposal** and
+nothing happens until you press **Apply** (see
+[Approval](#5-approval-the-proposal-and-apply)); **Cancel** discards it. ARGUS
+applies exactly what you approved, with the usual permission and role-hierarchy
+checks (it will not kick the owner or someone above the bot). The messages the
+agent reads go to the AI provider, as explained below.
+
 ## What leaves your computer
 
 ARGUS has no telemetry and never sends your bot's token to the agent: the token is

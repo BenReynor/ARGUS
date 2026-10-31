@@ -414,22 +414,22 @@ Verificación manual:
 ## FASE 14 — Asistente de moderación: órdenes, avisos, búsquedas y análisis
 Separar **construir** el servidor de **gestionarlo**. Nueva pestaña **Moderation** en la sección AI Assistant: un chat con su propia conversación por servidor, centrado en miembros y mensajes, que usa el mismo motor que el constructor (agente solo con herramientas de lectura; en Execute devuelve una propuesta que el usuario aprueba y ARGUS aplica). Sirve para órdenes («expulsa a X», «silencia a Y una hora», «borra los mensajes de Z en #general»), **avisos** (warnings, que Discord no tiene: ARGUS los registra y se los manda por DM al usuario), **búsquedas** («¿alguien dijo X? ponle un aviso») y **análisis** sin tocar nada («lee #juicio y dime quién es inocente o culpable», citando las pruebas). Toda la UI nueva con `t()`. Tests con el Discord falso y agentes falsos.
 
-- [ ] Buscar mensajes (herramienta de lectura)
+- [x] Buscar mensajes (herramienta de lectura)
   criterio: nueva herramienta MCP de lectura `buscar_mensajes` (en `HERRAMIENTAS_LECTURA`) con `texto` (sin distinguir mayúsculas ni tildes), `canales` opcional (IDs o nombres; por defecto todos los de texto que el bot puede leer), `autor` opcional y `limite_por_canal` (por defecto 100, máximo 500); como los bots no pueden usar la búsqueda de Discord, lee el historial reciente de cada canal y filtra en local; devuelve las coincidencias (canal, autor con id y nombre, id del mensaje, enlace, fecha y fragmento) y cuántos mensajes revisó por canal; tests contra el Discord falso (coincidencias en dos canales, filtro por autor, sin resultados, límite)
 
-- [ ] Avisos (warnings)
+- [x] Avisos (warnings)
   criterio: migración con una tabla de avisos (guild_id, user_id, motivo, mensaje_id opcional, autor del aviso, fecha); nueva herramienta de escritura `avisar` (user_id, motivo, mensaje_id opcional, `dm` por defecto true) que guarda el aviso y, si `dm`, envía al usuario un DM con el motivo y el número de avisos que lleva (si el DM falla, el aviso se guarda igual y se informa); nueva herramienta de lectura `listar_avisos` (user_id opcional) con el recuento por usuario y los últimos avisos; ambas clasificadas en las listas de lectura/escritura y documentadas por `firmas_escritura`; `ejecutar_accion` y las propuestas aceptan `avisar` (con el usuario por nombre o id); tests de Rust (guardar, contar, DM fallido, listar)
 
-- [ ] Prompt y conversación de moderación
+- [x] Prompt y conversación de moderación
   criterio: las conversaciones del asistente guardan su tipo (`construccion` o `moderacion`; migración con valor por defecto `construccion` para las existentes) y cada tipo tiene su propia conversación y sesión por servidor; `prompt_asistente` con tipo moderación orienta al agente a miembros, mensajes y sanciones (usa `buscar_mensajes`, `leer_mensajes` y `listar_avisos`; lee por defecto como mucho `limite_por_canal` mensajes por canal), en modo Read responde análisis citando las pruebas (autor, fecha y enlace de cada mensaje relevante) y diciendo cuándo no hay pruebas suficientes, y en modo Execute propone solo acciones de moderación (avisar, silenciar, expulsar, banear, desbanear, borrar_mensajes, dar_rol, quitar_rol, cambiar_apodo) y nunca cambios de estructura; tests de los dos tipos de prompt y de que las conversaciones no se mezclan
 
-- [ ] Pestaña Moderation en la interfaz
+- [x] Pestaña Moderation en la interfaz
   criterio: la sección AI Assistant pasa a tener las pestañas **Build** (plan + chat de construcción, lo actual), **Moderation**, **Context & personality** y **Discord replies**; Moderation reutiliza el chat (agente, modelo, Read/Execute, Stop, New conversation) con la conversación de moderación, un campo «Messages to read per channel» (por defecto 100), y un panel lateral con los avisos recientes del servidor (usuario, número de avisos, último motivo); las propuestas de moderación muestran el nombre del miembro y el motivo de cada acción; todo con `t()`; `npm run i18n:check` y `npm run build` pasan
 
-- [ ] Órdenes de Discord a construcción o moderación
+- [x] Órdenes de Discord a construcción o moderación
   criterio: el prompt del chat de Discord (FASE 12) distingue dos marcas: `ORDEN[estructura]: …` y `ORDEN[moderacion]: …` (una línea `ORDEN:` sin tipo cuenta como estructura); el análisis devuelve el tipo y la orden se pasa al asistente del tipo correspondiente con su prompt; el resto del flujo (propuesta en Discord, «sí» del mismo autor, aplicar) es el mismo; tests del análisis de las dos marcas y de que una orden de moderación usa el prompt de moderación
 
-- [ ] Documentación de la moderación
+- [x] Documentación de la moderación
   criterio: docs/ASISTENTE.md explica la pestaña Moderation con ejemplos (expulsar, silenciar, avisar a quien dijo una palabra, analizar un juicio), cómo funcionan los avisos (DM y recuento), el límite de mensajes leídos y que nada se aplica sin aprobación; README.md y README.es.md lo mencionan en «What you can do» / «Qué puedes hacer»
 
 Verificación manual (en tu servidor de pruebas):

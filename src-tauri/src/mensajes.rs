@@ -105,39 +105,80 @@ pub async fn fetch_channel_messages(
         .map(|a| {
             a.iter()
                 .take(MENSAJES_LIMITE as usize)
-                .map(|m| {
-                    let autor = m.get("author").cloned().unwrap_or(Value::Null);
-                    MensajeCanal {
-                        id: texto(m, "id").unwrap_or_default(),
-                        content: texto(m, "content").unwrap_or_default(),
-                        author_id: texto(&autor, "id").unwrap_or_default(),
-                        author_name: texto(&autor, "global_name")
-                            .or_else(|| texto(&autor, "username"))
-                            .unwrap_or_else(|| "Desconocido".to_string()),
-                        author_bot: autor.get("bot").and_then(|b| b.as_bool()).unwrap_or(false),
-                        timestamp: texto(m, "timestamp").unwrap_or_default(),
-                        pinned: m.get("pinned").and_then(|b| b.as_bool()).unwrap_or(false),
-                        attachments: m
-                            .get("attachments")
-                            .and_then(|a| a.as_array())
-                            .map(|a| {
-                                a.iter()
-                                    .filter_map(|x| {
-                                        let url = texto(x, "url")?;
-                                        Some(Adjunto {
-                                            filename: texto(x, "filename")
-                                                .unwrap_or_else(|| url.clone()),
-                                            url,
-                                        })
-                                    })
-                                    .collect()
-                            })
-                            .unwrap_or_default(),
-                    }
-                })
+                .map(mensaje_de_json)
                 .collect()
         })
         .unwrap_or_default())
+}
+
+fn mensaje_de_json(m: &Value) -> MensajeCanal {
+    let autor = m.get("author").cloned().unwrap_or(Value::Null);
+    MensajeCanal {
+        id: texto(m, "id").unwrap_or_default(),
+        content: texto(m, "content").unwrap_or_default(),
+        author_id: texto(&autor, "id").unwrap_or_default(),
+        author_name: texto(&autor, "global_name")
+            .or_else(|| texto(&autor, "username"))
+            .unwrap_or_else(|| "Desconocido".to_string()),
+        author_bot: autor.get("bot").and_then(|b| b.as_bool()).unwrap_or(false),
+        timestamp: texto(m, "timestamp").unwrap_or_default(),
+        pinned: m.get("pinned").and_then(|b| b.as_bool()).unwrap_or(false),
+        attachments: m
+            .get("attachments")
+            .and_then(|a| a.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| {
+                        let url = texto(x, "url")?;
+                        Some(Adjunto {
+                            filename: texto(x, "filename").unwrap_or_else(|| url.clone()),
+                            url,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
+}
+
+/// Historial reciente de un canal, del más nuevo al más antiguo, hasta `maximo`
+/// mensajes (pagina de 100 en 100 con `before`).
+pub async fn fetch_channel_history(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+    maximo: usize,
+) -> Result<Vec<MensajeCanal>, String> {
+    let cid = id(channel_id, "canal")?;
+    let mut todos: Vec<MensajeCanal> = Vec::new();
+    let mut antes: Option<u64> = None;
+    while todos.len() < maximo {
+        let pedir_n = (maximo - todos.len()).min(100) as u16;
+        let json = pedir(
+            token,
+            base_url,
+            Route::GetMessages {
+                after: None,
+                around: None,
+                before: antes,
+                channel_id: cid,
+                limit: Some(pedir_n),
+            },
+            None,
+        )
+        .await?;
+        let pagina: Vec<MensajeCanal> = json
+            .as_array()
+            .map(|a| a.iter().map(mensaje_de_json).collect())
+            .unwrap_or_default();
+        let recibidos = pagina.len();
+        antes = pagina.last().and_then(|m| m.id.parse::<u64>().ok());
+        todos.extend(pagina.into_iter().take(maximo - todos.len()));
+        if recibidos < pedir_n as usize || antes.is_none() {
+            break;
+        }
+    }
+    Ok(todos)
 }
 
 pub async fn delete_message(

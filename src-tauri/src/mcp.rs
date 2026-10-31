@@ -32,6 +32,11 @@ pub const SIN_SERVIDOR: &str =
 
 /// Mensajes que devuelve `leer_mensajes` como máximo.
 const MENSAJES_MAX: usize = 50;
+/// Mensajes revisados por canal en `buscar_mensajes` (por defecto y máximo).
+const BUSQUEDA_DEFECTO: usize = 100;
+const BUSQUEDA_MAX: usize = 500;
+/// Caracteres máximos del fragmento que devuelve `buscar_mensajes`.
+const FRAGMENTO_MAX: usize = 160;
 /// Miembros por defecto y máximo de `listar_miembros`.
 const MIEMBROS_DEFECTO: usize = 25;
 const MIEMBROS_MAX: usize = 100;
@@ -72,6 +77,21 @@ pub struct LeerMensajesParams {
     pub channel_id: String,
     /// Cuántos de los últimos mensajes devolver (por defecto y máximo 50).
     pub limite: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct BuscarMensajesParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// Texto a buscar en el contenido (sin distinguir mayúsculas ni tildes).
+    pub texto: String,
+    /// IDs o nombres de canales donde buscar. Si se omite, todos los de texto.
+    pub canales: Option<Vec<String>>,
+    /// Solo mensajes de este autor (ID o parte del nombre).
+    pub autor: Option<String>,
+    /// Mensajes recientes que se revisan por canal (por defecto 100, máximo 500).
+    pub limite_por_canal: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -157,6 +177,30 @@ pub struct EnviarDmParams {
     pub user_id: String,
     /// Texto del mensaje (hasta 2000 caracteres).
     pub contenido: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct AvisarParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// ID del usuario o su nombre (usuario o apodo) en el servidor.
+    pub user_id: String,
+    /// Motivo del aviso.
+    pub motivo: String,
+    /// ID del mensaje que motiva el aviso (opcional).
+    pub mensaje_id: Option<String>,
+    /// Si es true (por defecto) se envía un DM al usuario con el motivo y sus avisos.
+    pub dm: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct ListarAvisosParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// ID o nombre de un usuario para ver solo sus avisos (opcional).
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -845,6 +889,94 @@ impl ArgusMcp {
         Ok(json!({ "canal_id": channel_id.trim(), "mensajes": lista }).to_string())
     }
 
+    /// Los bots no pueden usar la búsqueda de Discord: se lee el historial
+    /// reciente de cada canal y se filtra en local.
+    pub async fn buscar_mensajes_json(
+        &self,
+        guild_id: Option<&str>,
+        texto: &str,
+        canales: Option<&[String]>,
+        autor: Option<&str>,
+        limite_por_canal: Option<u32>,
+    ) -> Result<String, String> {
+        let gid = self.servidor_de(guild_id).await?;
+        let aguja = plegar(texto);
+        if aguja.is_empty() {
+            return Err("Enter the text to search for".to_string());
+        }
+        let limite =
+            (limite_por_canal.unwrap_or(BUSQUEDA_DEFECTO as u32) as usize).clamp(1, BUSQUEDA_MAX);
+        let autor = autor.map(plegar).filter(|a| !a.is_empty());
+        let todos = commands::leer_canales(&self.state, &gid, self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        let de_texto: Vec<&Channel> = todos
+            .iter()
+            .filter(|c| matches!(c.channel_type, 0 | 5))
+            .collect();
+        let elegidos: Vec<&Channel> = match canales.filter(|c| !c.is_empty()) {
+            None => de_texto,
+            Some(pedidos) => {
+                let mut v: Vec<&Channel> = Vec::new();
+                for p in pedidos {
+                    let limpio = p.trim().trim_start_matches('#');
+                    let nombre = plegar(limpio);
+                    let c = de_texto
+                        .iter()
+                        .find(|c| c.id == limpio || plegar(&c.name) == nombre)
+                        .ok_or_else(|| format!("Text channel not found: «{}»", p.trim()))?;
+                    if !v.iter().any(|x| x.id == c.id) {
+                        v.push(c);
+                    }
+                }
+                v
+            }
+        };
+        let mut coincidencias = Vec::new();
+        let mut revisados = Vec::new();
+        for c in elegidos {
+            match commands::leer_historial(&self.state, &gid, &c.id, limite, self.url()).await {
+                Ok(mensajes) => {
+                    revisados.push(json!({
+                        "canal_id": c.id, "canal": c.name, "revisados": mensajes.len(),
+                    }));
+                    for m in mensajes {
+                        let del_autor = autor.as_ref().is_none_or(|a| {
+                            m.author_id == *a || plegar(&m.author_name).contains(a.as_str())
+                        });
+                        if !del_autor {
+                            continue;
+                        }
+                        let Some(fragmento) = fragmento_de(&m.content, &aguja) else {
+                            continue;
+                        };
+                        coincidencias.push(json!({
+                            "canal_id": c.id,
+                            "canal": c.name,
+                            "autor": { "id": m.author_id, "nombre": m.author_name },
+                            "mensaje_id": m.id,
+                            "enlace": format!(
+                                "https://discord.com/channels/{gid}/{}/{}", c.id, m.id
+                            ),
+                            "fecha": m.timestamp,
+                            "fragmento": fragmento,
+                        }));
+                    }
+                }
+                Err(e) => revisados.push(json!({
+                    "canal_id": c.id, "canal": c.name, "revisados": 0,
+                    "error": self.limpiar(e),
+                })),
+            }
+        }
+        Ok(json!({
+            "total": coincidencias.len(),
+            "coincidencias": coincidencias,
+            "revisados_por_canal": revisados,
+        })
+        .to_string())
+    }
+
     pub async fn listar_baneos_json(&self, guild_id: Option<&str>) -> Result<String, String> {
         let gid = self.servidor_de(guild_id).await?;
         let bans = commands::listar_bans(&self.state, &gid, self.url())
@@ -922,6 +1054,111 @@ impl ArgusMcp {
             .await
             .map_err(|e| self.limpiar(e))?;
         self.mensaje(texto)
+    }
+
+    /// Resuelve un usuario dado por ID o por nombre (usuario o apodo, sin
+    /// distinguir mayúsculas) a su ID.
+    async fn resolver_usuario(&self, gid: &str, texto: &str) -> Result<String, String> {
+        let texto = texto.trim();
+        if texto.is_empty() {
+            return Err("The user is empty".to_string());
+        }
+        if texto.bytes().all(|b| b.is_ascii_digit()) {
+            return Ok(texto.to_string());
+        }
+        let miembros = commands::leer_miembros(&self.state, gid, self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        let b = texto.trim_start_matches('@').to_lowercase();
+        let coincide = |m: &Member| {
+            m.username.to_lowercase() == b
+                || m.nickname.as_deref().is_some_and(|n| n.to_lowercase() == b)
+        };
+        let halladas: Vec<&Member> = miembros.iter().filter(|m| coincide(m)).collect();
+        match halladas.as_slice() {
+            [m] => Ok(m.user_id.clone()),
+            [] => Err(format!("No member named «{texto}» in the server")),
+            _ => Err(format!(
+                "More than one member is named «{texto}»: use the user ID"
+            )),
+        }
+    }
+
+    pub async fn avisar_json(&self, p: &AvisarParams) -> Result<String, String> {
+        let gid = self.servidor_de(p.guild_id.as_deref()).await?;
+        let motivo = p.motivo.trim();
+        if motivo.is_empty() {
+            return Err("The warning needs a reason".to_string());
+        }
+        let user = self.resolver_usuario(&gid, &p.user_id).await?;
+        let mensaje_id = p
+            .mensaje_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|m| !m.is_empty());
+        let autor = self
+            .state
+            .get_active_bot()
+            .map(|b| b.id)
+            .unwrap_or_default();
+        let (aviso, total) =
+            crate::db::guardar_aviso(&self.pool, &gid, &user, motivo, mensaje_id, &autor)
+                .await
+                .map_err(|e| format!("Could not save the warning: {e}"))?;
+        let dm = if p.dm.unwrap_or(true) {
+            let texto = format!(
+                "{}\n{}",
+                self.tr(&format!("You have received a warning: {motivo}")),
+                self.tr(&format!("Warnings so far: {total}"))
+            );
+            match commands::enviar_dm(&self.state, &user, &texto, self.url()).await {
+                Ok(_) => json!({ "enviado": true }),
+                Err(e) => json!({
+                    "enviado": false,
+                    "error": self.tr(&self.limpiar(e)),
+                    "nota": self.tr("The warning was saved, but the direct message could not be sent"),
+                }),
+            }
+        } else {
+            json!({ "enviado": false, "omitido": true })
+        };
+        Ok(json!({
+            "mensaje": self.tr(&format!("Warning {total} saved for user {user}")),
+            "aviso": aviso,
+            "total_avisos": total,
+            "dm": dm,
+        })
+        .to_string())
+    }
+
+    pub async fn listar_avisos_json(
+        &self,
+        guild_id: Option<&str>,
+        user_id: Option<&str>,
+    ) -> Result<String, String> {
+        let gid = self.servidor_de(guild_id).await?;
+        let user = match user_id.map(str::trim).filter(|u| !u.is_empty()) {
+            Some(u) => Some(self.resolver_usuario(&gid, u).await?),
+            None => None,
+        };
+        let err = |e: anyhow::Error| format!("Could not read the warnings: {e}");
+        let recuento = crate::db::recuento_avisos(&self.pool, &gid, user.as_deref())
+            .await
+            .map_err(err)?;
+        let ultimos = crate::db::ultimos_avisos(&self.pool, &gid, user.as_deref(), 20)
+            .await
+            .map_err(err)?;
+        let total: i64 = recuento.iter().map(|(_, n)| n).sum();
+        let por_usuario: Vec<_> = recuento
+            .iter()
+            .map(|(u, n)| json!({ "user_id": u, "avisos": n }))
+            .collect();
+        Ok(json!({
+            "total": total,
+            "por_usuario": por_usuario,
+            "ultimos": ultimos,
+        })
+        .to_string())
     }
 
     pub async fn borrar_mensaje_json(
@@ -1370,6 +1607,47 @@ fn normalizar(t: &str) -> String {
         .replace('é', "e")
 }
 
+/// Minúsculas y sin tildes, para comparar textos.
+fn plegar(t: &str) -> String {
+    t.trim().chars().map(plegar_char).collect()
+}
+
+/// Un carácter en minúscula y sin tilde (siempre devuelve un solo carácter, así
+/// los índices del texto plegado coinciden con los del original).
+fn plegar_char(c: char) -> char {
+    match c.to_lowercase().next().unwrap_or(c) {
+        'á' | 'à' | 'ä' | 'â' => 'a',
+        'é' | 'è' | 'ë' | 'ê' => 'e',
+        'í' | 'ì' | 'ï' | 'î' => 'i',
+        'ó' | 'ò' | 'ö' | 'ô' => 'o',
+        'ú' | 'ù' | 'ü' | 'û' => 'u',
+        c => c,
+    }
+}
+
+/// Trozo del contenido alrededor de la primera coincidencia (None si no hay).
+fn fragmento_de(contenido: &str, aguja_plegada: &str) -> Option<String> {
+    let chars: Vec<char> = contenido.chars().collect();
+    let pleg: Vec<char> = chars.iter().map(|c| plegar_char(*c)).collect();
+    let aguja: Vec<char> = aguja_plegada.chars().collect();
+    if aguja.is_empty() || aguja.len() > pleg.len() {
+        return None;
+    }
+    let pos = pleg
+        .windows(aguja.len())
+        .position(|w| w == aguja.as_slice())?;
+    let ini = pos.saturating_sub(FRAGMENTO_MAX / 4);
+    let fin = (ini + FRAGMENTO_MAX).min(chars.len());
+    let mut s: String = chars[ini..fin].iter().collect();
+    if ini > 0 {
+        s.insert(0, '…');
+    }
+    if fin < chars.len() {
+        s.push('…');
+    }
+    Some(s)
+}
+
 /// 0 = rol, 1 = miembro (igual que `Overwrite::type_`).
 fn tipo_de_overwrite(t: &str) -> Result<u8, String> {
     match normalizar(t).as_str() {
@@ -1446,9 +1724,11 @@ pub const HERRAMIENTAS_LECTURA: &[&str] = &[
     "ajustes_servidor",
     "registro_auditoria",
     "leer_mensajes",
+    "buscar_mensajes",
     "listar_baneos",
     "listar_invitaciones",
     "listar_webhooks",
+    "listar_avisos",
 ];
 
 /// Herramientas que modifican algo (Discord o el servidor activo guardado).
@@ -1456,6 +1736,7 @@ pub const HERRAMIENTAS_ESCRITURA: &[&str] = &[
     "elegir_servidor",
     "enviar_mensaje",
     "enviar_dm",
+    "avisar",
     "borrar_mensaje",
     "borrar_mensajes",
     "fijar_mensaje",
@@ -1514,6 +1795,7 @@ pub fn validar_accion(nombre: &str, args: &serde_json::Value) -> Result<(), Stri
         "elegir_servidor" => ok::<ElegirServidorParams>(nombre, args),
         "enviar_mensaje" => ok::<EnviarMensajeParams>(nombre, args),
         "enviar_dm" => ok::<EnviarDmParams>(nombre, args),
+        "avisar" => ok::<AvisarParams>(nombre, args),
         "borrar_mensaje" | "fijar_mensaje" | "desfijar_mensaje" => {
             ok::<MensajeParams>(nombre, args)
         }
@@ -1551,6 +1833,7 @@ pub fn esquema_args(nombre: &str) -> Option<serde_json::Value> {
         "elegir_servidor" => de::<ElegirServidorParams>(),
         "enviar_mensaje" => de::<EnviarMensajeParams>(),
         "enviar_dm" => de::<EnviarDmParams>(),
+        "avisar" => de::<AvisarParams>(),
         "borrar_mensaje" | "fijar_mensaje" | "desfijar_mensaje" => de::<MensajeParams>(),
         "borrar_mensajes" => de::<BorrarMensajesParams>(),
         "crear_canal" => de::<CrearCanalParams>(),
@@ -1581,6 +1864,11 @@ pub fn esquema_args(nombre: &str) -> Option<serde_json::Value> {
 /// así el asistente no adivina argumentos (antes solo se documentaban cuatro).
 /// `guild_id` se omite: siempre se usa el servidor activo.
 pub fn firmas_escritura() -> String {
+    firmas_de(HERRAMIENTAS_ESCRITURA)
+}
+
+/// Como `firmas_escritura` pero solo para las herramientas indicadas.
+pub fn firmas_de(herramientas: &[&str]) -> String {
     fn tipo(v: &serde_json::Value) -> String {
         match v.get("type") {
             Some(serde_json::Value::String(t)) if t == "array" => {
@@ -1599,7 +1887,7 @@ pub fn firmas_escritura() -> String {
     }
     let mut lineas = Vec::new();
     for h in HERRAMIENTAS_ESCRITURA {
-        if *h == "elegir_servidor" {
+        if *h == "elegir_servidor" || !herramientas.contains(h) {
             continue;
         }
         let Some(esquema) = esquema_args(h) else {
@@ -1740,6 +2028,7 @@ impl ArgusMcp {
                 let p: EnviarDmParams = args_de(nombre, args)?;
                 self.enviar_dm_json(&p.user_id, &p.contenido).await
             }
+            "avisar" => self.avisar_json(&args_de(nombre, args)?).await,
             "borrar_mensaje" => {
                 let p: MensajeParams = args_de(nombre, args)?;
                 self.borrar_mensaje_json(p.guild_id.as_deref(), &p.channel_id, &p.message_id)
@@ -1980,6 +2269,26 @@ impl ArgusMcp {
     ) -> Result<String, String> {
         let r = self
             .leer_mensajes_json(p.guild_id.as_deref(), &p.channel_id, p.limite)
+            .await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "buscar_mensajes",
+        description = "Searches messages by text (ignoring case and accents). Bots cannot use Discord search, so it reads the recent history of each channel (`limite_por_canal`, default 100, max 500) and filters locally. `canales` (IDs or names) defaults to all text channels; `autor` (ID or name) is optional. Returns matches (channel, author, message id, link, date, snippet) and how many messages were checked per channel. Requires «Read Message History». Read-only. `guild_id` is optional."
+    )]
+    async fn buscar_mensajes(
+        &self,
+        Parameters(p): Parameters<BuscarMensajesParams>,
+    ) -> Result<String, String> {
+        let r = self
+            .buscar_mensajes_json(
+                p.guild_id.as_deref(),
+                &p.texto,
+                p.canales.as_deref(),
+                p.autor.as_deref(),
+                p.limite_por_canal,
+            )
             .await;
         self.salida(r)
     }
@@ -2238,6 +2547,29 @@ impl ArgusMcp {
         Parameters(p): Parameters<QuitarPermisoCanalParams>,
     ) -> Result<String, String> {
         let r = self.quitar_permiso_canal_json(&p).await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "avisar",
+        description = "Warns a member: saves the warning (reason, optional `mensaje_id`) and, unless `dm` is false, sends them a direct message with the reason and how many warnings they have. If the DM fails the warning is saved anyway and the result says so. `user_id` accepts an ID or a name. `guild_id` is optional."
+    )]
+    async fn avisar(&self, Parameters(p): Parameters<AvisarParams>) -> Result<String, String> {
+        let r = self.avisar_json(&p).await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "listar_avisos",
+        description = "Lists the warnings of the server: count per user and the latest warnings. `user_id` (ID or name) is optional and limits it to one user. `guild_id` is optional."
+    )]
+    async fn listar_avisos(
+        &self,
+        Parameters(p): Parameters<ListarAvisosParams>,
+    ) -> Result<String, String> {
+        let r = self
+            .listar_avisos_json(p.guild_id.as_deref(), p.user_id.as_deref())
+            .await;
         self.salida(r)
     }
 
@@ -2598,6 +2930,7 @@ mod tests {
             "ajustes_servidor",
             "registro_auditoria",
             "leer_mensajes",
+            "buscar_mensajes",
             "listar_baneos",
             "listar_invitaciones",
             "listar_webhooks",
@@ -2737,6 +3070,21 @@ mod tests {
                 {"id": "301", "channel_id": "11", "content": "primero", "pinned": false,
                  "timestamp": "2026-10-27T09:00:00.000000+00:00",
                  "author": {"id": "1002", "username": "beto", "discriminator": "0",
+                            "avatar": null}}
+            ]),
+        )
+        .await;
+        get_json(
+            server,
+            "/api/v10/channels/13/messages",
+            json!([
+                {"id": "402", "channel_id": "13", "content": "nada de nada", "pinned": false,
+                 "timestamp": "2026-10-27T12:00:00.000000+00:00",
+                 "author": {"id": "1002", "username": "beto", "discriminator": "0",
+                            "avatar": null}},
+                {"id": "401", "channel_id": "13", "content": "Reunión mañana a las 10",
+                 "pinned": false, "timestamp": "2026-10-27T11:00:00.000000+00:00",
+                 "author": {"id": "1001", "username": "ana", "discriminator": "0",
                             "avatar": null}}
             ]),
         )
@@ -2924,6 +3272,143 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn buscar_mensajes_en_varios_canales_sin_tildes_ni_mayusculas() {
+        let (_d, mcp, _s) = mcp_con_servidor(TODO, true).await;
+
+        // «REUNION» (sin tilde, en mayúsculas) encuentra «Reunión» en #suelto.
+        let r = v(mcp
+            .buscar_mensajes_json(None, "REUNION", None, None, None)
+            .await
+            .unwrap());
+        assert_eq!(r["total"], 1);
+        let m = &r["coincidencias"][0];
+        assert_eq!(m["canal"], "suelto");
+        assert_eq!(m["canal_id"], "13");
+        assert_eq!(m["autor"]["id"], "1001");
+        assert_eq!(m["autor"]["nombre"], "ana");
+        assert_eq!(m["mensaje_id"], "401");
+        assert_eq!(m["enlace"], "https://discord.com/channels/555/13/401");
+        assert_eq!(m["fecha"], "2026-10-27T11:00:00.000000+00:00");
+        assert_eq!(m["fragmento"], "Reunión mañana a las 10");
+        // Solo los canales de texto (el de voz no se lee) y cuántos se revisaron.
+        let rev = r["revisados_por_canal"].as_array().unwrap();
+        assert_eq!(rev.len(), 2);
+        assert_eq!(rev[0]["canal"], "general");
+        assert_eq!(rev[0]["revisados"], 2);
+        assert_eq!(rev[1]["canal"], "suelto");
+        assert_eq!(rev[1]["revisados"], 2);
+
+        // Coincidencias en dos canales a la vez.
+        let r = v(mcp
+            .buscar_mensajes_json(None, "r", None, None, None)
+            .await
+            .unwrap());
+        let canales: Vec<_> = r["coincidencias"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["canal"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(canales, ["general", "suelto"]);
+
+        // Canales por nombre (con #) o por ID.
+        let pedidos = ["#General".to_string(), "13".to_string()];
+        let r = v(mcp
+            .buscar_mensajes_json(None, "r", Some(&pedidos), None, None)
+            .await
+            .unwrap());
+        assert_eq!(r["total"], 2);
+        let solo = ["suelto".to_string()];
+        let r = v(mcp
+            .buscar_mensajes_json(None, "r", Some(&solo), None, None)
+            .await
+            .unwrap());
+        assert_eq!(r["total"], 1);
+        assert_eq!(r["revisados_por_canal"].as_array().unwrap().len(), 1);
+        let mal = ["no-existe".to_string()];
+        assert!(mcp
+            .buscar_mensajes_json(None, "r", Some(&mal), None, None)
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn buscar_mensajes_filtra_por_autor() {
+        let (_d, mcp, _s) = mcp_con_servidor(TODO, true).await;
+        // «e» aparece en mensajes de ana y de beto; con autor solo salen los suyos.
+        let todos = v(mcp
+            .buscar_mensajes_json(None, "e", None, None, None)
+            .await
+            .unwrap());
+        assert_eq!(todos["total"], 4);
+        let ana = v(mcp
+            .buscar_mensajes_json(None, "e", None, Some("ANA"), None)
+            .await
+            .unwrap());
+        assert_eq!(ana["total"], 2);
+        for c in ana["coincidencias"].as_array().unwrap() {
+            assert_eq!(c["autor"]["nombre"], "ana");
+        }
+        let por_id = v(mcp
+            .buscar_mensajes_json(None, "e", None, Some("1002"), None)
+            .await
+            .unwrap());
+        assert_eq!(por_id["total"], 2);
+        assert_eq!(por_id["coincidencias"][0]["autor"]["id"], "1002");
+    }
+
+    #[tokio::test]
+    async fn buscar_mensajes_sin_resultados_y_con_limite() {
+        let (_d, mcp, _s) = mcp_con_servidor(TODO, true).await;
+        let r = v(mcp
+            .buscar_mensajes_json(None, "zzzz", None, None, None)
+            .await
+            .unwrap());
+        assert_eq!(r["total"], 0);
+        assert!(r["coincidencias"].as_array().unwrap().is_empty());
+        // Aun sin resultados se informa de lo revisado.
+        assert_eq!(r["revisados_por_canal"][0]["revisados"], 2);
+
+        // Con límite 1 solo se revisa el mensaje más reciente de cada canal.
+        let r = v(mcp
+            .buscar_mensajes_json(None, "r", None, None, Some(1))
+            .await
+            .unwrap());
+        assert_eq!(r["revisados_por_canal"][0]["revisados"], 1);
+        assert_eq!(r["revisados_por_canal"][1]["revisados"], 1);
+        // Lo más nuevo de #general es «segundo» (sin «r») y de #suelto «nada de nada».
+        assert_eq!(r["total"], 0);
+        // 0 sube a 1 y un límite enorme se recorta (aquí solo hay 2 por canal).
+        let r = v(mcp
+            .buscar_mensajes_json(None, "r", None, None, Some(0))
+            .await
+            .unwrap());
+        assert_eq!(r["revisados_por_canal"][0]["revisados"], 1);
+        let r = v(mcp
+            .buscar_mensajes_json(None, "r", None, None, Some(9999))
+            .await
+            .unwrap());
+        assert_eq!(r["revisados_por_canal"][0]["revisados"], 2);
+
+        // Texto vacío y sin servidor activo.
+        assert!(mcp
+            .buscar_mensajes_json(None, "  ", None, None, None)
+            .await
+            .is_err());
+    }
+
+    #[test]
+    fn plegar_y_fragmento() {
+        assert_eq!(plegar("  CanciÓn Ñu "), "cancion ñu");
+        let largo = format!("{} Árbol {}", "x".repeat(300), "y".repeat(300));
+        let f = fragmento_de(&largo, "arbol").unwrap();
+        assert!(f.starts_with('…') && f.ends_with('…'));
+        assert!(f.contains("Árbol"));
+        assert!(f.chars().count() <= FRAGMENTO_MAX + 2);
+        assert!(fragmento_de("nada", "zzz").is_none());
+    }
+
+    #[tokio::test]
     async fn guild_id_explicito_funciona_sin_servidor_activo() {
         let (_d, mcp, _s) = mcp_con_servidor(TODO, false).await;
         let roles = v(mcp.listar_roles_json(Some("555")).await.unwrap());
@@ -2946,6 +3431,8 @@ mod tests {
             mcp.ajustes_servidor_json(None).await,
             mcp.registro_auditoria_json(None).await,
             mcp.leer_mensajes_json(None, "11", None).await,
+            mcp.buscar_mensajes_json(None, "hola", None, None, None)
+                .await,
             mcp.listar_baneos_json(None).await,
             mcp.listar_invitaciones_json(None).await,
             mcp.listar_webhooks_json(None).await,
@@ -3136,6 +3623,133 @@ mod tests {
     fn snowflake_hace_dias(dias: i64) -> String {
         let ms = chrono::Utc::now().timestamp_millis() - dias * 86_400_000;
         (((ms - 1_420_070_400_000) as u64) << 22).to_string()
+    }
+
+    fn avisar_a(user: &str, motivo: &str, dm: Option<bool>) -> AvisarParams {
+        AvisarParams {
+            guild_id: None,
+            user_id: user.into(),
+            motivo: motivo.into(),
+            mensaje_id: None,
+            dm,
+        }
+    }
+
+    #[tokio::test]
+    async fn avisar_guarda_cuenta_y_envia_dm_con_el_numero() {
+        let (_d, mcp, s) = mcp_con_servidor(TODO, true).await;
+        aceptar(
+            &s,
+            "POST",
+            "/api/v10/users/@me/channels",
+            200,
+            Some(json!({"id": "4242", "type": 1})),
+            2,
+        )
+        .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/channels/4242/messages"))
+            .and(wiremock::matchers::body_string_contains(
+                "Warnings so far: 2",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mensaje_discord("902", "4242")))
+            .expect(1)
+            .mount(&s)
+            .await;
+        aceptar(
+            &s,
+            "POST",
+            "/api/v10/channels/4242/messages",
+            200,
+            Some(mensaje_discord("901", "4242")),
+            1,
+        )
+        .await;
+        let r = v(mcp
+            .avisar_json(&avisar_a("1001", "spam", None))
+            .await
+            .unwrap());
+        assert_eq!(r["total_avisos"], 1);
+        assert_eq!(r["dm"]["enviado"], true);
+        let mut p = avisar_a("1001", "insultos", None);
+        p.mensaje_id = Some("301".into());
+        let r = v(mcp.avisar_json(&p).await.unwrap());
+        assert_eq!(r["total_avisos"], 2);
+        assert_eq!(r["aviso"]["mensaje_id"], "301");
+        assert_eq!(r["aviso"]["autor"], "123456789");
+        assert_eq!(
+            crate::db::contar_avisos(&mcp.pool, "555", "1001")
+                .await
+                .unwrap(),
+            2
+        );
+        assert!(mcp
+            .avisar_json(&avisar_a("1001", "  ", None))
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn avisar_con_dm_fallido_guarda_el_aviso_y_lo_informa() {
+        let (_d, mcp, s) = mcp_con_servidor(TODO, true).await;
+        aceptar(&s, "POST", "/api/v10/users/@me/channels", 403, None, 1).await;
+        let r = v(mcp
+            .avisar_json(&avisar_a("1002", "spam", Some(true)))
+            .await
+            .unwrap());
+        assert_eq!(r["total_avisos"], 1);
+        assert_eq!(r["dm"]["enviado"], false);
+        assert!(r["dm"]["error"].is_string());
+        assert_eq!(
+            crate::db::contar_avisos(&mcp.pool, "555", "1002")
+                .await
+                .unwrap(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn avisar_sin_dm_y_por_nombre_y_listar_avisos() {
+        let (_d, mcp, _s) = mcp_con_servidor(TODO, true).await;
+        // Por nombre de usuario y por apodo; sin DM no se llama a Discord para ello.
+        let r = v(mcp
+            .avisar_json(&avisar_a("Anita", "a", Some(false)))
+            .await
+            .unwrap());
+        assert_eq!(r["dm"]["omitido"], true);
+        mcp.ejecutar_accion(
+            "avisar",
+            json!({"user_id": "ana", "motivo": "b", "dm": false}),
+        )
+        .await
+        .unwrap();
+        mcp.ejecutar_accion(
+            "avisar",
+            json!({"user_id": "beto", "motivo": "c", "dm": false}),
+        )
+        .await
+        .unwrap();
+        let e = mcp
+            .avisar_json(&avisar_a("fantasma", "x", Some(false)))
+            .await
+            .unwrap_err();
+        assert!(e.contains("fantasma"), "{e}");
+
+        let l = v(mcp.listar_avisos_json(None, None).await.unwrap());
+        assert_eq!(l["total"], 3);
+        assert_eq!(l["por_usuario"][0]["user_id"], "1001");
+        assert_eq!(l["por_usuario"][0]["avisos"], 2);
+        assert_eq!(l["por_usuario"][1]["avisos"], 1);
+        assert_eq!(l["ultimos"][0]["motivo"], "c");
+        assert_eq!(l["ultimos"].as_array().unwrap().len(), 3);
+
+        let solo = v(mcp.listar_avisos_json(None, Some("Anita")).await.unwrap());
+        assert_eq!(solo["total"], 2);
+        assert_eq!(solo["por_usuario"].as_array().unwrap().len(), 1);
+        let nadie = v(mcp.listar_avisos_json(None, Some("1002")).await.unwrap());
+        assert_eq!(nadie["total"], 1);
+        let otro = v(mcp.listar_avisos_json(Some("999"), None).await.unwrap());
+        assert_eq!(otro["total"], 0);
     }
 
     #[tokio::test]
@@ -3632,6 +4246,7 @@ mod tests {
             let ok = PERMITIDAS.contains(n)
                 || *n == "listar_servidores"
                 || *n == "leer_mensajes"
+                || *n == "buscar_mensajes"
                 || n.starts_with("listar_")
                 || n.starts_with("info_");
             assert!(ok, "{n} no es una herramienta de lectura conocida");
