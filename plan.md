@@ -289,7 +289,7 @@ La función principal de ARGUS: montar servidores enormes en minutos. Dentro de 
 - [x] Prompt del asistente y respuesta con propuesta
   criterio: función pura `prompt_asistente(modo, servidor, plan, idioma, mensaje)` que explica al agente qué es ARGUS, el servidor activo (id y nombre; debe llamar a `elegir_servidor` con ese id antes de nada), el plan del servidor completo, que no puede modificar nada y que contesta en el idioma de la UI; en modo Execute le pide terminar su respuesta con un bloque ```json con una `Propuesta` (formato y nombres de herramientas documentados en el prompt, con un ejemplo de rol + categoría + canal con topic + permiso por nombre); el backend extrae ese bloque, lo valida con `validar_propuesta` y lo emite como evento `asistente-propuesta` (o un error legible si no viene o no es válido); tests del prompt en los dos modos y de la extracción con respuestas reales de ejemplo (bloque válido, ausente y con JSON roto)
 
-- [ ] Plan y conversación guardados por servidor
+- [x] Plan y conversación guardados por servidor
   criterio: migración `005_asistente.sql` con una tabla del plan (bot_id, guild_id, contenido, updated_at) y otra de la conversación (bot_id, guild_id, agente, modelo, session_id, mensajes JSON, updated_at); comandos `leer_plan_servidor`, `guardar_plan_servidor`, `leer_conversacion`, `nueva_conversacion`; la conversación guarda el id de sesión para reanudar con `--resume`/`--session` y se descarta si cambia el agente; tests de Rust de guardar/leer y de que cada servidor tiene lo suyo
 
 - [ ] Sección AI Assistant en la interfaz
