@@ -329,6 +329,35 @@ Verificación manual (en tu servidor de pruebas):
 - Responder a un mensaje del bot sin mencionarlo: también responde. Un mensaje normal o de otro bot: no responde.
 - Desactivar el interruptor: deja de responder. Cambiar a claude/sonnet: responde con ese modelo.
 
+## FASE 12 — Órdenes desde Discord y respuestas solo a ciertos usuarios
+Dos opciones nuevas por servidor en la pestaña «Discord replies». (1) **Responder solo a** ciertos miembros (vacío = a todos, como ahora). (2) **Órdenes desde Discord** (desactivado por defecto): cuando un usuario autorizado le pide al bot un cambio en el servidor, el modelo que conversa (que sigue **sin herramientas**) se la pasa al **asistente constructor** de la FASE 10, que prepara una propuesta con su propio agente y modelo; el bot la muestra en Discord y, si el mismo usuario responde «sí», ARGUS la aplica con la misma lógica que el botón Apply (`con_servidor` + `ejecutar_propuesta`) y cuenta el resultado. Solo pueden dar órdenes los usuarios de una lista explícita y obligatoria: nunca cualquiera del servidor. Toda la UI nueva con `t()`. Los tests usan el Discord falso y agentes falsos.
+
+- [ ] Ajustes de usuarios y órdenes por servidor
+  criterio: `GuildSettings` (db.rs y tipos TS) añade con `#[serde(default)]`: `chat_usuarios` (IDs a los que responde; vacío = todos), `chat_ordenes` (bool, por defecto false), `chat_ordenes_usuarios` (IDs que pueden dar órdenes), `chat_ordenes_confirmar` (bool, por defecto true), `ordenes_agente` (por defecto "claude") y `ordenes_modelo` (por defecto "sonnet"); una función `ordenes_activas(ajustes, autor)` devuelve true solo si `chat_ordenes` está activo y el autor está en `chat_ordenes_usuarios` (con la lista vacía, nunca); tests de Rust de valores por defecto, de una configuración antigua sin estos campos y de `ordenes_activas`
+
+- [ ] Responder solo a ciertos usuarios
+  criterio: la función que decide si responder (chat.rs) no responde a autores que no están en `chat_usuarios` cuando la lista no está vacía, y con la lista vacía se comporta como antes; tests de los dos casos
+
+- [ ] Detectar una orden en la respuesta del chat (funciones puras)
+  criterio: el prompt del chat, solo cuando `ordenes_activas` es true para el autor, explica que si el usuario pide un cambio en el servidor (crear, editar o borrar canales, categorías, roles o permisos, dar roles…) debe contestar brevemente y terminar con una línea exacta `ORDEN: <la petición del usuario, completa y en una línea>`; si no es true, el prompt dice que no puede hacer cambios y nunca debe escribir esa línea; una función pura separa el texto visible y la orden (la línea `ORDEN:` nunca se publica en Discord) y la descarta si el autor no tiene `ordenes_activas` (defensa aunque el modelo la escriba); tests del prompt en los dos casos y del análisis (con orden, sin orden, orden de un autor no autorizado, orden en medio del texto)
+
+- [ ] Preparar la propuesta de una orden
+  criterio: con una orden detectada, el bot responde en el canal con un aviso («Preparando la propuesta…») y lanza el asistente constructor de `asistente.rs` en modo Execute con `ordenes_agente`/`ordenes_modelo`, el plan del servidor guardado y la orden como mensaje (solo herramientas de lectura, igual que en la app); extrae y valida la propuesta; si es válida publica, como respuesta al mensaje del usuario, el resumen y la lista de cambios agrupada (máximo ~1800 caracteres; si hay más: «…y N cambios más»), y si `chat_ordenes_confirmar` está activo añade «Responde **sí** en los próximos 5 minutos para aplicarla»; si no es válida o el agente falla, un mensaje breve con el motivo traducido; un solo constructor a la vez por servidor; todo queda en Logs; tests con el Discord falso y un agente constructor falso (script que imprime una propuesta)
+
+- [ ] Confirmar y aplicar desde Discord
+  criterio: las propuestas pendientes se guardan en memoria por (servidor, canal, autor) con caducidad de 5 minutos; un mensaje posterior del **mismo autor** en ese canal que responda a la propuesta o diga «sí», «si», «yes», «ok» o «aplicar» la aplica con `con_servidor` + `ejecutar_propuesta` (misma lógica que Apply) y publica el resultado («Hecho: N cambios, M con error» y los errores); «no» o «cancelar» la descartan; el «sí» de otra persona, una propuesta caducada o una ya aplicada no hacen nada; con `chat_ordenes_confirmar` desactivado se aplica directamente tras prepararla; mientras se aplica, el bot no acepta otra orden en ese servidor; tests con el Discord falso: aplicar con el sí del autor, ignorar el sí de otro, caducidad, cancelar y aplicar sin confirmación
+
+- [ ] Opciones en la interfaz
+  criterio: en la pestaña «Discord replies»: «Reply only to» con un selector múltiple de miembros del servidor (buscador por nombre, chips con avatar y nombre; vacío = todos); un bloque «Orders from Discord» con el interruptor (desactivado y con una explicación mientras no haya usuarios autorizados), el selector múltiple de usuarios que pueden dar órdenes, «Ask for confirmation before applying» (activado por defecto), y agente y modelo del constructor (solo los instalados; por defecto claude/sonnet); un aviso de que las órdenes modifican el servidor de verdad y quedan en Logs; todo con `t()`; `npm run i18n:check` y `npm run build` pasan
+
+- [ ] Documentación
+  criterio: docs/ASISTENTE.md (en inglés) explica «Reply only to» y «Orders from Discord»: quién puede dar órdenes, el flujo con confirmación y sin ella, que el modelo que conversa sigue sin herramientas y que la propuesta la prepara el constructor y la aplica ARGUS, y un ejemplo («@Bot crea un canal de voz llamado Reuniones en Comunidad» → propuesta → «sí» → hecho); README.md y README.es.md lo mencionan en «What you can do» / «Qué puedes hacer»
+
+Verificación manual (en tu servidor de pruebas, con ARGUS abierto y el bot encendido):
+- «Reply only to» contigo: el bot te responde a ti y no a otra cuenta.
+- Órdenes activadas solo para ti: «@Bot crea un canal llamado jorge en Comunidad» → propuesta → «sí» → el canal aparece. Otra cuenta pide lo mismo: el bot dice que no puede.
+- Sin confirmación: la orden se aplica directamente.
+
 ## Después del MVP (sin criterios todavía: se detallan al empezar cada bloque)
 - Plantillas: esquema, vista de plantillas, vista previa en árbol, aplicador ordenado (roles → categorías → canales → overwrites), validación de permisos, crear servidor nuevo desde plantilla.
 - Personalidad del bot (lo básico está en la FASE 11): memoria larga por canal, modo observador, comandos slash, proveedores LLM sin CLI (Ollama / compatible OpenAI).
