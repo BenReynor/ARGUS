@@ -5,10 +5,11 @@ import { BookOpen, Check, CircleDashed, FilePlus, Download, Hammer, Loader2, Squ
 import { useActiveGuildId, useShowNotification } from '../store/useStore';
 import {
   listarAgentesIa, enviarAlAsistente, leerPlanServidor, guardarPlanServidor, leerConversacion,
-  guardarConversacion, nuevaConversacion, aplicarPropuesta, cancelarAsistente, resumirPlan, construirDesdePlan, compararPlan, onAsistentePlan,
+  guardarConversacion, nuevaConversacion, aplicarPropuesta, listarAvisosRecientes, listMembers,
+  type TipoAsistente, cancelarAsistente, resumirPlan, construirDesdePlan, compararPlan, onAsistentePlan,
   onAsistenteEvento, onAsistentePropuesta, onAsistenteAccion, onAsistenteResumen,
 } from '../api/tauri';
-import type { AccionPropuesta, AgenteIa, AvanceAccion, CambiosPlan, EstadoAccion, EventoPropuesta, ResultadoConstruccion, ResumenPlan, ResumenPropuesta } from '../types';
+import type { AccionPropuesta, AgenteIa, AvanceAccion, AvisoReciente, Member, CambiosPlan, EstadoAccion, EventoPropuesta, ResultadoConstruccion, ResumenPlan, ResumenPropuesta } from '../types';
 import { Badge, Button, Cargando, EstadoVacio, ErrorPanel, Input, Select } from './ui';
 import { t } from '../i18n';
 import { RespuestasDiscord } from './RespuestasDiscord';
@@ -57,9 +58,43 @@ const ordenar = (acciones: AccionPropuesta[]) =>
 
 const esErrorSinSesion = (m: string) => m.startsWith(t('The AI agent is not signed in. Sign in with its command line and try again'));
 
-const ChatAsistente: React.FC = () => {
+const LIMITE_POR_DEFECTO = 100;
+
+/** Primer valor de texto no vacío de los argumentos de una acción, probando varias claves. */
+const argTexto = (args: unknown, claves: string[]): string => {
+  const o = (args ?? {}) as Record<string, unknown>;
+  for (const k of claves) {
+    const v = o[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+    if (typeof v === 'number') return String(v);
+  }
+  return '';
+};
+
+const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
+  const moderacion = tipo === 'moderacion';
   const guildId = useActiveGuildId();
   const showNotification = useShowNotification();
+
+  const [miembros, setMiembros] = useState<Member[]>([]);
+  const [avisos, setAvisos] = useState<AvisoReciente[]>([]);
+  const [limite, setLimite] = useState(LIMITE_POR_DEFECTO);
+
+  const cargarAvisos = useCallback(async (id: string) => {
+    try { setAvisos(await listarAvisosRecientes(id)); } catch { setAvisos([]); }
+  }, []);
+  useEffect(() => {
+    if (!moderacion || !guildId) return;
+    let vigente = true;
+    listMembers(guildId).then((m) => { if (vigente) setMiembros(m); }).catch(() => { if (vigente) setMiembros([]); });
+    void cargarAvisos(guildId);
+    return () => { vigente = false; };
+  }, [moderacion, guildId, cargarAvisos]);
+
+  const nombreMiembro = (idONombre: string) => {
+    const m = miembros.find((x) => x.user_id === idONombre);
+    return m ? (m.nickname || m.username) : idONombre;
+  };
 
   const [agentes, setAgentes] = useState<AgenteIa[] | null>(null);
   const [errorAgentes, setErrorAgentes] = useState<string | null>(null);
@@ -140,23 +175,28 @@ const ChatAsistente: React.FC = () => {
     setEstadoGuardado('idle');
     (async () => {
       try {
-        const [p, c] = await Promise.all([leerPlanServidor(guildId), leerConversacion(guildId)]);
+        const [p, c] = await Promise.all([
+          moderacion ? Promise.resolve('') : leerPlanServidor(guildId),
+          leerConversacion(guildId, undefined, tipo),
+        ]);
         if (!vigente) return;
-        planCargado.current = { guildId, contenido: p };
-        setPlan(p);
+        if (!moderacion) {
+          planCargado.current = { guildId, contenido: p };
+          setPlan(p);
+        }
         if (c) {
           setMensajes(comoMensajes(c.mensajes));
           setAgente(c.agente);
           setModelo(c.modelo);
         }
       } catch (e) {
-        if (vigente) setErrorServidor(mensajeError(e, t('Could not load the plan and the conversation')));
+        if (vigente) setErrorServidor(mensajeError(e, moderacion ? t('Could not load the conversation') : t('Could not load the plan and the conversation')));
       } finally {
         if (vigente) setCargandoServidor(false);
       }
     })();
     return () => { vigente = false; };
-  }, [guildId]);
+  }, [guildId, moderacion, tipo]);
 
   const volcarPlan = useCallback(async (id: string, contenido: string) => {
     setEstadoGuardado('guardando');
@@ -240,7 +280,8 @@ const ChatAsistente: React.FC = () => {
       { id: nuevoId(), rol: 'assistant', texto: '', herramientas: [] },
     ]);
     try {
-      await enviarAlAsistente(contenido, agente, modelo, modo, plan);
+      if (moderacion) await enviarAlAsistente(contenido, agente, modelo, modo, undefined, tipo, limite);
+      else await enviarAlAsistente(contenido, agente, modelo, modo, plan);
     } catch (e) {
       const msg = mensajeError(e, t('The assistant could not answer'));
       if (esErrorSinSesion(msg)) setSinSesion(true);
@@ -257,7 +298,7 @@ const ChatAsistente: React.FC = () => {
   useEffect(() => {
     if (turnoPrevio.current && !enviando) {
       const r = refs.current;
-      if (r.guildId && r.agente) void guardarConversacion(r.guildId, r.agente, r.modelo, r.mensajes).catch(() => {});
+      if (r.guildId && r.agente) void guardarConversacion(r.guildId, r.agente, r.modelo, r.mensajes, tipo).catch(() => {});
     }
     turnoPrevio.current = enviando;
   }, [enviando]);
@@ -351,7 +392,7 @@ const ChatAsistente: React.FC = () => {
 
   const reiniciar = async (id: string) => {
     try {
-      await nuevaConversacion(id);
+      await nuevaConversacion(id, tipo);
       setMensajes([]);
       setPropuesta(null);
       setResumen(null);
@@ -385,6 +426,7 @@ const ChatAsistente: React.FC = () => {
       setErrorAplicar(mensajeError(e, t('Could not apply the proposal')));
     } finally {
       setAplicando(false);
+      if (moderacion && guildId) void cargarAvisos(guildId);
     }
   };
 
@@ -458,6 +500,7 @@ const ChatAsistente: React.FC = () => {
   return (
     <div className="vista vista--llena asistente">
       <div className="asistente__paneles" ref={contenedor}>
+        {!moderacion && (<>
         <section className="asistente__panel" style={{ flexBasis: `${ancho}%` }} aria-label={t('Server plan')}>
           <header className="asistente__cabecera">
             <h3>{t('Server plan')}</h3>
@@ -537,6 +580,7 @@ const ChatAsistente: React.FC = () => {
             if (e.key === 'ArrowRight') setAncho((a) => Math.min(PANEL_MAX, a + 2));
           }}
         />
+        </>)}
 
         <section className="asistente__panel asistente__panel--chat" aria-label={t('Chat')}>
           <header className="asistente__cabecera asistente__cabecera--chat">
@@ -553,9 +597,23 @@ const ChatAsistente: React.FC = () => {
             )}
             <div className="asistente__modo" role="group" aria-label={t('Mode')}>
               <button type="button" className={modo === 'read' ? 'activo' : ''} aria-pressed={modo === 'read'} disabled={enviando} onClick={() => setModo('read')}>{t('Read')}</button>
-              <button type="button" className={modo === 'plan' ? 'activo' : ''} aria-pressed={modo === 'plan'} disabled={enviando} onClick={() => setModo('plan')}>{t('Plan')}</button>
+              {!moderacion && <button type="button" className={modo === 'plan' ? 'activo' : ''} aria-pressed={modo === 'plan'} disabled={enviando} onClick={() => setModo('plan')}>{t('Plan')}</button>}
               <button type="button" className={modo === 'execute' ? 'activo' : ''} aria-pressed={modo === 'execute'} disabled={enviando} onClick={() => setModo('execute')}>{t('Execute')}</button>
             </div>
+            {moderacion && (
+              <label className="asistente__limite">
+                {t('Messages to read per channel')}
+                <input
+                  className="ui-control"
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={limite}
+                  disabled={enviando}
+                  onChange={(e) => setLimite(Math.max(1, Math.min(1000, Math.floor(Number(e.target.value)) || LIMITE_POR_DEFECTO)))}
+                />
+              </label>
+            )}
             <Button variante="ghost" tamano="sm" disabled={enviando || aplicando || !hayMensajes} onClick={() => { void reiniciar(guildId); }}>{t('New conversation')}</Button>
           </header>
 
@@ -563,7 +621,11 @@ const ChatAsistente: React.FC = () => {
             {!hayMensajes && (
               <EstadoVacio
                 titulo={t('Talk to the assistant')}
-                descripcion={modo === 'read'
+                descripcion={moderacion
+                  ? (modo === 'execute'
+                    ? t('Execute mode: ask for a moderation action (warn, mute, kick, ban…). It proposes the actions and you approve them.')
+                    : t('Read mode: ask about members and messages, for example who said something. The assistant cannot change anything.'))
+                  : modo === 'read'
                   ? t('Read mode: ask about your server or your plan. The assistant cannot change anything.')
                   : modo === 'plan'
                     ? t('Plan mode: ask it to write or improve your plan. You review the changes and accept them.')
@@ -655,7 +717,27 @@ const ChatAsistente: React.FC = () => {
                     <span>{t('{done} of {total}', { done: hechas, total })}</span>
                   </div>
                 )}
-                {GRUPOS().map((nombre, g) => {
+                {moderacion && (
+                  <ul>
+                    {accionesOrdenadas.map((a, i) => {
+                      const quien = argTexto(a.args, ['user_id', 'usuario', 'miembro', 'user']);
+                      const motivo = argTexto(a.args, ['motivo', 'reason', 'razon']);
+                      return (
+                        <FilaAccion
+                          key={i}
+                          texto={a.descripcion || a.herramienta}
+                          detalle={[
+                            quien ? t('Member: {name}', { name: nombreMiembro(quien) }) : '',
+                            motivo ? t('Reason: {reason}', { reason: motivo }) : '',
+                          ].filter(Boolean).join(' · ')}
+                          avance={avances[i]}
+                          activa={aplicando && i === hechas}
+                        />
+                      );
+                    })}
+                  </ul>
+                )}
+                {!moderacion && GRUPOS().map((nombre, g) => {
                   const del = accionesOrdenadas.map((a, i) => ({ a, i })).filter(({ a }) => grupoDe(a) === g);
                   if (del.length === 0) return null;
                   return (
@@ -714,6 +796,28 @@ const ChatAsistente: React.FC = () => {
             )}
           </form>
         </section>
+
+        {moderacion && (
+          <aside className="asistente__panel asistente__panel--avisos" aria-label={t('Recent warnings')}>
+            <header className="asistente__cabecera">
+              <h3>{t('Recent warnings')}</h3>
+              <Button variante="ghost" tamano="sm" onClick={() => { void cargarAvisos(guildId); }}>{t('Refresh')}</Button>
+            </header>
+            {avisos.length === 0 ? (
+              <p>{t('No warnings in this server yet.')}</p>
+            ) : (
+              <ul className="asistente__avisos">
+                {avisos.map((a) => (
+                  <li key={a.user_id}>
+                    <strong>{nombreMiembro(a.user_id)}</strong>
+                    <span>{t('{count} warnings', { count: a.total })}</span>
+                    <small>{t('Last reason: {reason}', { reason: a.motivo })}</small>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </aside>
+        )}
       </div>
     </div>
   );
@@ -731,7 +835,7 @@ export function textoVisible(texto: string): string {
     .trim();
 }
 
-const FilaAccion: React.FC<{ texto: string; avance?: AvanceAccion; activa: boolean }> = ({ texto, avance, activa }) => {
+const FilaAccion: React.FC<{ texto: string; detalle?: string; avance?: AvanceAccion; activa: boolean }> = ({ texto, detalle, avance, activa }) => {
   const estado: EstadoAccion | 'pendiente' = avance ? avance.estado : 'pendiente';
   const etiqueta = { pendiente: t('Pending'), ok: t('Done'), error: t('Error'), omitida: t('Skipped') }[estado];
   return (
@@ -741,6 +845,7 @@ const FilaAccion: React.FC<{ texto: string; avance?: AvanceAccion; activa: boole
       </span>
       <span>
         {texto}
+        {detalle && <small>{detalle}</small>}
         {avance && estado !== 'ok' && avance.mensaje && <small>{avance.mensaje}</small>}
       </span>
     </li>
@@ -748,16 +853,16 @@ const FilaAccion: React.FC<{ texto: string; avance?: AvanceAccion; activa: boole
 };
 
 export const AsistenteView: React.FC = () => {
-  type Pestana = 'chat' | 'contexto' | 'discord';
-  const [pestana, setPestana] = useState<Pestana>('chat');
+  type Pestana = 'build' | 'moderacion' | 'contexto' | 'discord';
+  const [pestana, setPestana] = useState<Pestana>('build');
   return (
     <div className="vista vista--llena" style={{ padding: 0 }}>
       <div className="pestanas" role="tablist" aria-label={t('Assistant sections')} style={{ margin: 0, padding: '0 var(--sp-3)' }}>
-        {([['chat', t('Chat')], ['contexto', t('Context & personality')], ['discord', t('Discord replies')]] as [Pestana, string][]).map(([id, etiqueta]) => (
+        {([['build', t('Build')], ['moderacion', t('Moderation')], ['contexto', t('Context & personality')], ['discord', t('Discord replies')]] as [Pestana, string][]).map(([id, etiqueta]) => (
           <button key={id} role="tab" aria-selected={pestana === id} className="pestanas__tab" onClick={() => setPestana(id)}>{etiqueta}</button>
         ))}
       </div>
-      {pestana === 'chat' ? <ChatAsistente /> : pestana === 'contexto' ? <ContextoPersonalidad /> : <RespuestasDiscord onAbrirPersonalidad={() => setPestana('contexto')} />}
+      {pestana === 'build' ? <ChatAsistente key="construccion" tipo="construccion" /> : pestana === 'moderacion' ? <ChatAsistente key="moderacion" tipo="moderacion" /> : pestana === 'contexto' ? <ContextoPersonalidad /> : <RespuestasDiscord onAbrirPersonalidad={() => setPestana('contexto')} />}
     </div>
   );
 };

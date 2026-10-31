@@ -72,3 +72,10 @@
 .asistente__entrada { display: flex; gap: var(--sp-2); align-items: flex-end; }
 .asistente__entrada textarea { flex: 1; height: auto; resize: vertical; font: inherit; padding: var(--sp-2) var(--sp-3); }
 .asistente__instalar { text-align: left; margin: var(--sp-2) 0; }
+
+.asistente__panel--avisos { flex: 0 0 280px; overflow: auto; margin-left: var(--sp-3); }
+.asistente__avisos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.asistente__avisos li { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-2); border: var(--border-w) solid var(--border); border-radius: var(--radius-sm); }
+.asistente__avisos small { color: var(--text-3); }
+.asistente__limite { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-2); }
+.asistente__limite input { width: 5em; }

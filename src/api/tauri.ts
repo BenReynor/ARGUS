@@ -3,7 +3,7 @@ import { listen, Event } from '@tauri-apps/api/event';
 
 import type {
   BotConfig, BotRegistrado, BotStatus, Config, Guild, GuildSettings, Channel, Member, Role, ServerMap,
-  AgenteIa, Propuesta, EventoPropuesta, ResumenPlan, ResultadoConstruccion, CambiosPlan, EventoPlan, AvanceAccion, ResumenPropuesta, EventoAsistente, ConversacionAsistente,
+  AgenteIa, AvisoReciente, Propuesta, EventoPropuesta, ResumenPlan, ResultadoConstruccion, CambiosPlan, EventoPlan, AvanceAccion, ResumenPropuesta, EventoAsistente, ConversacionAsistente,
 } from '../types';
 
 export type { BotStatus, Config, Guild, Channel, Member, Role, ServerMap };
@@ -158,6 +158,7 @@ export const deleteWebhook = (guildId: string, webhookId: string) => invoke<stri
 export const listarAgentesIa = () => invoke<AgenteIa[]>('listar_agentes_ia');
 export const enviarAlAsistente = (mensaje: string, agente: string, modelo: string, modo: 'read' | 'plan' | 'execute', plan?: string, tipo?: TipoAsistente, limitePorCanal?: number) =>
   invoke<string | null>('enviar_al_asistente', { mensaje, agente, modelo, modo, plan, tipo, limitePorCanal });
+export const listarAvisosRecientes = (guildId: string) => invoke<AvisoReciente[]>('listar_avisos_recientes', { guildId });
 export const leerPlanServidor = (guildId: string) => invoke<string>('leer_plan_servidor', { guildId });
 export const leerContextoServidor = (guildId: string) => invoke<string>('leer_contexto_servidor', { guildId });
 export const guardarContextoServidor = (guildId: string, contenido: string) =>

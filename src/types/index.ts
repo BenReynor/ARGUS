@@ -235,6 +235,7 @@ export interface EntradaAuditoria {
 }
 
 // Asistente IA (sincronizado con asistente.rs, propuesta.rs y db.rs)
+export interface AvisoReciente { user_id: string; total: number; motivo: string; fecha: string }
 export interface AgenteIa { agente: string; ruta: string; modelos: string[] }
 export interface AccionPropuesta { herramienta: string; args: unknown; descripcion: string }
 export interface Propuesta { resumen: string; acciones: AccionPropuesta[] }

@@ -1620,6 +1620,60 @@ async fn bot_y_pool(
     Ok((bot.id, pool))
 }
 
+/// Aviso reciente de un miembro, con su recuento en el servidor.
+#[derive(Debug, Clone, Serialize)]
+pub struct AvisoReciente {
+    pub user_id: String,
+    pub total: i64,
+    pub motivo: String,
+    pub fecha: String,
+}
+
+/// Avisos recientes del servidor: un registro por usuario (último motivo y
+/// cuántos avisos lleva), del más reciente al más antiguo.
+#[tauri::command]
+pub async fn listar_avisos_recientes(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    guild_id: String,
+) -> Result<Vec<AvisoReciente>, String> {
+    let r = async {
+        let (_, pool) = bot_y_pool(&app, &state).await?;
+        avisos_recientes(&pool, &guild_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    .await;
+    localizar_error(&state, r)
+}
+
+pub async fn avisos_recientes(
+    pool: &sqlx::SqlitePool,
+    guild_id: &str,
+) -> anyhow::Result<Vec<AvisoReciente>> {
+    let recuento: HashMap<String, i64> = crate::db::recuento_avisos(pool, guild_id, None)
+        .await?
+        .into_iter()
+        .collect();
+    let mut vistos = std::collections::HashSet::new();
+    let mut salida = Vec::new();
+    for a in crate::db::ultimos_avisos(pool, guild_id, None, 200).await? {
+        if !vistos.insert(a.user_id.clone()) {
+            continue;
+        }
+        salida.push(AvisoReciente {
+            total: recuento.get(&a.user_id).copied().unwrap_or(1),
+            user_id: a.user_id,
+            motivo: a.motivo,
+            fecha: a.fecha,
+        });
+        if salida.len() >= 20 {
+            break;
+        }
+    }
+    Ok(salida)
+}
+
 /// Plan (Markdown) del servidor para el bot activo; vacío si no hay.
 #[tauri::command]
 pub async fn leer_plan_servidor(
