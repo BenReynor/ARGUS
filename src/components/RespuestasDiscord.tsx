@@ -11,7 +11,7 @@ const TIPOS_TEXTO = [0, 5];
 const CONTEXTO_MAX = 30;
 const mensajeError = (e: unknown, defecto: string) => (typeof e === 'string' ? e : e instanceof Error ? e.message : defecto);
 /** Los modelos gratis de opencode: el proveedor `opencode/` o los que terminan en `-free`. */
-const esGratis = (agente: string, modelo: string) => agente === 'opencode' && (modelo.startsWith('opencode/') || modelo.endsWith('-free'));
+const esGratis = (agente: string, modelo: string) => agente === 'opencode' && (modelo.startsWith('opencode/') || modelo.endsWith('-free') || modelo.endsWith(':free'));
 
 export const RespuestasDiscord: React.FC = () => {
   const guildId = useActiveGuildId();
@@ -35,7 +35,10 @@ export const RespuestasDiscord: React.FC = () => {
         const [a, s, c] = await Promise.all([listarAgentesIa(), getGuildSettings(guildId), listChannels(guildId)]);
         if (!vigente) return;
         setAgentes(a);
-        setAjustes(s);
+        // Sin modelo guardado, el más barato del agente: las respuestas en
+        // Discord son para conversar sin gastar (el desplegable mostraba opus).
+        const agente = a.find((x) => x.agente === s.chat_agente);
+        setAjustes(s.chat_modelo ? s : { ...s, chat_modelo: modeloMasBarato(s.chat_agente, agente?.modelos ?? []) });
         setCanales(c.filter((x) => TIPOS_TEXTO.includes(x.channel_type)).sort((x, y) => x.position - y.position));
       } catch (e) {
         if (vigente) setError(mensajeError(e, t('Could not load the Discord reply settings')));
@@ -62,7 +65,7 @@ export const RespuestasDiscord: React.FC = () => {
   const cambiarAgente = (nombre: string) => {
     const a = agentes.find((x) => x.agente === nombre);
     const lista = a?.modelos ?? [];
-    cambiar({ chat_agente: nombre as GuildSettings['chat_agente'], chat_modelo: lista.find((m) => esGratis(nombre, m)) ?? lista[0] ?? '' });
+    cambiar({ chat_agente: nombre as GuildSettings['chat_agente'], chat_modelo: modeloMasBarato(nombre, lista) });
   };
   const alternarCanal = (id: string) => cambiar({
     chat_canales: ajustes.chat_canales.includes(id) ? ajustes.chat_canales.filter((x) => x !== id) : [...ajustes.chat_canales, id],
@@ -172,3 +175,11 @@ export const RespuestasDiscord: React.FC = () => {
     </div>
   );
 };
+
+/** Modelo por defecto para conversar: uno gratis si hay; si no, haiku en claude; si no, el primero. */
+export function modeloMasBarato(agente: string, modelos: string[]): string {
+  return modelos.find((m) => esGratis(agente, m))
+    ?? (agente === 'claude' && modelos.includes('haiku') ? 'haiku' : undefined)
+    ?? modelos[0]
+    ?? '';
+}
