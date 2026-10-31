@@ -347,7 +347,7 @@ Dos opciones nuevas por servidor en la pestaña «Discord replies». (1) **Respo
 - [x] Confirmar y aplicar desde Discord
   criterio: las propuestas pendientes se guardan en memoria por (servidor, canal, autor) con caducidad de 5 minutos; un mensaje posterior del **mismo autor** en ese canal que responda a la propuesta o diga «sí», «si», «yes», «ok» o «aplicar» la aplica con `con_servidor` + `ejecutar_propuesta` (misma lógica que Apply) y publica el resultado («Hecho: N cambios, M con error» y los errores); «no» o «cancelar» la descartan; el «sí» de otra persona, una propuesta caducada o una ya aplicada no hacen nada; con `chat_ordenes_confirmar` desactivado se aplica directamente tras prepararla; mientras se aplica, el bot no acepta otra orden en ese servidor; tests con el Discord falso: aplicar con el sí del autor, ignorar el sí de otro, caducidad, cancelar y aplicar sin confirmación
 
-- [ ] Opciones en la interfaz
+- [x] Opciones en la interfaz
   criterio: en la pestaña «Discord replies»: «Reply only to» con un selector múltiple de miembros del servidor (buscador por nombre, chips con avatar y nombre; vacío = todos); un bloque «Orders from Discord» con el interruptor (desactivado y con una explicación mientras no haya usuarios autorizados), el selector múltiple de usuarios que pueden dar órdenes, «Ask for confirmation before applying» (activado por defecto), y agente y modelo del constructor (solo los instalados; por defecto claude/sonnet); un aviso de que las órdenes modifican el servidor de verdad y quedan en Logs; todo con `t()`; `npm run i18n:check` y `npm run build` pasan
 
 - [ ] Documentación
