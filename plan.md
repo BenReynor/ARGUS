@@ -321,7 +321,7 @@ Cuando alguien menciona al bot (`@Bot …`) o responde a un mensaje del bot en u
 - [x] Configurar la conversación en la interfaz
   criterio: en la sección AI Assistant hay una pestaña o bloque «Discord replies» para el servidor activo con: interruptor activar/desactivar, selector de agente (solo los instalados) y de modelo de ese agente (con los gratis de opencode bien visibles si el catálogo lo indica), personalidad (área de texto con un ejemplo de marcador), canales permitidos (selector múltiple con los canales de texto del servidor; ninguno = todos), espera por usuario y mensajes de contexto; un aviso de que el bot solo responde mientras ARGUS está abierto y de que las conversaciones se envían al proveedor del modelo; todo con `t()`; `npm run i18n:check` y `npm run build` pasan
 
-- [ ] Documentación de la conversación
+- [x] Documentación de la conversación
   criterio: docs/ASISTENTE.md (o un docs/CONVERSACION.md enlazado desde él) explica cómo activar las respuestas en un servidor, elegir agente y modelo (recomendando un modelo gratis de opencode para conversar), escribir la personalidad con un ejemplo, que solo responde a menciones y respuestas al bot, que solo funciona con ARGUS abierto y qué datos salen del PC; README.md y README.es.md lo mencionan en «What you can do» / «Qué puedes hacer»
 
 Verificación manual (en tu servidor de pruebas):
