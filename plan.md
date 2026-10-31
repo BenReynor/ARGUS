@@ -426,7 +426,7 @@ Separar **construir** el servidor de **gestionarlo**. Nueva pestaña **Moderatio
 - [x] Pestaña Moderation en la interfaz
   criterio: la sección AI Assistant pasa a tener las pestañas **Build** (plan + chat de construcción, lo actual), **Moderation**, **Context & personality** y **Discord replies**; Moderation reutiliza el chat (agente, modelo, Read/Execute, Stop, New conversation) con la conversación de moderación, un campo «Messages to read per channel» (por defecto 100), y un panel lateral con los avisos recientes del servidor (usuario, número de avisos, último motivo); las propuestas de moderación muestran el nombre del miembro y el motivo de cada acción; todo con `t()`; `npm run i18n:check` y `npm run build` pasan
 
-- [ ] Órdenes de Discord a construcción o moderación
+- [x] Órdenes de Discord a construcción o moderación
   criterio: el prompt del chat de Discord (FASE 12) distingue dos marcas: `ORDEN[estructura]: …` y `ORDEN[moderacion]: …` (una línea `ORDEN:` sin tipo cuenta como estructura); el análisis devuelve el tipo y la orden se pasa al asistente del tipo correspondiente con su prompt; el resto del flujo (propuesta en Discord, «sí» del mismo autor, aplicar) es el mismo; tests del análisis de las dos marcas y de que una orden de moderación usa el prompt de moderación
 
 - [ ] Documentación de la moderación
