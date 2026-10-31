@@ -58,6 +58,15 @@ pub fn entrada_de(
                 .and_then(|r| r.message_id)
                 .map(|i| i.get()),
         },
+        adjuntos: m
+            .attachments
+            .iter()
+            .map(|a| crate::responder::Adjunto {
+                nombre: a.filename.clone(),
+                url: a.url.clone(),
+                tamano: a.size,
+            })
+            .collect(),
         mensaje_id: m.id.get(),
         guild_id: guild.get(),
         texto: m.content.clone(),
@@ -83,6 +92,7 @@ fn conversador(
     let app = app.clone();
     let pool_aplicar = pool.clone();
     let pool_contexto = pool.clone();
+    let mapas_existentes = mapas.clone();
     let ordenes = ContextoOrdenes {
         ruta_mcp: Arc::new(crate::commands::ruta_del_mcp),
         leer_plan: Arc::new(move |guild| {
@@ -108,6 +118,13 @@ fn conversador(
                     None => String::new(),
                 }
             })
+        }),
+        existentes: Arc::new(move |guild| {
+            let mapas = mapas_existentes.lock().unwrap();
+            mapas
+                .get(&guild.to_string())
+                .map(|m| (m.roles.clone(), m.channels.clone()))
+                .unwrap_or_default()
         }),
         nombres: Arc::new(move |guild| {
             let mapas = mapas.lock().unwrap();
