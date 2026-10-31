@@ -3,6 +3,7 @@
 //! Lee la misma base de datos que la app, así que funciona con la app cerrada.
 //! El token del bot nunca sale de aquí: ni en respuestas, ni en logs.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use rmcp::{
@@ -17,7 +18,9 @@ use sqlx::SqlitePool;
 use crate::commands::{self, sincronizar_guilds, token_del_bot_activo};
 use crate::discord::{DatosCanal, DatosRol};
 use crate::i18n;
-use crate::propuesta::{ordenar_propuesta, EstadoAccion, Nombres, Propuesta, ResultadoAccion};
+use crate::propuesta::{
+    ordenar_propuesta, EstadoAccion, Nombres, Propuesta, ResultadoAccion, ResumenPropuesta,
+};
 use crate::state::{AppState, Channel, Guild, Member, Role};
 
 /// Respuesta de cada herramienta cuando no hay ningún bot activo.
@@ -1559,6 +1562,22 @@ impl ArgusMcp {
         &self,
         propuesta: &Propuesta,
     ) -> Result<Vec<ResultadoAccion>, String> {
+        let cancelar = AtomicBool::new(false);
+        Ok(self
+            .ejecutar_propuesta_con(propuesta, &cancelar, &mut |_, _| {})
+            .await?
+            .resultados)
+    }
+
+    /// Como `ejecutar_propuesta`, avisando de cada acción en cuanto termina
+    /// (`avance(total, resultado)`) y parando antes de la siguiente si `cancelar`
+    /// se activa.
+    pub async fn ejecutar_propuesta_con(
+        &self,
+        propuesta: &Propuesta,
+        cancelar: &AtomicBool,
+        avance: &mut (dyn FnMut(usize, &ResultadoAccion) + Send),
+    ) -> Result<ResumenPropuesta, String> {
         let gid = self.servidor_de(None).await?;
         let roles = commands::leer_roles(&self.state, &gid, self.url())
             .await
@@ -1567,8 +1586,13 @@ impl ArgusMcp {
             .await
             .map_err(|e| self.limpiar(e))?;
         let mut nombres = Nombres::desde(&roles, &canales);
+        let ordenada = ordenar_propuesta(propuesta);
+        let total = ordenada.acciones.len();
         let mut resultados = Vec::new();
-        for (indice, a) in ordenar_propuesta(propuesta).acciones.iter().enumerate() {
+        for (indice, a) in ordenada.acciones.iter().enumerate() {
+            if cancelar.load(Ordering::SeqCst) {
+                break;
+            }
             let (estado, mensaje) = match nombres.resolver_args(&a.herramienta, &a.args) {
                 Err(e) => (EstadoAccion::Omitida, e),
                 Ok(args) => match self.ejecutar_accion(&a.herramienta, args.clone()).await {
@@ -1579,15 +1603,17 @@ impl ArgusMcp {
                     Err(e) => (EstadoAccion::Error, e),
                 },
             };
-            resultados.push(ResultadoAccion {
+            let r = ResultadoAccion {
                 indice,
                 herramienta: a.herramienta.clone(),
                 descripcion: a.descripcion.clone(),
                 estado,
                 mensaje,
-            });
+            };
+            avance(total, &r);
+            resultados.push(r);
         }
-        Ok(resultados)
+        Ok(ResumenPropuesta::de(total, resultados))
     }
 
     async fn despachar_accion(
@@ -4039,6 +4065,246 @@ mod tests {
         // La referencia que no se resuelve se omite, sin tocar Discord.
         assert_eq!(r[3].estado, EstadoAccion::Omitida);
         assert!(r[3].mensaje.contains("«Fantasma»"));
+    }
+
+    /// El Discord falso responde a `GET roles` con los roles de siempre más estos
+    /// (los que la propuesta acaba de crear).
+    async fn roles_con_nuevos(s: &MockServer, nuevos: &[serde_json::Value]) {
+        let mut roles = vec![
+            rol("555", "@everyone", 0, 0),
+            rol("600", "Bot", 5, TODO),
+            rol("700", "Moderadores", 3, 8192),
+        ];
+        roles.extend(nuevos.iter().cloned());
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(roles))
+            .with_priority(1)
+            .mount(s)
+            .await;
+    }
+
+    fn accion(h: &str, args: serde_json::Value) -> crate::propuesta::Accion {
+        crate::propuesta::Accion {
+            herramienta: h.to_string(),
+            descripcion: format!("{h} {args}"),
+            args,
+        }
+    }
+
+    #[tokio::test]
+    async fn aplicar_propuesta_crea_en_orden_con_avance() {
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_CANALES | GESTIONAR_ROLES, true).await;
+        for (id, nombre) in [("1100", "Staff"), ("1101", "Miembro")] {
+            Mock::given(method("POST"))
+                .and(path("/api/v10/guilds/555/roles"))
+                .and(wiremock::matchers::body_partial_json(
+                    json!({"name": nombre}),
+                ))
+                .respond_with(ResponseTemplate::new(200).set_body_json(rol(id, nombre, 1, 0)))
+                .expect(1)
+                .mount(&s)
+                .await;
+        }
+        let canal = |id: &str, tipo: u8, nombre: &str, padre: Option<&str>| {
+            let mut c = json!({"id": id, "type": tipo, "guild_id": "555", "name": nombre,
+                               "position": 9});
+            if let Some(p) = padre {
+                c["parent_id"] = json!(p);
+            }
+            c
+        };
+        let creados = [
+            canal("40", 4, "Comunidad", None),
+            canal("41", 0, "bienvenida", Some("40")),
+            canal("42", 0, "normas", Some("40")),
+            canal("43", 0, "charla", Some("40")),
+        ];
+        for c in creados {
+            let mut cuerpo = json!({"name": c["name"], "type": c["type"]});
+            if c["type"] == 0 {
+                cuerpo["parent_id"] = json!("40");
+            }
+            Mock::given(method("POST"))
+                .and(path("/api/v10/guilds/555/channels"))
+                .and(wiremock::matchers::body_partial_json(cuerpo))
+                .respond_with(ResponseTemplate::new(200).set_body_json(c))
+                .expect(1)
+                .mount(&s)
+                .await;
+        }
+        roles_con_nuevos(
+            &s,
+            &[rol("1100", "Staff", 1, 0), rol("1101", "Miembro", 1, 0)],
+        )
+        .await;
+        for (canal, rol) in [("41", "1100"), ("42", "1101")] {
+            Mock::given(method("PUT"))
+                .and(path(format!("/api/v10/channels/{canal}/permissions/{rol}")))
+                .respond_with(ResponseTemplate::new(204))
+                .expect(1)
+                .mount(&s)
+                .await;
+        }
+
+        // Desordenada a propósito: permisos y canales antes que sus roles/categoría.
+        let p = Propuesta {
+            resumen: "x".to_string(),
+            acciones: vec![
+                accion(
+                    "permiso_canal",
+                    json!({"channel_id": "bienvenida", "target_id": "Staff", "tipo": "rol",
+                           "permitir": "1024"}),
+                ),
+                accion(
+                    "permiso_canal",
+                    json!({"channel_id": "normas", "target_id": "Miembro", "tipo": "rol",
+                           "denegar": "2048"}),
+                ),
+                accion(
+                    "crear_canal",
+                    json!({"nombre": "bienvenida", "parent": "Comunidad"}),
+                ),
+                accion(
+                    "crear_canal",
+                    json!({"nombre": "normas", "parent": "Comunidad"}),
+                ),
+                accion(
+                    "crear_canal",
+                    json!({"nombre": "charla", "parent": "Comunidad"}),
+                ),
+                accion(
+                    "crear_canal",
+                    json!({"nombre": "Comunidad", "tipo": "categoria"}),
+                ),
+                accion("crear_rol", json!({"nombre": "Staff"})),
+                accion("crear_rol", json!({"nombre": "Miembro"})),
+            ],
+        };
+        let cancelar = AtomicBool::new(false);
+        let mut avisos = Vec::new();
+        let resumen = mcp
+            .ejecutar_propuesta_con(&p, &cancelar, &mut |total, r| {
+                avisos.push((total, r.indice, r.estado.clone()))
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            (
+                resumen.total,
+                resumen.hechas,
+                resumen.fallidas,
+                resumen.omitidas
+            ),
+            (8, 8, 0, 0),
+            "{resumen:?}"
+        );
+        assert_eq!(avisos.len(), 8);
+        assert!(avisos
+            .iter()
+            .enumerate()
+            .all(|(i, (t, idx, e))| *t == 8 && *idx == i && *e == EstadoAccion::Ok));
+        // Orden en Discord: roles, categoría, canales, permisos (los `expect`
+        // de los mocks comprueban parent_id y los IDs de los roles creados).
+        let orden: Vec<String> = s
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|r| r.method.as_str() != "GET")
+            .map(|r| format!("{} {}", r.method, r.url.path()))
+            .collect();
+        let dest = |i: usize| orden[i].as_str();
+        assert_eq!(dest(0), "POST /api/v10/guilds/555/roles");
+        assert_eq!(dest(1), "POST /api/v10/guilds/555/roles");
+        assert!(orden[2..6]
+            .iter()
+            .all(|o| o == "POST /api/v10/guilds/555/channels"));
+        assert_eq!(dest(6), "PUT /api/v10/channels/41/permissions/1100");
+        assert_eq!(dest(7), "PUT /api/v10/channels/42/permissions/1101");
+    }
+
+    #[tokio::test]
+    async fn aplicar_propuesta_sigue_tras_un_fallo_omite_dependientes_y_cancela() {
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_CANALES | GESTIONAR_ROLES, true).await;
+        // Crear el rol «Roto» falla; «Bueno» y el canal se crean.
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "Roto"}),
+            ))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&s)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "Bueno"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(rol("1200", "Bueno", 1, 0)))
+            .mount(&s)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"id": "50", "type": 0, "guild_id": "555", "name": "sala", "position": 9}),
+            ))
+            .mount(&s)
+            .await;
+        roles_con_nuevos(&s, &[rol("1200", "Bueno", 1, 0)]).await;
+        Mock::given(method("PUT"))
+            .and(path("/api/v10/channels/50/permissions/1200"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&s)
+            .await;
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: vec![
+                accion("crear_rol", json!({"nombre": "Roto"})),
+                accion("crear_rol", json!({"nombre": "Bueno"})),
+                accion("crear_canal", json!({"nombre": "sala"})),
+                accion(
+                    "permiso_canal",
+                    json!({"channel_id": "sala", "target_id": "Roto", "tipo": "rol",
+                           "permitir": "1024"}),
+                ),
+                accion(
+                    "permiso_canal",
+                    json!({"channel_id": "sala", "target_id": "Bueno", "tipo": "rol",
+                           "permitir": "1024"}),
+                ),
+            ],
+        };
+        let cancelar = AtomicBool::new(false);
+        let r = mcp
+            .ejecutar_propuesta_con(&p, &cancelar, &mut |_, _| {})
+            .await
+            .unwrap();
+        let e: Vec<_> = r.resultados.iter().map(|x| x.estado.clone()).collect();
+        assert_eq!(
+            e,
+            [
+                EstadoAccion::Error,
+                EstadoAccion::Ok,
+                EstadoAccion::Ok,
+                EstadoAccion::Omitida,
+                EstadoAccion::Ok
+            ]
+        );
+        assert_eq!(
+            (r.hechas, r.fallidas, r.omitidas, r.canceladas),
+            (3, 1, 1, 0)
+        );
+
+        // Cancelar tras la primera acción: el resto no se intenta.
+        let cancelar = AtomicBool::new(false);
+        let r = mcp
+            .ejecutar_propuesta_con(&p, &cancelar, &mut |_, _| {
+                cancelar.store(true, Ordering::SeqCst)
+            })
+            .await
+            .unwrap();
+        assert_eq!((r.resultados.len(), r.canceladas, r.total), (1, 4, 5));
     }
 
     #[tokio::test]

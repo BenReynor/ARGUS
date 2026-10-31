@@ -5,6 +5,7 @@
 //! IDs y validar. Quien ejecuta es `ArgusMcp::ejecutar_propuesta`.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -52,6 +53,94 @@ pub struct ResultadoAccion {
     pub descripcion: String,
     pub estado: EstadoAccion,
     pub mensaje: String,
+}
+
+/// Resumen final de aplicar una propuesta.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResumenPropuesta {
+    pub total: usize,
+    pub hechas: usize,
+    pub fallidas: usize,
+    pub omitidas: usize,
+    /// Acciones sin intentar porque se canceló a mitad.
+    pub canceladas: usize,
+    pub resultados: Vec<ResultadoAccion>,
+}
+
+impl ResumenPropuesta {
+    pub fn de(total: usize, resultados: Vec<ResultadoAccion>) -> Self {
+        let cuenta = |e: EstadoAccion| resultados.iter().filter(|r| r.estado == e).count();
+        Self {
+            total,
+            hechas: cuenta(EstadoAccion::Ok),
+            fallidas: cuenta(EstadoAccion::Error),
+            omitidas: cuenta(EstadoAccion::Omitida),
+            canceladas: total - resultados.len(),
+            resultados,
+        }
+    }
+}
+
+/// Evento que se emite tras cada acción aplicada.
+pub const EVENTO_ACCION: &str = "asistente-accion";
+/// Evento con el resumen final.
+pub const EVENTO_RESUMEN: &str = "asistente-resumen";
+
+/// Aviso de avance de una acción (evento `asistente-accion`).
+#[derive(Debug, Clone, Serialize)]
+pub struct AvanceAccion {
+    pub indice: usize,
+    pub total: usize,
+    pub descripcion: String,
+    pub estado: EstadoAccion,
+    pub mensaje: String,
+}
+
+impl AvanceAccion {
+    pub fn de(total: usize, r: &ResultadoAccion) -> Self {
+        Self {
+            indice: r.indice,
+            total,
+            descripcion: r.descripcion.clone(),
+            estado: r.estado.clone(),
+            mensaje: r.mensaje.clone(),
+        }
+    }
+}
+
+/// Marca de cancelación de la aplicación en curso.
+static CANCELAR: AtomicBool = AtomicBool::new(false);
+
+/// Aplica la propuesta aprobada: ejecuta las acciones en orden seguro con la
+/// lógica del MCP y emite `asistente-accion` por cada una.
+#[tauri::command]
+pub async fn aplicar_propuesta(
+    app: tauri::AppHandle,
+    propuesta: Propuesta,
+) -> Result<ResumenPropuesta, String> {
+    use tauri::Emitter;
+    let pool = crate::db::get_pool(&app).await.map_err(|e| e.to_string())?;
+    let mcp = crate::mcp::ArgusMcp::nuevo(pool, None).await?;
+    CANCELAR.store(false, Ordering::SeqCst);
+    let emisor = app.clone();
+    let mut avance = move |total: usize, r: &ResultadoAccion| {
+        if let Err(e) = emisor.emit(EVENTO_ACCION, AvanceAccion::de(total, r)) {
+            tracing::warn!("no se pudo emitir {EVENTO_ACCION}: {e}");
+        }
+    };
+    let resumen = mcp
+        .ejecutar_propuesta_con(&propuesta, &CANCELAR, &mut avance)
+        .await?;
+    if let Err(e) = app.emit(EVENTO_RESUMEN, resumen.clone()) {
+        tracing::warn!("no se pudo emitir {EVENTO_RESUMEN}: {e}");
+    }
+    Ok(resumen)
+}
+
+/// Cancela la aplicación en curso: la acción en vuelo termina y no empieza otra.
+#[tauri::command]
+pub fn cancelar_asistente() {
+    CANCELAR.store(true, Ordering::SeqCst);
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -136,6 +136,8 @@ pub fn run() {
             import_data,
             uninstall_wipe,
             propuesta::validar_propuesta,
+            propuesta::aplicar_propuesta,
+            propuesta::cancelar_asistente,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
