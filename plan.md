@@ -429,7 +429,7 @@ Separar **construir** el servidor de **gestionarlo**. Nueva pestaña **Moderatio
 - [x] Órdenes de Discord a construcción o moderación
   criterio: el prompt del chat de Discord (FASE 12) distingue dos marcas: `ORDEN[estructura]: …` y `ORDEN[moderacion]: …` (una línea `ORDEN:` sin tipo cuenta como estructura); el análisis devuelve el tipo y la orden se pasa al asistente del tipo correspondiente con su prompt; el resto del flujo (propuesta en Discord, «sí» del mismo autor, aplicar) es el mismo; tests del análisis de las dos marcas y de que una orden de moderación usa el prompt de moderación
 
-- [ ] Documentación de la moderación
+- [x] Documentación de la moderación
   criterio: docs/ASISTENTE.md explica la pestaña Moderation con ejemplos (expulsar, silenciar, avisar a quien dijo una palabra, analizar un juicio), cómo funcionan los avisos (DM y recuento), el límite de mensajes leídos y que nada se aplica sin aprobación; README.md y README.es.md lo mencionan en «What you can do» / «Qué puedes hacer»
 
 Verificación manual (en tu servidor de pruebas):
