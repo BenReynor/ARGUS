@@ -141,6 +141,7 @@ pub async fn aplicar_propuesta(
 #[tauri::command]
 pub fn cancelar_asistente() {
     CANCELAR.store(true, Ordering::SeqCst);
+    crate::asistente::cancelar_agente();
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
