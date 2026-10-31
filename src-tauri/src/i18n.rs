@@ -13,6 +13,16 @@ pub const IDIOMA_DEFECTO: &str = "en";
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
     // <CATALOGO>
+    ("Invalid color «{valor}» (use #RRGGBB)", "Color no válido «{valor}» (usa #RRGGBB)"),
+    ("Invalid range «{texto}»: use two whole numbers, the first not greater than the second", "Rango no válido «{texto}»: usa dos números enteros, el primero no mayor que el segundo"),
+    ("Range «{texto}» is too large (maximum {max} items)", "El rango «{texto}» es demasiado grande (máximo {max} elementos)"),
+    ("Only one range per line is supported", "Solo se admite un rango por línea"),
+    ("Missing name after «{clave}»", "Falta el nombre después de «{clave}»"),
+    ("Unknown attribute «{clave}»", "Atributo desconocido «{clave}»"),
+    ("Invalid value «{valor}» for «{clave}» (use yes or no)", "Valor no válido «{valor}» para «{clave}» (usa sí o no)"),
+    ("Invalid description: the quoted text is not closed", "Descripción no válida: el texto entre comillas no se cierra"),
+    ("Empty hint after «generar:»", "Indicación vacía después de «generar:»"),
+    ("Invalid description: write the text in quotes or use «generar:» followed by a hint", "Descripción no válida: escribe el texto entre comillas o usa «generar:» con una indicación"),
     ("[ORDER] Order from {autor} in {servidor} #{canal}: {orden}", "[ORDEN] Orden de {autor} en {servidor} #{canal}: {orden}"),
     ("[ORDER] Proposal for {autor} in {servidor} #{canal}: {n} actions in {ms} ms", "[ORDEN] Propuesta para {autor} en {servidor} #{canal}: {n} acciones en {ms} ms"),
     ("[WARN] Could not prepare the proposal in {servidor} #{canal} for {autor}: {motivo}", "[WARN] No se pudo preparar la propuesta en {servidor} #{canal} para {autor}: {motivo}"),
