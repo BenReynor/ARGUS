@@ -271,7 +271,7 @@ La función principal de ARGUS: montar servidores enormes en minutos. Dentro de 
 - [x] Ejecutar una acción por nombre con la lógica del MCP
   criterio: existe `ejecutar_accion(nombre, args: serde_json::Value)` (en `src-tauri/src/acciones.rs` o en mcp.rs) que, para cada herramienta de `HERRAMIENTAS_ESCRITURA`, deserializa los argumentos en sus params y llama a la misma función `*_json` que usa la herramienta MCP (mismos chequeos de permisos y jerarquía, mismos mensajes con i18n); rechaza con un error claro un nombre desconocido, una herramienta de lectura o argumentos inválidos; tests contra el Discord falso: crear_rol, crear_canal (con topic) y permiso_canal por nombre funcionan y un nombre inventado falla
 
-- [ ] Propuesta estructurada y su vista previa
+- [x] Propuesta estructurada y su vista previa
   criterio: un tipo `Propuesta { resumen: String, acciones: Vec<Accion { herramienta, args, descripcion }> }` serializable; una función pura `ordenar_propuesta` que deja las acciones en orden seguro (crear/editar roles → categorías → canales → permisos de canal → dar/quitar roles → resto) sin cambiar el orden relativo dentro de cada grupo; las acciones pueden referirse a lo creado antes por nombre (p. ej. `"parent": "nombre de categoría"` o un rol por nombre en `permiso_canal`) y `ejecutar_propuesta` resuelve esos nombres a IDs con lo ya creado o existente; un comando Tauri `validar_propuesta` devuelve la lista de cambios legible (crear N roles, N categorías, N canales, N permisos…) y los errores de validación (herramienta desconocida, args inválidos, referencia a un nombre que no existe ni se crea) sin tocar Discord; tests de ordenar, resolver nombres y validar
 
 - [ ] Aplicar una propuesta con avance en vivo
