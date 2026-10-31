@@ -436,7 +436,9 @@ const ChatAsistente: React.FC = () => {
                     ))}
                   </div>
                 )}
-                {m.texto && <p className="asistente__texto">{m.texto}</p>}
+                {(m.rol === 'assistant' ? textoVisible(m.texto) : m.texto) && (
+                  <p className="asistente__texto">{m.rol === 'assistant' ? textoVisible(m.texto) : m.texto}</p>
+                )}
                 {!m.texto && !m.error && m.rol === 'assistant' && enviando && <span className="ui-skeleton" style={{ width: '40%' }} />}
                 {m.error && <p className="asistente__error" role="alert">{m.error}</p>}
               </article>
@@ -520,6 +522,18 @@ const ChatAsistente: React.FC = () => {
     </div>
   );
 };
+
+/**
+ * Texto del asistente tal como se muestra: sin el bloque ```json de la
+ * propuesta (es para ARGUS; la propuesta ya se ve en su tarjeta), incluido uno
+ * que aún está llegando en streaming.
+ */
+export function textoVisible(texto: string): string {
+  return texto
+    .replace(/```json[\s\S]*?```/g, '')
+    .replace(/```json[\s\S]*$/, '')
+    .trim();
+}
 
 const FilaAccion: React.FC<{ texto: string; avance?: AvanceAccion; activa: boolean }> = ({ texto, avance, activa }) => {
   const estado: EstadoAccion | 'pendiente' = avance ? avance.estado : 'pendiente';

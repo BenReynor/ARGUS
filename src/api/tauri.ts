@@ -22,10 +22,10 @@ export const botPermissions = (guildId: string) => invoke<string[]>('bot_permiss
 export const getGuildSettings = (guildId: string) => invoke<GuildSettings>('get_guild_settings', { guildId });
 export const saveGuildSettings = (guildId: string, settings: GuildSettings) =>
   invoke<string>('save_guild_settings', { guildId, settings });
-export const listChannels =(guildId: string) => invoke<Channel[]>('list_channels', { guild_id: guildId });
-export const listMembers = (guildId: string) => invoke<Member[]>('list_members', { guild_id: guildId });
-export const listRoles = (guildId: string) => invoke<Role[]>('list_roles', { guild_id: guildId });
-export const sendMessage = (channelId: string, content: string) => invoke<string>('send_message', { channel_id: channelId, content });
+export const listChannels =(guildId: string) => invoke<Channel[]>('list_channels', { guildId: guildId });
+export const listMembers = (guildId: string) => invoke<Member[]>('list_members', { guildId: guildId });
+export const listRoles = (guildId: string) => invoke<Role[]>('list_roles', { guildId: guildId });
+export const sendMessage = (channelId: string, content: string) => invoke<string>('send_message', { channelId: channelId, content });
 
 /** Campos editables de un canal; solo se envían los definidos. `parent_id` vacío saca el canal de su categoría. */
 export interface DatosCanal {
@@ -57,11 +57,11 @@ export const setChannelPermission = (guildId: string, channelId: string, targetI
   invoke<string>('set_channel_permission', { guildId, channelId, targetId, kind, allow, deny });
 export const deleteChannelPermission = (guildId: string, channelId: string, targetId: string, kind: number) =>
   invoke<string>('delete_channel_permission', { guildId, channelId, targetId, kind });
-export const sendDM = (userId: string, content: string) => invoke<string>('send_dm', { user_id: userId, content });
-export const getMemberInfo = (guildId: string, userId: string) => invoke<Member>('get_member_info', { guild_id: guildId, user_id: userId });
-export const addRole = (guildId: string, userId: string, roleId: string) => invoke<string>('add_role', { guild_id: guildId, user_id: userId, role_id: roleId });
-export const removeRole = (guildId: string, userId: string, roleId: string) => invoke<string>('remove_role', { guild_id: guildId, user_id: userId, role_id: roleId });
-export const timeoutMember = (guildId: string, userId: string, durationMinutes: number, reason?: string) => invoke<string>('timeout_member', { guild_id: guildId, user_id: userId, duration_minutes: durationMinutes, reason: reason ?? null });
+export const sendDM = (userId: string, content: string) => invoke<string>('send_dm', { userId: userId, content });
+export const getMemberInfo = (guildId: string, userId: string) => invoke<Member>('get_member_info', { guildId: guildId, userId: userId });
+export const addRole = (guildId: string, userId: string, roleId: string) => invoke<string>('add_role', { guildId: guildId, userId: userId, roleId: roleId });
+export const removeRole = (guildId: string, userId: string, roleId: string) => invoke<string>('remove_role', { guildId: guildId, userId: userId, roleId: roleId });
+export const timeoutMember = (guildId: string, userId: string, durationMinutes: number, reason?: string) => invoke<string>('timeout_member', { guildId: guildId, userId: userId, durationMinutes: durationMinutes, reason: reason ?? null });
 
 // Config
 export const getConfig = () => invoke<Config>('get_config');

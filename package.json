@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && node scripts/comprobar-invoke.mjs && vite build",
     "preview": "vite preview",
     "i18n:check": "node scripts/comprobar-i18n.mjs",
     "tauri": "tauri"
