@@ -374,7 +374,7 @@ Sintaxis (palabras clave en español o inglés, sin distinguir mayúsculas ni ti
 - `descripción`/`description`/`tema`/`topic`: `"texto literal"` o `generar: <indicación>`; en la categoría es el valor por defecto de sus canales sin descripción.
 - Permisos: `ver`/`view: A, B` → oculto para @everyone y visible para A y B; `escribir`/`write: A` → A ve y escribe (habla en voz); `solo leer`/`read only: A` → A ve pero no escribe; `ocultar a`/`hide from: A`. En un canal, se suman a los de su categoría. `@everyone` vale como rol.
 
-- [ ] Contexto del servidor
+- [x] Contexto del servidor
   criterio: migración con una tabla de contexto por (bot_id, guild_id) y comandos `leer_contexto_servidor`/`guardar_contexto_servidor`; el prompt del asistente constructor incluye el contexto (sección «Server context») y el del chat de Discord también, recortado a 1500 caracteres; tests de Rust de guardar/leer por servidor y de que ambos prompts lo incluyen
 
 - [ ] Analizar el plan estructurado (función pura)
