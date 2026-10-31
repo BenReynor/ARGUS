@@ -123,6 +123,7 @@ const CATALOGO_ES: &[(&str, &str)] = &[
     ("Full settings saved", "Configuración completa guardada"),
     ("Could not locate ARGUS: {e}", "No se pudo localizar ARGUS: {e}"),
     ("Could not locate the ARGUS folder", "No se pudo localizar la carpeta de ARGUS"),
+    ("Could not detect AI agents: {e}", "No se pudo detectar los agentes de IA: {e}"),
     ("Bot updated", "Bot actualizado"),
     ("Bot deleted", "Bot eliminado"),
     ("The bot is not registered", "El bot no está registrado"),

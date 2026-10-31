@@ -5,6 +5,7 @@ use tauri::{
 };
 use tauri_plugin_log::{Target, TargetKind};
 
+pub mod asistente;
 pub mod commands;
 pub mod crypto;
 pub mod db;
@@ -138,6 +139,7 @@ pub fn run() {
             propuesta::validar_propuesta,
             propuesta::aplicar_propuesta,
             propuesta::cancelar_asistente,
+            asistente::listar_agentes_ia,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
