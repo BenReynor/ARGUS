@@ -13,6 +13,14 @@ pub const IDIOMA_DEFECTO: &str = "en";
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
     // <CATALOGO>
+    ("[ORDER] Order from {autor} in {servidor} #{canal}: {orden}", "[ORDEN] Orden de {autor} en {servidor} #{canal}: {orden}"),
+    ("[ORDER] Proposal for {autor} in {servidor} #{canal}: {n} actions in {ms} ms", "[ORDEN] Propuesta para {autor} en {servidor} #{canal}: {n} acciones en {ms} ms"),
+    ("[WARN] Could not prepare the proposal in {servidor} #{canal} for {autor}: {motivo}", "[WARN] No se pudo preparar la propuesta en {servidor} #{canal} para {autor}: {motivo}"),
+    ("Preparing the proposal…", "Preparando la propuesta…"),
+    ("I could not prepare the proposal: {motivo}", "No pude preparar la propuesta: {motivo}"),
+    ("Another proposal is already being prepared in this server", "Ya se está preparando otra propuesta en este servidor"),
+    ("…and {n} more changes", "…y {n} cambios más"),
+    ("Reply **yes** within the next 5 minutes to apply it", "Responde **sí** en los próximos 5 minutos para aplicarla"),
     ("[CHAT] Replied in {servidor} #{canal} to {autor} with {modelo} in {ms} ms", "[CHAT] Respondido en {servidor} #{canal} a {autor} con {modelo} en {ms} ms"),
     ("[WARN] No reply in {servidor} #{canal} to {autor}: {motivo}", "[WARN] Sin respuesta en {servidor} #{canal} a {autor}: {motivo}"),
     ("The AI agent took too long to reply", "El agente de IA tardó demasiado en responder"),

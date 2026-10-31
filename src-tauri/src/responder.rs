@@ -3,8 +3,10 @@
 //! tiempo) y contesta como respuesta al mensaje original. Las respuestas se
 //! encolan por canal y como mucho `MAX_AGENTES` agentes corren a la vez.
 
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::collections::{HashMap, HashSet};
+use std::future::Future;
+use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -31,6 +33,20 @@ pub struct Coordinador {
     agentes: Arc<Semaphore>,
     /// Última respuesta (segundos) por (servidor, usuario).
     ultimas: Mutex<HashMap<(u64, u64), u64>>,
+    /// Servidores con un constructor de propuestas en marcha.
+    constructores: Mutex<HashSet<u64>>,
+}
+
+/// Reserva del constructor de un servidor: se libera al soltarla.
+pub struct GuardiaConstructor {
+    coord: Arc<Coordinador>,
+    guild: u64,
+}
+
+impl Drop for GuardiaConstructor {
+    fn drop(&mut self) {
+        self.coord.constructores.lock().unwrap().remove(&self.guild);
+    }
 }
 
 impl Default for Coordinador {
@@ -45,7 +61,29 @@ impl Coordinador {
             canales: Mutex::new(HashMap::new()),
             agentes: Arc::new(Semaphore::new(max_agentes)),
             ultimas: Mutex::new(HashMap::new()),
+            constructores: Mutex::new(HashSet::new()),
         }
+    }
+
+    /// Reserva el constructor del servidor; `None` si ya hay uno en marcha.
+    pub fn tomar_constructor(self: &Arc<Self>, guild: u64) -> Option<GuardiaConstructor> {
+        self.constructores
+            .lock()
+            .unwrap()
+            .insert(guild)
+            .then(|| GuardiaConstructor {
+                coord: self.clone(),
+                guild,
+            })
+    }
+
+    /// Un hueco del tope global de agentes.
+    pub async fn permiso_agente(&self) -> OwnedSemaphorePermit {
+        self.agentes
+            .clone()
+            .acquire_owned()
+            .await
+            .expect("el semáforo nunca se cierra")
     }
 
     /// Espera el turno del canal y después un hueco global. Se suelta al soltar
@@ -107,6 +145,25 @@ pub enum Resultado {
 
 type Registro = Arc<dyn Fn(String) + Send + Sync>;
 type BuscarAgente = Arc<dyn Fn(&str) -> Option<PathBuf> + Send + Sync>;
+type FuturoPlan = Pin<Box<dyn Future<Output = String> + Send>>;
+
+/// Tiempo máximo del constructor de propuestas (lee el servidor con varias herramientas).
+pub const LIMITE_CONSTRUCTOR: Duration = Duration::from_secs(600);
+/// Tamaño máximo (caracteres) del resumen y la lista de cambios en Discord.
+pub const MAX_PROPUESTA: usize = 1800;
+
+/// Lo que el constructor de propuestas necesita de la app.
+#[derive(Clone)]
+pub struct ContextoOrdenes {
+    /// Ruta del binario `argus-mcp`.
+    pub ruta_mcp: Arc<dyn Fn() -> Result<String, String> + Send + Sync>,
+    /// Plan guardado del servidor (vacío si no hay).
+    pub leer_plan: Arc<dyn Fn(u64) -> FuturoPlan + Send + Sync>,
+    /// Roles y canales conocidos del servidor, para validar.
+    pub nombres: Arc<dyn Fn(u64) -> crate::propuesta::Nombres + Send + Sync>,
+    /// Idioma de la interfaz.
+    pub idioma: Arc<dyn Fn() -> String + Send + Sync>,
+}
 
 /// Todo lo necesario para responder con un bot concreto.
 #[derive(Clone)]
@@ -118,6 +175,8 @@ pub struct Conversador {
     pub limite: Duration,
     pub registro: Registro,
     pub buscar_agente: BuscarAgente,
+    pub limite_constructor: Duration,
+    pub ordenes: ContextoOrdenes,
 }
 
 /// Parte un texto en trozos de como mucho `max` caracteres, cortando en saltos
@@ -256,12 +315,14 @@ impl Conversador {
         // Se anota al aceptar el mensaje para que una ráfaga no llene la cola.
         self.coord.anotar(e.guild_id, e.msg.autor_id, ahora);
 
-        let _turno = self.coord.turno(e.msg.canal_id).await;
+        let turno = self.coord.turno(e.msg.canal_id).await;
         let inicio = Instant::now();
         let resultado = self.responder(&e, ajustes).await;
         let ms = inicio.elapsed().as_millis();
+        // El constructor puede tardar minutos: no retiene la cola del canal.
+        drop(turno);
         match &resultado {
-            Ok(()) => self.log(format!(
+            Ok(_) => self.log(format!(
                 "[CHAT] Replied in {} #{} to {} with {} in {} ms",
                 e.servidor,
                 e.canal,
@@ -275,12 +336,22 @@ impl Conversador {
             )),
         }
         match resultado {
-            Ok(()) => Resultado::Respondido,
+            Ok(orden) => {
+                if let Some(orden) = orden {
+                    self.preparar_orden(&e, ajustes, &orden).await;
+                }
+                Resultado::Respondido
+            }
             Err(m) => Resultado::Error(m),
         }
     }
 
-    async fn responder(&self, e: &Entrada, ajustes: &GuildSettings) -> Result<(), String> {
+    /// Responde al mensaje y devuelve la orden detectada, si la hay.
+    async fn responder(
+        &self,
+        e: &Entrada,
+        ajustes: &GuildSettings,
+    ) -> Result<Option<String>, String> {
         let base = self.base_url.as_deref();
         let canal = e.msg.canal_id.to_string();
         let agente = ajustes.chat_agente.as_str();
@@ -309,9 +380,116 @@ impl Conversador {
         );
         let orden = orden_chat(agente, &ruta, &ajustes.chat_modelo, &prompt)?;
         let respuesta = ejecutar_texto(&orden, self.limite).await?;
-        // La línea `ORDEN:` nunca se publica; su ejecución llega en otra tarea.
-        let (visible, _orden) = separar_orden(&respuesta, autorizado);
-        self.enviar(e, &visible).await
+        // La línea `ORDEN:` nunca se publica; se prepara su propuesta aparte.
+        let (visible, orden) = separar_orden(&respuesta, autorizado);
+        self.enviar(e, &visible).await?;
+        Ok(orden)
+    }
+
+    /// Prepara la propuesta de una orden y la publica como respuesta al mensaje.
+    /// Todo lo que falle queda en Logs y se avisa en el canal con el motivo.
+    async fn preparar_orden(&self, e: &Entrada, ajustes: &GuildSettings, orden: &str) {
+        let idioma = (self.ordenes.idioma)();
+        self.log(format!(
+            "[ORDER] Order from {} in {} #{}: {}",
+            e.autor_nombre, e.servidor, e.canal, orden
+        ));
+        let Some(_guardia) = self.coord.tomar_constructor(e.guild_id) else {
+            let motivo = "Another proposal is already being prepared in this server";
+            self.fallo_orden(e, &idioma, motivo).await;
+            return;
+        };
+        if let Err(err) = self
+            .enviar(e, &crate::i18n::tr(&idioma, "Preparing the proposal…"))
+            .await
+        {
+            self.log(format!(
+                "[WARN] Could not prepare the proposal in {} #{} for {}: {}",
+                e.servidor, e.canal, e.autor_nombre, err
+            ));
+            return;
+        }
+        let inicio = Instant::now();
+        match self.construir(e, ajustes, orden, &idioma).await {
+            Ok(ev) => {
+                let texto =
+                    texto_propuesta(&ev, ajustes.chat_ordenes_confirmar, &idioma, MAX_PROPUESTA);
+                match self.enviar(e, &texto).await {
+                    Ok(()) => self.log(format!(
+                        "[ORDER] Proposal for {} in {} #{}: {} actions in {} ms",
+                        e.autor_nombre,
+                        e.servidor,
+                        e.canal,
+                        ev.propuesta.acciones.len(),
+                        inicio.elapsed().as_millis()
+                    )),
+                    Err(err) => self.log(format!(
+                        "[WARN] Could not prepare the proposal in {} #{} for {}: {}",
+                        e.servidor, e.canal, e.autor_nombre, err
+                    )),
+                }
+            }
+            Err(motivo) => self.fallo_orden(e, &idioma, &motivo).await,
+        }
+    }
+
+    /// Anota el fallo en Logs y avisa en el canal con el motivo traducido.
+    async fn fallo_orden(&self, e: &Entrada, idioma: &str, motivo: &str) {
+        // El motivo se traduce antes de meterlo en la frase (un hueco no se traduce).
+        let motivo = crate::i18n::tr(idioma, motivo);
+        self.log(format!(
+            "[WARN] Could not prepare the proposal in {} #{} for {}: {}",
+            e.servidor, e.canal, e.autor_nombre, motivo
+        ));
+        let aviso = crate::i18n::tr(
+            idioma,
+            &format!("I could not prepare the proposal: {motivo}"),
+        );
+        if let Err(err) = self.enviar(e, &aviso).await {
+            tracing::warn!("No se pudo avisar del fallo de la orden: {err}");
+        }
+    }
+
+    /// Lanza el constructor (modo Execute, solo lectura) y valida su propuesta.
+    async fn construir(
+        &self,
+        e: &Entrada,
+        ajustes: &GuildSettings,
+        orden: &str,
+        idioma: &str,
+    ) -> Result<crate::asistente::EventoPropuesta, String> {
+        use crate::asistente::{
+            orden_agente, prompt_asistente, propuesta_de_respuesta, texto_del_constructor,
+            ModoAsistente,
+        };
+        let agente = ajustes.ordenes_agente.as_str();
+        let ruta = (self.buscar_agente)(agente)
+            .ok_or_else(|| format!("The AI agent «{agente}» is not installed"))?;
+        let mcp = (self.ordenes.ruta_mcp)()?;
+        let plan = (self.ordenes.leer_plan)(e.guild_id).await;
+        let gid = e.guild_id.to_string();
+        let prompt = prompt_asistente(
+            ModoAsistente::Execute,
+            (&gid, &e.servidor),
+            &plan,
+            idioma,
+            orden,
+        );
+        let lanzar = orden_agente(
+            agente,
+            &ruta,
+            Path::new(&mcp),
+            &ajustes.ordenes_modelo,
+            ModoAsistente::Execute,
+            None,
+            &prompt,
+        )?;
+        let _permiso = self.coord.permiso_agente().await;
+        let texto = texto_del_constructor(&lanzar, agente, self.limite_constructor).await?;
+        let nombres = (self.ordenes.nombres)(e.guild_id);
+        propuesta_de_respuesta(&texto, |p| {
+            crate::propuesta::validar_traducida(p, &nombres, idioma)
+        })
     }
 
     /// Mensajes previos del canal, del más antiguo al más reciente, sin el que
@@ -362,6 +540,38 @@ impl Conversador {
     }
 }
 
+/// Texto que se publica: resumen y cambios agrupados (como mucho `max` caracteres;
+/// el resto se cuenta en «…y N cambios más») y, si hace falta, el aviso de confirmar.
+pub fn texto_propuesta(
+    ev: &crate::asistente::EventoPropuesta,
+    confirmar: bool,
+    idioma: &str,
+    max: usize,
+) -> String {
+    let mut texto: String = ev.propuesta.resumen.trim().chars().take(max / 3).collect();
+    for (i, c) in ev.validacion.cambios.iter().enumerate() {
+        let linea = format!("\n• {c}");
+        if texto.chars().count() + linea.chars().count() > max {
+            let resto = ev.validacion.cambios.len() - i;
+            texto.push('\n');
+            texto.push_str(&crate::i18n::tr(
+                idioma,
+                &format!("…and {resto} more changes"),
+            ));
+            break;
+        }
+        texto.push_str(&linea);
+    }
+    if confirmar {
+        texto.push_str("\n\n");
+        texto.push_str(&crate::i18n::tr(
+            idioma,
+            "Reply **yes** within the next 5 minutes to apply it",
+        ));
+    }
+    texto
+}
+
 /// Modelo para el log: el elegido o, si está vacío, el del agente.
 fn modelo_visible(a: &GuildSettings) -> String {
     if a.chat_modelo.trim().is_empty() {
@@ -406,6 +616,13 @@ mod tests {
             limite,
             registro: Arc::new(move |t| l.lock().unwrap().push(t)),
             buscar_agente: Arc::new(move |_| Some(agente.clone())),
+            limite_constructor: Duration::from_secs(20),
+            ordenes: ContextoOrdenes {
+                ruta_mcp: Arc::new(|| Ok("/opt/argus-mcp".to_string())),
+                leer_plan: Arc::new(|_| Box::pin(async { "PLAN-DEL-SERVIDOR".to_string() })),
+                nombres: Arc::new(|_| crate::propuesta::Nombres::default()),
+                idioma: Arc::new(|| "en".to_string()),
+            },
         };
         (c, logs)
     }
@@ -541,6 +758,197 @@ mod tests {
         // Otro usuario no espera.
         assert_eq!(c.atender(entrada(3, true), &a).await, Resultado::Respondido);
         assert_eq!(envios(&server).await.len(), 2);
+    }
+
+    /// Agente que sirve de chat (responde con una orden) y de constructor (imprime
+    /// `constructor` en stream-json). Guarda lo recibido junto al script.
+    fn agente_con_orden(nombre: &str, constructor: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("argus-test-{}-{nombre}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ruta = dir.join("agente.sh");
+        let script = format!(
+            r#"#!/bin/sh
+case "$*" in
+*stream-json*)
+  cat > "$(dirname "$0")/stdin.txt"
+  printf '%s' "$*" > "$(dirname "$0")/args.txt"
+  {constructor}
+  ;;
+*)
+  cat > /dev/null
+  printf 'Voy a prepararlo.\nORDEN: crea un rol Mods\n'
+  ;;
+esac
+"#
+        );
+        std::fs::write(&ruta, script).unwrap();
+        std::fs::set_permissions(&ruta, std::fs::Permissions::from_mode(0o755)).unwrap();
+        ruta
+    }
+
+    const PROPUESTA_OK: &str = r#"cat <<'EOF'
+{"type":"assistant","message":{"content":[{"type":"text","text":"Listo\n```json\n{\"resumen\":\"Crear el rol Mods\",\"acciones\":[{\"herramienta\":\"crear_rol\",\"args\":{\"nombre\":\"Mods\"},\"descripcion\":\"Create Mods\"}]}\n```"}]}}
+EOF"#;
+
+    fn ajustes_ordenes(confirmar: bool) -> GuildSettings {
+        GuildSettings {
+            chat_ordenes: true,
+            chat_ordenes_usuarios: vec!["1".into()],
+            chat_ordenes_confirmar: confirmar,
+            ..ajustes()
+        }
+    }
+
+    fn textos(envios: &[serde_json::Value]) -> Vec<String> {
+        envios
+            .iter()
+            .map(|b| b["content"].as_str().unwrap_or("").to_string())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn una_orden_publica_aviso_y_propuesta_con_confirmacion() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let agente = agente_con_orden("orden-ok", PROPUESTA_OK);
+        let dir = agente.parent().unwrap().to_path_buf();
+        let (c, logs) = conversador(&server, agente, LIMITE_AGENTE);
+        let r = c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
+        assert_eq!(r, Resultado::Respondido);
+        let env = envios(&server).await;
+        let t = textos(&env);
+        assert_eq!(t.len(), 3, "{t:?}");
+        assert_eq!(t[0], "Voy a prepararlo.");
+        assert_eq!(t[1], "Preparing the proposal…");
+        assert!(t[2].starts_with("Crear el rol Mods"), "{}", t[2]);
+        assert!(t[2].contains("• Roles to create: 1"), "{}", t[2]);
+        assert!(t[2].contains("Reply **yes** within the next 5 minutes to apply it"));
+        assert!(!t.iter().any(|x| x.contains("ORDEN:")));
+        // Todo se publica como respuesta al mensaje del usuario.
+        for b in &env {
+            assert_eq!(b["message_reference"]["message_id"], "500");
+        }
+        // El constructor recibe el plan, la orden y solo herramientas de lectura.
+        let stdin = std::fs::read_to_string(dir.join("stdin.txt")).unwrap();
+        assert!(stdin.contains("PLAN-DEL-SERVIDOR"), "{stdin}");
+        assert!(stdin.contains("crea un rol Mods"));
+        assert!(stdin.contains("## Execute mode"));
+        assert!(stdin.contains("(id 555)"));
+        let args = std::fs::read_to_string(dir.join("args.txt")).unwrap();
+        assert!(args.contains("--model sonnet"), "{args}");
+        assert!(args.contains("mcp__argus__crear_rol"), "{args}");
+        assert!(args.contains("--disallowedTools"));
+        let logs = logs.lock().unwrap();
+        assert!(logs.iter().any(|l| l.starts_with("[ORDER] Order from Ana")));
+        assert!(logs
+            .iter()
+            .any(|l| l.starts_with("[ORDER] Proposal for Ana")));
+    }
+
+    #[tokio::test]
+    async fn sin_confirmacion_no_pide_el_si() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (c, _) = conversador(
+            &server,
+            agente_con_orden("orden-sin-conf", PROPUESTA_OK),
+            LIMITE_AGENTE,
+        );
+        c.atender(entrada(1, true), &ajustes_ordenes(false)).await;
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), 3, "{t:?}");
+        assert!(!t[2].contains("Reply **yes**"));
+    }
+
+    #[tokio::test]
+    async fn una_propuesta_invalida_avisa_con_el_motivo_y_queda_en_logs() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let invalida = r#"cat <<'EOF'
+{"type":"assistant","message":{"content":[{"type":"text","text":"```json\n{\"resumen\":\"x\",\"acciones\":[{\"herramienta\":\"borrar_todo\",\"args\":{},\"descripcion\":\"d\"}]}\n```"}]}}
+EOF"#;
+        let (c, logs) = conversador(
+            &server,
+            agente_con_orden("orden-invalida", invalida),
+            LIMITE_AGENTE,
+        );
+        c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), 3, "{t:?}");
+        assert!(
+            t[2].starts_with(
+                "I could not prepare the proposal: The assistant's proposal is not valid"
+            ),
+            "{}",
+            t[2]
+        );
+        assert!(logs
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|l| l.starts_with("[WARN] Could not prepare the proposal")));
+    }
+
+    #[tokio::test]
+    async fn un_agente_constructor_que_falla_avisa_con_el_motivo() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (c, _) = conversador(
+            &server,
+            agente_con_orden("orden-falla", "echo 'Please run /login' >&2; exit 1"),
+            LIMITE_AGENTE,
+        );
+        c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), 3, "{t:?}");
+        assert!(t[2].starts_with("I could not prepare the proposal: "));
+        assert!(t[2].contains("not signed in"), "{}", t[2]);
+    }
+
+    #[tokio::test]
+    async fn un_solo_constructor_a_la_vez_por_servidor() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let agente = agente_con_orden("orden-ocupado", PROPUESTA_OK);
+        let dir = agente.parent().unwrap().to_path_buf();
+        let (c, _) = conversador(&server, agente, LIMITE_AGENTE);
+        let guardia = c.coord.tomar_constructor(555).expect("libre");
+        assert!(c.coord.tomar_constructor(555).is_none());
+        assert!(c.coord.tomar_constructor(556).is_some());
+        c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), 2, "{t:?}");
+        assert!(t[1].contains("Another proposal is already being prepared"));
+        assert!(!dir.join("stdin.txt").exists());
+        drop(guardia);
+        assert!(c.coord.tomar_constructor(555).is_some());
+    }
+
+    #[test]
+    fn el_texto_de_la_propuesta_se_corta_con_y_n_cambios_mas() {
+        use crate::asistente::EventoPropuesta;
+        use crate::propuesta::{Propuesta, Validacion};
+        let ev = EventoPropuesta {
+            propuesta: Propuesta {
+                resumen: "Resumen".into(),
+                acciones: Vec::new(),
+            },
+            validacion: Validacion {
+                cambios: (0..10).map(|i| format!("Cambio número {i:02}")).collect(),
+                errores: Vec::new(),
+            },
+        };
+        let t = texto_propuesta(&ev, false, "en", 80);
+        assert!(t.chars().count() <= 80 + 40, "{t}");
+        assert!(t.contains("• Cambio número 00"));
+        assert!(t.ends_with("more changes"), "{t}");
+        assert!(!t.contains("Cambio número 09"));
+        let es = texto_propuesta(&ev, true, "es", 80);
+        assert!(es.contains(" cambios más"), "{es}");
+        assert!(es.ends_with("Responde **sí** en los próximos 5 minutos para aplicarla"));
+        // Si cabe todo, no hay «más».
+        let t = texto_propuesta(&ev, false, "en", 1800);
+        assert!(!t.contains("more changes") && t.contains("Cambio número 09"));
     }
 
     #[tokio::test]

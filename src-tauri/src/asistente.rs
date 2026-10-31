@@ -672,6 +672,45 @@ pub async fn ejecutar_orden(
     Ok(lector.sesion)
 }
 
+/// Lanza el agente constructor sin interfaz y devuelve todo el texto de su
+/// respuesta. Pasado `limite` mata el proceso y su grupo. No usa el cerrojo de
+/// la app: el que limita los constructores es el del llamador.
+pub async fn texto_del_constructor(
+    orden: &OrdenAgente,
+    agente: &str,
+    limite: std::time::Duration,
+) -> Result<String, String> {
+    let cancelar = tokio::sync::Notify::new();
+    let mut texto = String::new();
+    let mut error: Option<String> = None;
+    {
+        let ejecucion = ejecutar_orden(orden, agente, &cancelar, |e| match e {
+            EventoAsistente::Texto { texto: t } => {
+                texto.push_str(&t);
+                texto.push('\n');
+            }
+            EventoAsistente::Error { mensaje } => error = Some(mensaje),
+            _ => {}
+        });
+        tokio::pin!(ejecucion);
+        tokio::select! {
+            r = &mut ejecucion => { r?; }
+            _ = tokio::time::sleep(limite) => {
+                cancelar.notify_one();
+                let _ = ejecucion.await;
+                return Err("The AI agent took too long to reply".into());
+            }
+        }
+    }
+    if let Some(e) = error {
+        return Err(e);
+    }
+    if texto.trim().is_empty() {
+        return Err("The AI agent returned an empty reply".into());
+    }
+    Ok(texto)
+}
+
 /// Ejecución en curso: sirve de cerrojo (un agente a la vez) y de cancelación.
 fn en_curso() -> &'static Mutex<Option<std::sync::Arc<tokio::sync::Notify>>> {
     static EN_CURSO: OnceLock<Mutex<Option<std::sync::Arc<tokio::sync::Notify>>>> = OnceLock::new();

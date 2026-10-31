@@ -469,15 +469,15 @@ pub fn validar_en_estado(state: &AppState, propuesta: &Propuesta) -> Validacion 
             .and_then(|g| mapas.get(&g).map(|m| Nombres::desde(&m.roles, &m.channels)))
             .unwrap_or_default()
     };
-    let mut v = validar_acciones(propuesta, &existentes);
-    let lang = crate::i18n::idioma(state);
-    v.cambios = v
-        .cambios
-        .iter()
-        .map(|c| crate::i18n::tr(&lang, c))
-        .collect();
+    validar_traducida(propuesta, &existentes, &crate::i18n::idioma(state))
+}
+
+/// Valida contra `existentes` y traduce cambios y errores a `lang`.
+pub fn validar_traducida(propuesta: &Propuesta, existentes: &Nombres, lang: &str) -> Validacion {
+    let mut v = validar_acciones(propuesta, existentes);
+    v.cambios = v.cambios.iter().map(|c| crate::i18n::tr(lang, c)).collect();
     for e in &mut v.errores {
-        e.mensaje = crate::i18n::tr(&lang, &e.mensaje);
+        e.mensaje = crate::i18n::tr(lang, &e.mensaje);
     }
     v
 }

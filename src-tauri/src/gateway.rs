@@ -12,7 +12,9 @@ use twilight_model::gateway::event::Event;
 
 use crate::chat::MensajeEntrante;
 use crate::mapa::{aplicar_evento, ResumenCambio};
-use crate::responder::{Conversador, Coordinador, Entrada, LIMITE_AGENTE};
+use crate::responder::{
+    ContextoOrdenes, Conversador, Coordinador, Entrada, LIMITE_AGENTE, LIMITE_CONSTRUCTOR,
+};
 use crate::state::ServerMap;
 
 /// Intents que ARGUS necesita: servidores/canales/roles, miembros y mensajes de
@@ -65,9 +67,45 @@ pub fn entrada_de(
 }
 
 /// Crea el conversador de un bot: sus avisos van a Logs (evento `bot-log`).
-fn conversador(app: &AppHandle, token: &str, bot_id: u64) -> Conversador {
+fn conversador(
+    app: &AppHandle,
+    token: &str,
+    bot_id: u64,
+    pool: Option<sqlx::SqlitePool>,
+    mapas: Arc<Mutex<HashMap<String, ServerMap>>>,
+) -> Conversador {
+    let app_idioma = app.clone();
     let app = app.clone();
+    let ordenes = ContextoOrdenes {
+        ruta_mcp: Arc::new(crate::commands::ruta_del_mcp),
+        leer_plan: Arc::new(move |guild| {
+            let pool = pool.clone();
+            Box::pin(async move {
+                match pool {
+                    Some(p) => crate::db::leer_plan(&p, &bot_id.to_string(), &guild.to_string())
+                        .await
+                        .unwrap_or_default(),
+                    None => String::new(),
+                }
+            })
+        }),
+        nombres: Arc::new(move |guild| {
+            let mapas = mapas.lock().unwrap();
+            mapas
+                .get(&guild.to_string())
+                .map(|m| crate::propuesta::Nombres::desde(&m.roles, &m.channels))
+                .unwrap_or_default()
+        }),
+        idioma: Arc::new(move || {
+            app_idioma
+                .try_state::<crate::state::AppState>()
+                .map(|s| crate::i18n::idioma(&s))
+                .unwrap_or_else(|| crate::i18n::IDIOMA_DEFECTO.to_string())
+        }),
+    };
     Conversador {
+        limite_constructor: LIMITE_CONSTRUCTOR,
+        ordenes,
         token: token.to_string(),
         base_url: None,
         bot_id,
@@ -157,7 +195,7 @@ pub fn lanzar(
         let conversador = bot_id
             .parse::<u64>()
             .ok()
-            .map(|id| conversador(&app, &token, id));
+            .map(|id| conversador(&app, &token, id, pool.clone(), mapas.clone()));
         let notify = Arc::new(Notify::new());
         let app_estado = app.clone();
         let _avisos = AbortAlSoltar(tokio::spawn(avisar_con_debounce(
