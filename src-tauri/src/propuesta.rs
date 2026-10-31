@@ -116,9 +116,16 @@ static CANCELAR: AtomicBool = AtomicBool::new(false);
 #[tauri::command]
 pub async fn aplicar_propuesta(
     app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
     propuesta: Propuesta,
 ) -> Result<ResumenPropuesta, String> {
     use tauri::Emitter;
+    // El servidor es el elegido en la app, no el «servidor activo» del MCP
+    // (que la app nunca fija): sin esto, aplicar fallaba con «No active server».
+    let guild_id = state
+        .get_active_guild()
+        .ok_or_else(|| "No server selected: pick one in the left column".to_string())?;
+    let propuesta = con_servidor(&propuesta, &guild_id);
     let pool = crate::db::get_pool(&app).await.map_err(|e| e.to_string())?;
     let mcp = crate::mcp::ArgusMcp::nuevo(pool, None).await?;
     CANCELAR.store(false, Ordering::SeqCst);
@@ -135,6 +142,21 @@ pub async fn aplicar_propuesta(
         tracing::warn!("no se pudo emitir {EVENTO_RESUMEN}: {e}");
     }
     Ok(resumen)
+}
+
+/// Copia de `p` con `guild_id` en los args de cada acción cuya herramienta lo
+/// admite y no lo trae (el asistente no lo escribe: usa el servidor activo).
+pub fn con_servidor(p: &Propuesta, guild_id: &str) -> Propuesta {
+    let mut copia = p.clone();
+    for a in &mut copia.acciones {
+        let admite = crate::mcp::esquema_args(&a.herramienta)
+            .is_some_and(|e| e["properties"].get("guild_id").is_some());
+        if let (true, Some(args)) = (admite, a.args.as_object_mut()) {
+            args.entry("guild_id")
+                .or_insert_with(|| Value::String(guild_id.to_string()));
+        }
+    }
+    copia
 }
 
 /// Cancela la aplicación en curso: la acción en vuelo termina y no empieza otra.
@@ -514,6 +536,37 @@ mod tests {
             ),
             acc("quitar_rol", json!({"user_id": "1", "role_id": "2"})),
         ])
+    }
+
+    #[test]
+    fn con_servidor_pone_el_guild_en_cada_accion_que_lo_admite() {
+        let acc = |h: &str, args: Value| Accion {
+            herramienta: h.into(),
+            args,
+            descripcion: String::new(),
+        };
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: vec![
+                acc("crear_rol", json!({"nombre": "O5"})),
+                acc("crear_canal", json!({"nombre": "a", "guild_id": "999"})),
+                acc(
+                    "permiso_canal",
+                    json!({"channel_id": "a", "target_id": "O5", "tipo": "rol"}),
+                ),
+            ],
+        };
+        let c = con_servidor(&p, "555");
+        assert_eq!(c.acciones[0].args["guild_id"], "555");
+        assert_eq!(
+            c.acciones[1].args["guild_id"], "999",
+            "no pisa uno explícito"
+        );
+        // permiso_canal no lleva guild_id en sus params: no se añade.
+        let admite = crate::mcp::esquema_args("permiso_canal").unwrap()["properties"]
+            .get("guild_id")
+            .is_some();
+        assert_eq!(c.acciones[2].args.get("guild_id").is_some(), admite);
     }
 
     #[test]

@@ -1677,7 +1677,13 @@ impl ArgusMcp {
         cancelar: &AtomicBool,
         avance: &mut (dyn FnMut(usize, &ResultadoAccion) + Send),
     ) -> Result<ResumenPropuesta, String> {
-        let gid = self.servidor_de(None).await?;
+        // El servidor de la propuesta (la app pone su `guild_id` en cada
+        // acción); si no lo trae, el servidor activo del MCP.
+        let de_la_propuesta = propuesta
+            .acciones
+            .iter()
+            .find_map(|a| a.args.get("guild_id").and_then(serde_json::Value::as_str));
+        let gid = self.servidor_de(de_la_propuesta).await?;
         let roles = commands::leer_roles(&self.state, &gid, self.url())
             .await
             .map_err(|e| self.limpiar(e))?;
@@ -4108,7 +4114,8 @@ mod tests {
 
     #[tokio::test]
     async fn ejecutar_propuesta_resuelve_nombres_a_ids() {
-        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_CANALES | GESTIONAR_ROLES, true).await;
+        // Como en la app: el MCP sin servidor activo; la app pone su guild_id.
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_CANALES | GESTIONAR_ROLES, false).await;
         Mock::given(method("POST"))
             .and(path("/api/v10/guilds/555/channels"))
             .and(wiremock::matchers::body_partial_json(
@@ -4164,6 +4171,7 @@ mod tests {
                 ),
             ],
         };
+        let p = crate::propuesta::con_servidor(&p, "555");
         let r = mcp.ejecutar_propuesta(&p).await.unwrap();
         let h: Vec<_> = r.iter().map(|x| x.herramienta.as_str()).collect();
         assert_eq!(
