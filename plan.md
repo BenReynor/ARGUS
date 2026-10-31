@@ -389,7 +389,7 @@ Sintaxis (palabras clave en español o inglés, sin distinguir mayúsculas ni ti
 - [x] Escribir las descripciones con una sola llamada barata
   criterio: con descripciones pendientes, ARGUS hace **una** llamada al agente constructor (claude u opencode, el modelo elegido) **sin ninguna herramienta** (como el chat de Discord) con el contexto del servidor y la lista compacta (id, nombre del canal, categoría, indicación) y pide un JSON `{id: descripción}` de como mucho 1024 caracteres cada una (límite de Discord); rellena los `tema` de la propuesta; si el agente falla o falta alguna, la propuesta sigue con esas descripciones vacías y un aviso; listas muy largas se parten en tandas de 40; tests con un agente falso (respuesta válida, incompleta y rota)
 
-- [ ] Construir desde el plan en la app
+- [x] Construir desde el plan en la app
   criterio: en modo Execute, junto al plan aparece **Build from plan** cuando el plan tiene estructura: compila la propuesta en local, escribe las descripciones pendientes con la llamada barata y muestra la misma tarjeta de propuesta con Apply (mismo `aplicar_propuesta`), indicando cuántas acciones salieron de la estructura y cuántas descripciones escribió la IA; si el plan además tiene texto libre, la tarjeta lo avisa y sugiere pedírselo al asistente en el chat; el prompt del asistente (chat en modo Execute) recibe además el plan ya analizado y un **resumen compacto del mapa** del servidor (nombres de categorías, canales y roles, recortado) para que no gaste llamadas en consultarlo; `npm run build` pasa
 
 - [ ] La IA planifica, ARGUS construye
