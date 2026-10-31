@@ -338,7 +338,7 @@ Dos opciones nuevas por servidor en la pestaña «Discord replies». (1) **Respo
 - [x] Responder solo a ciertos usuarios
   criterio: la función que decide si responder (chat.rs) no responde a autores que no están en `chat_usuarios` cuando la lista no está vacía, y con la lista vacía se comporta como antes; tests de los dos casos
 
-- [ ] Detectar una orden en la respuesta del chat (funciones puras)
+- [x] Detectar una orden en la respuesta del chat (funciones puras)
   criterio: el prompt del chat, solo cuando `ordenes_activas` es true para el autor, explica que si el usuario pide un cambio en el servidor (crear, editar o borrar canales, categorías, roles o permisos, dar roles…) debe contestar brevemente y terminar con una línea exacta `ORDEN: <la petición del usuario, completa y en una línea>`; si no es true, el prompt dice que no puede hacer cambios y nunca debe escribir esa línea; una función pura separa el texto visible y la orden (la línea `ORDEN:` nunca se publica en Discord) y la descarta si el autor no tiene `ordenes_activas` (defensa aunque el modelo la escriba); tests del prompt en los dos casos y del análisis (con orden, sin orden, orden de un autor no autorizado, orden en medio del texto)
 
 - [ ] Preparar la propuesta de una orden
@@ -357,6 +357,50 @@ Verificación manual (en tu servidor de pruebas, con ARGUS abierto y el bot ence
 - «Reply only to» contigo: el bot te responde a ti y no a otra cuenta.
 - Órdenes activadas solo para ti: «@Bot crea un canal llamado jorge en Comunidad» → propuesta → «sí» → el canal aparece. Otra cuenta pide lo mismo: el bot dice que no puede.
 - Sin confirmación: la orden se aplica directamente.
+
+## FASE 13 — Plan estructurado, contexto del servidor y manual
+Construir servidores enormes con pocos tokens. El plan del servidor admite una **sintaxis estructurada** que ARGUS convierte **él mismo** en una propuesta (sin IA); la IA solo escribe los textos marcados con `generar:` (descripciones), todos en **una sola llamada sin herramientas**. Lo que no sigue la sintaxis es texto libre y se trata como hasta ahora (asistente de la FASE 10). Se añade un **contexto del servidor** (temática, tono, historia, estilo de nombres y descripciones) que usan el constructor y el bot que conversa, y un **manual** en la app. Toda la UI nueva con `t()`.
+
+Sintaxis (palabras clave en español o inglés, sin distinguir mayúsculas ni tildes; `//` inicia un comentario):
+```
+## Rol: Supervisor | color: #ffaa00 | permisos: ManageMessages, ModerateMembers
+## Categoría: Supervisión | ver: Supervisor, Director | escribir: Supervisor | descripción: generar: épica, sobre la vigilancia
+- texto: supervision-{1..10} | descripción: generar: larga, sobre lo magnífico de la supervisión
+- texto: reglas | descripción: "Normas del área." | solo leer: @everyone
+- voz: Sala de control | ver: Supervisor
+```
+- Cabeceras: `## Rol:`/`## Role:` (atributos `color`, `permisos`/`permissions`, `separado`/`hoist`, `mencionable`/`mentionable`) y `## Categoría:`/`## Category:`; las líneas `- tipo: nombre` que siguen pertenecen a esa categoría. Tipos: `texto`/`text`, `voz`/`voice`, `anuncios`/`announcement`, `foro`/`forum`.
+- Rangos: `{1..10}` repite la línea (con ceros si se escriben: `{01..10}` → 01…10); `{n}` dentro de la descripción literal es el número.
+- `descripción`/`description`/`tema`/`topic`: `"texto literal"` o `generar: <indicación>`; en la categoría es el valor por defecto de sus canales sin descripción.
+- Permisos: `ver`/`view: A, B` → oculto para @everyone y visible para A y B; `escribir`/`write: A` → A ve y escribe (habla en voz); `solo leer`/`read only: A` → A ve pero no escribe; `ocultar a`/`hide from: A`. En un canal, se suman a los de su categoría. `@everyone` vale como rol.
+
+- [ ] Contexto del servidor
+  criterio: migración con una tabla de contexto por (bot_id, guild_id) y comandos `leer_contexto_servidor`/`guardar_contexto_servidor`; el prompt del asistente constructor incluye el contexto (sección «Server context») y el del chat de Discord también, recortado a 1500 caracteres; tests de Rust de guardar/leer por servidor y de que ambos prompts lo incluyen
+
+- [ ] Analizar el plan estructurado (función pura)
+  criterio: módulo `src-tauri/src/plan_estructurado.rs` con `analizar(texto) -> PlanEstructurado { roles, categorias (con sus canales), texto_libre, avisos }` que implementa la sintaxis de esta fase (palabras clave en español e inglés, mayúsculas y tildes indiferentes, comentarios `//`, rangos `{1..10}` y `{01..10}`, descripción literal o `generar:`, valores por defecto de la categoría, permisos ver/escribir/solo leer/ocultar a); las líneas que no encajan van a `texto_libre` (no se pierden) y los errores de una línea (rango inválido, color mal escrito) van a `avisos` con su número de línea; tests de cada regla, de un plan mixto (estructura + texto libre) y de un rango de 120 canales
+
+- [ ] Compilar el plan estructurado a una propuesta (sin IA)
+  criterio: función pura `compilar(plan, existentes) -> Propuesta` que genera crear_rol, crear_canal (categorías y canales con su `categoria_id` por nombre) y permiso_canal según las reglas de permisos de esta fase (ver → @everyone sin ViewChannel y los roles con ViewChannel; escribir → además SendMessages, o Connect y Speak en voz; solo leer → ViewChannel y ReadMessageHistory permitidos y SendMessages denegado; ocultar a → ViewChannel denegado), sin repetir lo que ya existe con el mismo nombre (roles por nombre; canales por nombre dentro de su categoría); las descripciones `generar:` quedan marcadas como pendientes; tests con el mapa de ejemplo y contra `validar_acciones` (la propuesta compilada es válida)
+
+- [ ] Escribir las descripciones con una sola llamada barata
+  criterio: con descripciones pendientes, ARGUS hace **una** llamada al agente constructor (claude u opencode, el modelo elegido) **sin ninguna herramienta** (como el chat de Discord) con el contexto del servidor y la lista compacta (id, nombre del canal, categoría, indicación) y pide un JSON `{id: descripción}` de como mucho 1024 caracteres cada una (límite de Discord); rellena los `tema` de la propuesta; si el agente falla o falta alguna, la propuesta sigue con esas descripciones vacías y un aviso; listas muy largas se parten en tandas de 40; tests con un agente falso (respuesta válida, incompleta y rota)
+
+- [ ] Construir desde el plan en la app
+  criterio: en modo Execute, junto al plan aparece **Build from plan** cuando el plan tiene estructura: compila la propuesta en local, escribe las descripciones pendientes con la llamada barata y muestra la misma tarjeta de propuesta con Apply (mismo `aplicar_propuesta`), indicando cuántas acciones salieron de la estructura y cuántas descripciones escribió la IA; si el plan además tiene texto libre, la tarjeta lo avisa y sugiere pedírselo al asistente en el chat; el prompt del asistente (chat en modo Execute) recibe además el plan ya analizado y un **resumen compacto del mapa** del servidor (nombres de categorías, canales y roles, recortado) para que no gaste llamadas en consultarlo; `npm run build` pasa
+
+- [ ] Pestaña de contexto y personalidad
+  criterio: la sección AI Assistant tiene una pestaña «Context & personality» con dos editores: el contexto del servidor (Markdown, guardado automático, Import/Export .md, con un texto de ejemplo como marcador) y la personalidad del bot (el mismo campo `chat_personalidad` de «Discord replies», que allí pasa a mostrarse como un resumen con enlace a esta pestaña); todo con `t()`; `npm run i18n:check` y `npm run build` pasan
+
+- [ ] Manual y plantilla en la app
+  criterio: junto al editor del plan hay un botón **Manual** que abre un panel con la sintaxis explicada con ejemplos (roles, categoría privada, rangos, descripción literal y `generar:`, permisos, texto libre) y consejos para gastar menos tokens, y un botón **Insert template** que inserta un plan de ejemplo estructurado y comentado (si el editor tiene texto, pregunta antes de reemplazar); los avisos del análisis (línea y motivo) se muestran bajo el editor mientras se escribe; todo con `t()`; `npm run i18n:check` y `npm run build` pasan
+
+- [ ] Documentación del plan estructurado
+  criterio: `docs/PLAN_SERVIDOR.md` (inglés) y `docs/PLAN_SERVIDOR.es.md` (español) con el manual completo de la sintaxis, ejemplos (servidor temático de 10 categorías y una categoría de 120 canales con descripciones generadas), el contexto del servidor y cómo ahorrar tokens; docs/ASISTENTE.md, README.md y README.es.md enlazan a ellos
+
+Verificación manual:
+- Escribir un plan estructurado con una categoría de 20 canales `{1..20}` y `descripción: generar: …`; Build from plan: propuesta inmediata, una sola llamada a la IA para las descripciones; Apply.
+- Escribir el contexto del servidor y comprobar que las descripciones y las respuestas del bot lo siguen.
 
 ## Después del MVP (sin criterios todavía: se detallan al empezar cada bloque)
 - Plantillas: esquema, vista de plantillas, vista previa en árbol, aplicador ordenado (roles → categorías → canales → overwrites), validación de permisos, crear servidor nuevo desde plantilla.
