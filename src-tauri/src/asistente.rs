@@ -607,7 +607,153 @@ impl Drop for Turno {
     }
 }
 
+/// Ejemplo de propuesta del prompt: rol + categoría + canal con tema + permiso por nombre.
+const EJEMPLO_PROPUESTA: &str = r##"{
+  "resumen": "A moderators role and a private staff category with one channel",
+  "acciones": [
+    {
+      "herramienta": "crear_rol",
+      "args": { "nombre": "Moderators", "color": "#3498DB", "mencionable": true, "permisos": ["ManageMessages", "KickMembers"] },
+      "descripcion": "Create the Moderators role"
+    },
+    {
+      "herramienta": "crear_canal",
+      "args": { "nombre": "Staff", "tipo": "categoria" },
+      "descripcion": "Create the Staff category"
+    },
+    {
+      "herramienta": "crear_canal",
+      "args": { "nombre": "mod-chat", "tipo": "texto", "categoria_id": "Staff", "tema": "Private chat for the moderation team" },
+      "descripcion": "Create #mod-chat inside Staff"
+    },
+    {
+      "herramienta": "permiso_canal",
+      "args": { "channel_id": "mod-chat", "target_id": "Moderators", "tipo": "rol", "permitir": ["ViewChannel", "SendMessages"] },
+      "descripcion": "Let Moderators see and write in #mod-chat"
+    }
+  ]
+}"##;
+
+/// Prompt que se le da al agente. `servidor` es (id, nombre) del servidor activo.
+pub fn prompt_asistente(
+    modo: ModoAsistente,
+    servidor: (&str, &str),
+    plan: &str,
+    idioma: &str,
+    mensaje: &str,
+) -> String {
+    let (id, nombre) = servidor;
+    let lengua = if crate::i18n::normalizar(idioma) == "es" {
+        "Spanish"
+    } else {
+        "English"
+    };
+    let plan = if plan.trim().is_empty() {
+        "(The user has not written a plan for this server yet.)"
+    } else {
+        plan
+    };
+    let mut p = format!(
+        "You are the assistant built into ARGUS, a desktop app to administer Discord servers \
+with the user's own bot. You reach the server through the ARGUS MCP tools.\n\n\
+## Active server\n\
+The active server is \"{nombre}\" (id {id}). Before anything else, call the tool \
+`elegir_servidor` with guild_id \"{id}\". If that tool is not available, pass \
+guild_id \"{id}\" in every tool call.\n\n\
+## Rules\n\
+- You cannot modify anything: you only have read tools (list channels, roles, members, \
+permissions, settings, audit log, messages...). Never try to change the server yourself.\n\
+- Always reply in {lengua}, the language of the ARGUS interface.\n\n\
+## Server plan (written by the user)\n\
+<plan>\n{plan}\n</plan>\n"
+    );
+    if modo == ModoAsistente::Execute {
+        p.push_str(&format!(
+            "\n## Execute mode\n\
+Study the server with your read tools, compare it with the plan and work out what has to \
+change. Explain it briefly and END your answer with ONE ```json block containing a \
+`Propuesta`. ARGUS will validate it, show it to the user and, only if the user approves, \
+execute exactly those actions in a safe order (roles, categories, channels, channel \
+permissions, member roles).\n\n\
+Format: {{\"resumen\": string, \"acciones\": [{{\"herramienta\": string, \"args\": object, \
+\"descripcion\": string}}]}}\n\
+- `herramienta` is the name of a write tool: {escritura}.\n\
+- Do not include `guild_id` and never use `elegir_servidor`: the active server is used.\n\
+- Where an id of a role, channel or category goes (`categoria_id`, `channel_id`, `role_id`, \
+`target_id` with tipo \"rol\"), you may write its name instead; it can be something an earlier \
+action creates.\n\
+- `crear_rol` args: nombre, color (\"#RRGGBB\"), separado, mencionable, permisos (list of \
+permission names such as \"ManageMessages\").\n\
+- `crear_canal` args: nombre, tipo (\"texto\", \"voz\", \"categoria\", \"anuncios\", \"foro\"), \
+categoria_id, tema (the channel topic), nsfw, slowmode_segundos.\n\
+- `permiso_canal` args: channel_id, target_id, tipo (\"rol\" or \"miembro\"), permitir, denegar \
+(lists of permission names).\n\
+- `dar_rol` args: user_id, role_id.\n\
+- Only propose what is needed: do not recreate what already exists.\n\n\
+Example of a valid answer block (a role, a category, a channel with topic and a permission by \
+name):\n```json\n{ejemplo}\n```\n",
+            escritura = crate::mcp::HERRAMIENTAS_ESCRITURA.join(", "),
+            ejemplo = EJEMPLO_PROPUESTA,
+        ));
+    } else {
+        p.push_str(
+            "\n## Read mode\nConverse with the user and answer questions about the server and \
+the plan. Do not produce a JSON proposal.\n",
+        );
+    }
+    p.push_str(&format!("\n## User message\n{mensaje}\n"));
+    p
+}
+
+/// Extrae la `Propuesta` del último bloque ```json de la respuesta del agente.
+pub fn extraer_propuesta(respuesta: &str) -> Result<crate::propuesta::Propuesta, String> {
+    let minus = respuesta.to_ascii_lowercase();
+    let inicio = minus
+        .rfind("```json")
+        .ok_or("The assistant did not include a proposal in its answer")?;
+    let resto = &respuesta[inicio + "```json".len()..];
+    let cuerpo = resto.find("```").map_or(resto, |i| &resto[..i]);
+    let propuesta: crate::propuesta::Propuesta = serde_json::from_str(cuerpo.trim())
+        .map_err(|e| format!("The assistant's proposal is not valid JSON: {e}"))?;
+    if propuesta.acciones.is_empty() {
+        return Err("The assistant's proposal has no actions".into());
+    }
+    Ok(propuesta)
+}
+
+/// Propuesta ya validada que se emite como `asistente-propuesta`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct EventoPropuesta {
+    pub propuesta: crate::propuesta::Propuesta,
+    pub validacion: crate::propuesta::Validacion,
+}
+
+pub const EVENTO_PROPUESTA: &str = "asistente-propuesta";
+
+/// Extrae y valida la propuesta de `respuesta`. `validar` es `validar_propuesta`.
+pub fn propuesta_de_respuesta(
+    respuesta: &str,
+    validar: impl FnOnce(&crate::propuesta::Propuesta) -> crate::propuesta::Validacion,
+) -> Result<EventoPropuesta, String> {
+    let propuesta = extraer_propuesta(respuesta)?;
+    let validacion = validar(&propuesta);
+    if let Some(e) = validacion.errores.first() {
+        let mas = validacion.errores.len() - 1;
+        let detalle = format!("{}: {}", e.herramienta, e.mensaje);
+        return Err(if mas == 0 {
+            format!("The assistant's proposal is not valid: {detalle}")
+        } else {
+            format!("The assistant's proposal is not valid: {detalle} (and {mas} more)")
+        });
+    }
+    Ok(EventoPropuesta {
+        propuesta,
+        validacion,
+    })
+}
+
 /// Lanza el agente con `mensaje` y transmite la respuesta por `asistente-evento`.
+/// En modo Execute emite además `asistente-propuesta` (o un error legible).
 /// Devuelve el id de sesión. Solo un agente a la vez.
 #[tauri::command]
 pub async fn enviar_al_asistente(
@@ -617,6 +763,7 @@ pub async fn enviar_al_asistente(
     agente: String,
     modelo: String,
     modo: String,
+    plan: Option<String>,
 ) -> Result<Option<String>, String> {
     use tauri::Emitter;
     let r = async {
@@ -625,6 +772,22 @@ pub async fn enviar_al_asistente(
             "execute" | "Execute" => ModoAsistente::Execute,
             _ => return Err(format!("Unknown assistant mode: {modo}")),
         };
+        let gid = state
+            .get_active_guild()
+            .ok_or("No active server: choose one first")?;
+        let nombre_servidor = {
+            let mapas = state.server_maps.lock().unwrap();
+            mapas.get(&gid).map(|m| m.guild.name.clone())
+        }
+        .unwrap_or_else(|| gid.clone());
+        let idioma = crate::i18n::idioma(&state);
+        let prompt = prompt_asistente(
+            modo,
+            (&gid, &nombre_servidor),
+            plan.as_deref().unwrap_or(""),
+            &idioma,
+            &mensaje,
+        );
         let ruta = buscar_binario(&agente, &carpetas_busqueda())
             .ok_or_else(|| format!("{agente} is not installed"))?;
         let mcp = crate::commands::ruta_del_mcp()?;
@@ -635,18 +798,46 @@ pub async fn enviar_al_asistente(
             &modelo,
             modo,
             None,
-            &mensaje,
+            &prompt,
         )?;
         let cancelar = std::sync::Arc::new(tokio::sync::Notify::new());
         let _turno = Turno::tomar(cancelar.clone())?;
-        let idioma = crate::i18n::idioma(&state);
-        ejecutar_orden(&orden, &agente, &cancelar, |mut e| {
+        let emitir = |e: EventoAsistente| {
+            let mut e = e;
             if let EventoAsistente::Error { mensaje } = &mut e {
                 *mensaje = crate::i18n::tr(&idioma, mensaje);
             }
             if let Err(err) = app.emit(EVENTO_ASISTENTE, e) {
                 tracing::warn!("no se pudo emitir {EVENTO_ASISTENTE}: {err}");
             }
+        };
+        let mut respuesta = String::new();
+        let mut con_error = false;
+        ejecutar_orden(&orden, &agente, &cancelar, |e| {
+            match &e {
+                EventoAsistente::Texto { texto } => {
+                    respuesta.push_str(texto);
+                    respuesta.push('\n');
+                }
+                EventoAsistente::Error { .. } => con_error = true,
+                EventoAsistente::Fin { cancelado, .. }
+                    if modo == ModoAsistente::Execute && !cancelado && !con_error =>
+                {
+                    // La propuesta (o su error) sale antes del fin de la respuesta.
+                    match propuesta_de_respuesta(&respuesta, |p| {
+                        crate::propuesta::validar_en_estado(&state, p)
+                    }) {
+                        Ok(ev) => {
+                            if let Err(err) = app.emit(EVENTO_PROPUESTA, ev) {
+                                tracing::warn!("no se pudo emitir {EVENTO_PROPUESTA}: {err}");
+                            }
+                        }
+                        Err(mensaje) => emitir(EventoAsistente::Error { mensaje }),
+                    }
+                }
+                _ => {}
+            }
+            emitir(e);
         })
         .await
     }
@@ -1060,5 +1251,108 @@ mod tests {
     fn parsea_solo_lineas_proveedor_modelo() {
         let m = parsear_modelos("a/b\n\nruido con espacios\n  c/d  \na/b\n/x\n");
         assert_eq!(m, ["a/b", "c/d"]);
+    }
+}
+
+#[cfg(test)]
+mod tests_prompt {
+    use super::*;
+    use crate::propuesta::{validar_acciones, Nombres, Propuesta};
+
+    fn prompt(modo: ModoAsistente, idioma: &str) -> String {
+        prompt_asistente(
+            modo,
+            ("123456789", "Mi Servidor"),
+            "# Plan\n- categoría Staff\n- rol Moderators",
+            idioma,
+            "Construye el servidor",
+        )
+    }
+
+    fn validar(p: &Propuesta) -> crate::propuesta::Validacion {
+        validar_acciones(p, &Nombres::default())
+    }
+
+    #[test]
+    fn prompt_read_explica_argus_servidor_plan_y_solo_lectura() {
+        let p = prompt(ModoAsistente::Read, "en");
+        assert!(p.contains("ARGUS"));
+        assert!(p.contains("\"Mi Servidor\"") && p.contains("123456789"));
+        assert!(p.contains("`elegir_servidor` with guild_id \"123456789\""));
+        assert!(p.contains("- rol Moderators"), "plan completo");
+        assert!(p.contains("cannot modify anything"));
+        assert!(p.contains("reply in English"));
+        assert!(p.contains("Construye el servidor"));
+        assert!(!p.contains("```json"), "Read no pide propuesta");
+    }
+
+    #[test]
+    fn prompt_execute_documenta_la_propuesta() {
+        let p = prompt(ModoAsistente::Execute, "es");
+        assert!(p.contains("reply in Spanish"));
+        assert!(p.contains("END your answer with ONE ```json block"));
+        for h in crate::mcp::HERRAMIENTAS_ESCRITURA {
+            assert!(p.contains(h), "falta la herramienta {h}");
+        }
+        for campo in [
+            "crear_rol",
+            "crear_canal",
+            "permiso_canal",
+            "tema",
+            "permitir",
+        ] {
+            assert!(p.contains(campo), "falta {campo}");
+        }
+    }
+
+    #[test]
+    fn el_ejemplo_del_prompt_es_una_propuesta_valida() {
+        let propuesta = extraer_propuesta(&prompt(ModoAsistente::Execute, "en")).unwrap();
+        assert_eq!(propuesta.acciones.len(), 4);
+        let v = validar(&propuesta);
+        assert!(v.errores.is_empty(), "{:?}", v.errores);
+    }
+
+    #[test]
+    fn extrae_bloque_valido_tras_texto() {
+        let r = "He revisado el servidor. Propongo:\n\n```json\n{\"resumen\":\"x\",\"acciones\":[{\"herramienta\":\"crear_rol\",\"args\":{\"nombre\":\"VIP\"},\"descripcion\":\"Rol VIP\"}]}\n```\n";
+        let ev = propuesta_de_respuesta(r, validar).unwrap();
+        assert_eq!(ev.propuesta.acciones[0].herramienta, "crear_rol");
+        assert!(!ev.validacion.cambios.is_empty());
+    }
+
+    #[test]
+    fn usa_el_ultimo_bloque() {
+        let r = "```json\n{\"acciones\":[]}\n```\ny al final:\n```json\n{\"acciones\":[{\"herramienta\":\"crear_rol\",\"args\":{\"nombre\":\"A\"}}]}\n```";
+        assert_eq!(extraer_propuesta(r).unwrap().acciones.len(), 1);
+    }
+
+    #[test]
+    fn sin_bloque_da_error_legible() {
+        let e = propuesta_de_respuesta("Todo está ya como dice el plan.", validar).unwrap_err();
+        assert_eq!(e, "The assistant did not include a proposal in its answer");
+        let e = extraer_propuesta("```\n{}\n```").unwrap_err();
+        assert!(e.contains("did not include"));
+    }
+
+    #[test]
+    fn json_roto_da_error_legible() {
+        let e = extraer_propuesta("```json\n{\"acciones\": [ {\"herramienta\": \n```").unwrap_err();
+        assert!(
+            e.starts_with("The assistant's proposal is not valid JSON:"),
+            "{e}"
+        );
+        let e = extraer_propuesta("```json\n{\"acciones\":[]}\n```").unwrap_err();
+        assert_eq!(e, "The assistant's proposal has no actions");
+    }
+
+    #[test]
+    fn propuesta_con_acciones_invalidas_da_error() {
+        let r = "```json\n{\"acciones\":[{\"herramienta\":\"borrar_todo\",\"args\":{}}]}\n```";
+        let e = propuesta_de_respuesta(r, validar).unwrap_err();
+        assert!(
+            e.starts_with("The assistant's proposal is not valid: borrar_todo"),
+            "{e}"
+        );
     }
 }

@@ -418,6 +418,11 @@ pub async fn validar_propuesta(
     state: tauri::State<'_, AppState>,
     propuesta: Propuesta,
 ) -> Result<Validacion, String> {
+    Ok(validar_en_estado(&state, &propuesta))
+}
+
+/// Lo de `validar_propuesta` sin pasar por Tauri (lo usa también el asistente).
+pub fn validar_en_estado(state: &AppState, propuesta: &Propuesta) -> Validacion {
     let existentes = {
         let mapas = state.server_maps.lock().unwrap();
         state
@@ -425,8 +430,8 @@ pub async fn validar_propuesta(
             .and_then(|g| mapas.get(&g).map(|m| Nombres::desde(&m.roles, &m.channels)))
             .unwrap_or_default()
     };
-    let mut v = validar_acciones(&propuesta, &existentes);
-    let lang = crate::i18n::idioma(&state);
+    let mut v = validar_acciones(propuesta, &existentes);
+    let lang = crate::i18n::idioma(state);
     v.cambios = v
         .cambios
         .iter()
@@ -435,7 +440,7 @@ pub async fn validar_propuesta(
     for e in &mut v.errores {
         e.mensaje = crate::i18n::tr(&lang, &e.mensaje);
     }
-    Ok(v)
+    v
 }
 
 #[cfg(test)]
