@@ -437,6 +437,25 @@ Verificación manual (en tu servidor de pruebas):
 - Moderation → Execute: «ponle un aviso a quien dijo "hola"» → propuesta → Apply → el usuario recibe el DM y aparece en avisos recientes.
 - Desde Discord (con órdenes activadas para ti): «@Bot silencia a X 10 minutos» → propuesta → «sí».
 
+## FASE 15 — Construir más rápido: permisos dentro de la creación del canal
+Hoy cada canal se crea (heredando los permisos de su categoría) y después se le vuelven a poner uno a uno con `permiso_canal`, aunque ya los tenga. En la prueba real, «Archivo de Sitio-19» fueron 25 peticiones (18 de permisos, 15 redundantes) y ~61 s; el límite de velocidad de Discord hace que cada petición cueste ~2 s. Objetivo: que cada categoría y canal **nuevo** se cree con sus permisos finales en **una sola petición** (lo de la categoría + lo propio del canal; lo del canal manda), de modo que ese plan baje a 7 peticiones (~15–20 s) y el servidor SCP de 87 acciones a ~35. El resultado en Discord debe ser idéntico al actual. Los canales que ya existen siguen usando `permiso_canal`. Toda la UI y mensajes nuevos con `t()`; tests con el Discord falso.
+
+- [ ] crear_canal acepta permisos
+  criterio: `CrearCanalParams` (MCP y propuestas) gana `permisos` opcional: lista de `{objetivo, tipo ("rol"|"miembro"), permitir: [nombres de permiso], denegar: [...]}`, con el objetivo por nombre o id (puede ser un rol que una acción anterior de la misma propuesta crea, resolviéndolo a su id real al ejecutar, igual que `categoria_id`; `@everyone` = id del servidor); `create_guild_channel` manda en la misma petición la unión de los overwrites de la categoría padre y los del canal (si un mismo objetivo está en ambos, gana el del canal); `firmas_escritura` lo documenta; validar_acciones rechaza un objetivo inexistente o un permiso desconocido con mensaje claro; tests contra el Discord falso: el POST lleva los overwrites combinados, el canal manda sobre la categoría, rol creado en la misma propuesta, objetivo inexistente
+
+- [ ] El compilador del plan mete los permisos en la creación
+  criterio: `plan_compilar` deja de emitir `permiso_canal` para categorías y canales que crea en la misma propuesta y pone sus permisos en el `crear_canal` (la categoría con los suyos; cada canal con los de la categoría + los propios); sigue emitiendo `permiso_canal` solo para canales/categorías que ya existían; el diff del modo Plan y el resumen siguen siendo correctos («Permisos incluidos en la creación: N» o equivalente, traducido); tests: el plan de prueba «Archivo de Sitio-19» compila a 7 acciones (1 rol, 1 categoría, 5 canales) con los mismos permisos efectivos que antes, un canal con `solo leer: X` dentro de una categoría privada, y un canal existente que sigue usando `permiso_canal`
+
+- [ ] El asistente IA y las órdenes de Discord usan los permisos en la creación
+  criterio: el prompt de Execute (construcción) indica que, para un canal o categoría nuevos, los permisos van en `permisos` de `crear_canal` y `permiso_canal` solo para lo que ya existe; el ejemplo de propuesta (`EJEMPLO_PROPUESTA`) lo muestra; `orden_de_ejecucion` y la validación siguen funcionando con propuestas antiguas que aún usan `permiso_canal` tras crear; tests del prompt y de una propuesta mixta
+
+- [ ] Medir y documentar
+  criterio: test que cuenta las peticiones al Discord falso al aplicar el plan «Archivo de Sitio-19» (antes 25, ahora 7) y falla si sube; docs/PLAN_SERVIDOR.md / .es.md y docs/ASISTENTE.md explican que los permisos de los canales nuevos se aplican al crearlos (y el aviso «no sincronizado con la categoría» de Discord cuando un canal tiene permisos propios)
+
+Verificación manual (en tu servidor de pruebas):
+- Enviar por Discord el mismo `prueba.md` (con otro nombre de categoría) y comparar el tiempo entre el «sí» y el «Hecho» con los ~61 s de antes; comprobar con «Ver servidor como rol» que los permisos son los mismos.
+- Construir un canal con permisos propios dentro de una categoría privada y comprobar que lo del canal manda.
+
 ## Después del MVP (sin criterios todavía: se detallan al empezar cada bloque)
 - Plantillas: esquema, vista de plantillas, vista previa en árbol, aplicador ordenado (roles → categorías → canales → overwrites), validación de permisos, crear servidor nuevo desde plantilla.
 - Personalidad del bot (lo básico está en la FASE 11): memoria larga por canal, modo observador, comandos slash, proveedores LLM sin CLI (Ollama / compatible OpenAI).
