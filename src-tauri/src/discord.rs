@@ -10,15 +10,34 @@ use twilight_http::Client;
 /// Si `base_url` es `Some("host:puerto")`, las peticiones van por HTTP a ese
 /// proxy (Discord falso en tests) y se desactiva el rate-limiter local.
 /// Con `None` se usa la API oficial de Discord.
-pub fn build_client(token: &str, base_url: Option<&str>) -> Client {
-    let builder = ClientBuilder::new().token(token.to_string());
-    match base_url {
-        Some(url) => builder
-            .proxy(url.to_string(), true)
-            .ratelimiter(None)
-            .build(),
-        None => builder.build(),
+pub fn build_client(token: &str, base_url: Option<&str>) -> std::sync::Arc<Client> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    // Un cliente por (token, URL) reutilizado: el control de límites de
+    // velocidad de twilight vive dentro del cliente. Con uno nuevo en cada
+    // petición, las operaciones masivas (aplicar una propuesta grande, buscar
+    // en todos los canales) chocaban con el 429 de Discord.
+    // Con una URL de pruebas (Discord falso, sin límites) se crea uno nuevo:
+    // los puertos de los servidores falsos se reutilizan entre tests y un
+    // cliente guardado conservaría conexiones a un servidor ya cerrado.
+    if let Some(url) = base_url {
+        return Arc::new(
+            ClientBuilder::new()
+                .token(token.to_string())
+                .proxy(url.to_string(), true)
+                .ratelimiter(None)
+                .build(),
+        );
     }
+    static CLIENTES: OnceLock<Mutex<HashMap<String, Arc<Client>>>> = OnceLock::new();
+    let mut clientes = CLIENTES
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap();
+    clientes
+        .entry(token.to_string())
+        .or_insert_with(|| Arc::new(ClientBuilder::new().token(token.to_string()).build()))
+        .clone()
 }
 
 /// Obtiene el usuario del token (`GET /users/@me`). Un 401 se traduce a
