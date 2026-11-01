@@ -247,6 +247,7 @@ pub fn convertir_canal(c: twilight_model::channel::Channel) -> crate::state::Cha
         overwrites,
         // `GET /guilds/{id}/channels` no trae permisos calculados del bot.
         permissions_bitfield: None,
+        topic: c.topic,
     }
 }
 

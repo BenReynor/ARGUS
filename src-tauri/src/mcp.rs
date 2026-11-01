@@ -726,6 +726,9 @@ impl ArgusMcp {
                 let mut v = canal_json(c);
                 v["categoria_id"] = json!(c.parent_id);
                 v["categoria"] = json!(categoria);
+                if let Some(t) = c.topic.as_deref().filter(|t| !t.is_empty()) {
+                    v["tema"] = json!(t);
+                }
                 if let Some(o) = c.overwrites.as_ref().filter(|o| !o.is_empty()) {
                     v["overwrites"] = json!(o
                         .iter()
@@ -3028,6 +3031,7 @@ mod tests {
                 {"id": "10", "type": 4, "name": "Texto", "position": 0,
                  "permission_overwrites": []},
                 {"id": "11", "type": 0, "name": "general", "position": 1, "parent_id": "10",
+                 "topic": "Charla del taller",
                  "permission_overwrites": [{"id": "700", "type": 0, "allow": "1024", "deny": "0"}]},
                 {"id": "12", "type": 2, "name": "Voz", "position": 2, "parent_id": "10",
                  "permission_overwrites": []},
@@ -3184,6 +3188,8 @@ mod tests {
         assert_eq!(general["overwrites"][0]["nombre"], "Moderadores");
         assert_eq!(general["overwrites"][0]["permitir"], json!(["ViewChannel"]));
         assert_eq!(general["overwrites"][0]["denegar"], json!([]));
+        // La descripción del canal también se ve (para reescribirla o revisarla).
+        assert_eq!(general["tema"], "Charla del taller");
 
         let roles = v(mcp.listar_roles_json(None).await.unwrap());
         assert_eq!(roles["roles"][0]["nombre"], "Bot");

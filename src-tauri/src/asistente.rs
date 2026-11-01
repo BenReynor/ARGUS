@@ -2444,6 +2444,7 @@ mod tests_prompt {
             position: i as i32,
             overwrites: None,
             permissions_bitfield: None,
+            topic: None,
         };
         let mut channels = vec![canal(1, 4, None)];
         channels.extend((2..300).map(|i| canal(i, 0, Some("1"))));

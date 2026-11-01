@@ -154,6 +154,7 @@ export interface Channel {
   position: number;
   overwrites: Overwrite[] | null;
   permissions_bitfield: string | null;
+  topic?: string | null;
 }
 
 export interface Overwrite {

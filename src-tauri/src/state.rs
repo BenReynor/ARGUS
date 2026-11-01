@@ -269,6 +269,9 @@ pub struct Channel {
     pub position: i32,
     pub overwrites: Option<Vec<Overwrite>>,
     pub permissions_bitfield: Option<String>,
+    /// Descripción (tema) del canal; los mapas guardados antes no la traen.
+    #[serde(default)]
+    pub topic: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

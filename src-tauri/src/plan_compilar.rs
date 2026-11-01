@@ -414,6 +414,7 @@ mod tests {
             position: 0,
             overwrites: None,
             permissions_bitfield: None,
+            topic: None,
         }
     }
 
