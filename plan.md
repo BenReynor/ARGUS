@@ -486,6 +486,36 @@ Verificación manual (en tu servidor de pruebas):
 - Desactivar «borrar canales» en Allow from Discord y pedirlo: rechazo con el motivo.
 - Tras actualizar, los bots siguen funcionando (migración de la clave) y `secret-tool search service argus` (o el llavero de GNOME) muestra la clave.
 
+## FASE 17 — Advertencias y control: avisar antes de lo caro o arriesgado y poder parar
+Hoy se puede pedir algo muy caro (leer todo el historial, cientos de descripciones con `generar:`) o muy grande (una propuesta de 80 acciones) sin aviso, y una vez que se aplica una propuesta no se puede detener. El chat de la app ya tiene **Stop** para la IA, pero no hay forma de parar al aplicar ni desde Discord. Objetivo: avisar con una estimación antes de lo que cuesta tiempo, tokens o es irreversible, y poder parar a mitad sin dejar nada a medias sin informar. Toda la UI y mensajes nuevos con `t()`; tests con el Discord falso y agentes falsos.
+
+- [ ] Aviso al elegir muchos mensajes en Moderación
+  criterio: al elegir 500, 1000 o «All» en «Messages to read per channel» aparece una advertencia en línea (no bloqueante) con lo que implica: tarda más, gasta más tokens y el proveedor del modelo ve más mensajes; al enviar el primer mensaje con ese límite se pide confirmación una vez por conversación («Leer hasta N mensajes por canal en M canales: ~X peticiones a Discord. ¿Continuar?»), con «No volver a preguntar en este servidor» persistido; tests del cálculo de la estimación y de que «no volver a preguntar» se recuerda
+
+- [ ] Parar mientras se aplica una propuesta
+  criterio: durante Apply (en Build, Moderation y Build from plan) hay un botón **Stop** con la barra de progreso «N de M»; al pulsarlo se termina la acción en curso (nunca se corta a medias una petición) y no se lanzan las siguientes; el resultado dice qué se hizo, qué falló y qué quedó sin hacer (`canceladas`), y ese resumen queda en Logs; la propuesta sigue visible para volver a aplicarla (las acciones ya hechas se marcan para no repetirlas); tests: cancelar a mitad deja exactamente las acciones previas hechas y el resto como no intentadas
+
+- [ ] Parar desde Discord
+  criterio: si el autor de una orden escribe «para», «detente», «stop» o «cancela» (una respuesta corta, mismo criterio que `confirmacion_de`) mientras su propuesta se prepara o se aplica, se cancela el constructor o las acciones que faltan y el bot responde con lo hecho y lo que quedó sin hacer; otro usuario no puede parar la orden de alguien; tests: parar durante la preparación (no se publica propuesta), parar durante la aplicación, y el «para» de otro usuario se ignora
+
+- [ ] Confirmación reforzada para propuestas grandes o destructivas en la app
+  criterio: antes de Apply en la app, si la propuesta tiene acciones irreversibles (borrar canales o roles, banear, expulsar, borrar mensajes) se listan resaltadas en rojo arriba del todo; si borra más de 5 canales/roles o banea a más de 3 miembros, Apply pide escribir el nombre del servidor para confirmar; si tiene más de 30 acciones se muestra la duración estimada (≈2 s por petición a Discord); tests de los umbrales y de la estimación
+
+- [ ] Aviso de coste con `generar:`
+  criterio: al compilar un plan (Build from plan, archivo .md por Discord) con más de 30 descripciones `generar:`, antes de llamar a la IA se avisa con el número de descripciones y la estimación de llamadas, y se pide confirmar (en la app un diálogo; en Discord el «sí» del autor antes de generar); con menos, sin cambios; tests del umbral en la app y en Discord
+
+- [ ] Tope diario de respuestas del bot
+  criterio: ajuste por servidor `chat_max_diario` (por defecto 200 respuestas al día, 0 = sin tope) en Discord replies, con el contador del día visible; al llegar al tope el bot deja de responder hasta el día siguiente, lo anota en Logs y avisa una sola vez en el canal; las órdenes cuentan también; protege del gasto si alguien llena el canal de menciones; tests del contador, el reinicio diario y el aviso único
+
+- [ ] Tiempo máximo por petición a la IA
+  criterio: ajuste global «AI time limit» en Settings (por defecto 5 min para el asistente de la app y 3 min para el constructor de órdenes; 1–30 min) que sustituye las constantes actuales; al pasarlo se para el agente y se avisa con el motivo y una sugerencia (pedir algo más concreto, menos mensajes por canal); tests con un agente falso lento
+
+Verificación manual:
+- Moderación: elegir «All», ver la advertencia y la confirmación; pedir un análisis largo y pulsar Stop.
+- Aplicar una propuesta de ~20 acciones y pulsar Stop a mitad: el resumen dice lo hecho y lo que faltó; volver a aplicarla no repite lo ya hecho.
+- Desde Discord: pedir una construcción grande y escribir «para» mientras se aplica.
+- Pedir en la app «borra todos los canales de prueba»: confirmación escribiendo el nombre del servidor.
+
 ## Después del MVP (sin criterios todavía: se detallan al empezar cada bloque)
 - Plantillas: esquema, vista de plantillas, vista previa en árbol, aplicador ordenado (roles → categorías → canales → overwrites), validación de permisos, crear servidor nuevo desde plantilla.
 - Personalidad del bot (lo básico está en la FASE 11): memoria larga por canal, modo observador, comandos slash, proveedores LLM sin CLI (Ollama / compatible OpenAI).
