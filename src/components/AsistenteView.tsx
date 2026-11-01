@@ -65,8 +65,8 @@ const LIMITES_MENSAJES = [50, 100, 200, 500, 1000, LIMITE_TODOS];
 
 /** Nombre de archivo a partir de `@title = …` (o `@titulo`); si no hay, «server-plan». */
 function nombreArchivoDelPlan(plan: string): string {
-  const m = /^[ \t]*@(?:title|titulo|título)[ \t]*[=:][ \t]*(.+)$/im.exec(plan);
-  const titulo = (m?.[1] ?? '').replace(/["“”]/g, '').replace(/[\\/:*?<>|]/g, '-').trim().slice(0, 80);
+  const m = /^[ \t]*@(?:title|titulo|t\u00edtulo)[ \t]*[=:][ \t]*(.+)$/imu.exec(plan);
+  const titulo = (m?.[1] ?? '').replace(/[\u0022\u201C\u201D]/g, '').replace(/[\\/:*?<>|]/g, '-').trim().slice(0, 80);
   return titulo || 'server-plan';
 }
 
