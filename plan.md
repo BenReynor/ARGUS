@@ -516,6 +516,38 @@ Verificación manual:
 - Desde Discord: pedir una construcción grande y escribir «para» mientras se aplica.
 - Pedir en la app «borra todos los canales de prueba»: confirmación escribiendo el nombre del servidor.
 
+## FASE 18 — Mantenimiento: actualizaciones automáticas, avisos de dependencias y copia de la configuración
+Quien instaló un `.deb`, `.AppImage` o `.exe` no se entera de las versiones nuevas, así que los arreglos (también de seguridad) no le llegan. Objetivo: que ARGUS avise y se actualice con una descarga **firmada**, que GitHub avise de dependencias con fallos y que el usuario pueda guardar y recuperar su configuración. Toda la UI con `t()`.
+
+- [ ] Avisos de dependencias
+  criterio: `.github/dependabot.yml` con actualizaciones semanales para `cargo` (src-tauri), `npm` (raíz) y `github-actions`, agrupadas por ecosistema y con un máximo de 5 PR abiertas; CONTRIBUTING o README (Development) explica que las PR de Dependabot pasan el mismo CI antes de fusionarse
+
+- [ ] Actualizaciones automáticas firmadas
+  criterio: plugin updater de Tauri configurado con la clave **pública** en tauri.conf.json y el endpoint `https://github.com/BenReynor/ARGUS/releases/latest/download/latest.json`; el CI de release firma los paquetes con los secretos `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` y publica `latest.json`; al arrancar (y en Settings → About con «Check for updates») ARGUS comprueba si hay versión nueva y muestra un aviso con las notas, **nunca instala sin que el usuario pulse Update**, verifica la firma y reinicia; opción «comprobar al arrancar» (por defecto sí); el `.deb` (que el updater no actualiza) muestra el aviso con el enlace de descarga; sin red no molesta; tests de la comparación de versiones y del aviso; **paso del autor antes de la release**: crear la clave con `npm run tauri signer generate` (con contraseña) y guardarla como secretos del repo y con copia fuera del PC; documentado en docs/FICHA_TECNICA.md
+
+- [ ] Copia de seguridad de la configuración de ARGUS
+  criterio: Settings → Backup con «Export configuration» e «Import configuration»: un archivo `.argusbak` con los bots, ajustes por servidor (personalidad, contexto, respuestas, órdenes), planes, conversaciones opcionales y preferencias; los tokens van **cifrados con una contraseña que elige el usuario** (no con la clave del PC, para poder restaurar en otro equipo); importar muestra qué contiene y pide confirmar antes de reemplazar o fusionar; copia automática opcional (diaria, guarda las 7 últimas) en la carpeta de datos; tests: exportar → importar en una base vacía deja todo igual, contraseña incorrecta falla sin tocar nada, archivo corrupto se rechaza
+
+## FASE 19 — Copia de seguridad del servidor de Discord (snapshots) y restauración manual
+Si alguien con permisos (o un bot ajeno) borra canales y roles, hoy no hay forma de volver atrás. Objetivo: guardar dentro de ARGUS **snapshots** de la estructura del servidor y poder **restaurarlos manualmente**, viendo antes qué se recrea. La restauración reutiliza el motor de propuestas (validación, orden seguro, progreso). El snapshot es local: sigue disponible aunque el servidor sea destruido. Toda la UI con `t()`; tests con el Discord falso.
+
+- [ ] Guardar snapshots del servidor
+  criterio: nueva sección **Backups** (por servidor) con «Create snapshot»: guarda en sqlite (tabla nueva, migración) los ajustes del servidor (nombre, icono, canales de sistema, verificación, notificaciones), roles (nombre, color, permisos, posición, hoist, mencionable, icono), categorías y canales (tipo, nombre, posición, tema, NSFW, slowmode, bitrate/límite de usuarios, etiquetas de foro) con sus overwrites por **nombre** de rol o miembro además del id, los roles de cada miembro (id, nombre, roles), emojis y stickers (nombre e imagen), webhooks (nombre y canal) y la lista de baneos; lista de snapshots con fecha, tamaño y resumen (N canales, M roles…), renombrar, borrar y exportar/importar a archivo; snapshots automáticos opcionales (diario, conservar los N últimos, por defecto 7); tests del contenido del snapshot contra el Discord falso
+
+- [ ] Comparar un snapshot con el servidor actual
+  criterio: «Compare» muestra lo que falta, lo que cambió y lo que sobra respecto al snapshot (canales, roles, permisos, roles de miembros), agrupado y con contadores; reutiliza el formato de diff del modo Plan; tests con canales borrados, permisos cambiados y un rol renombrado
+
+- [ ] Restaurar manualmente
+  criterio: «Restore» genera una propuesta (nunca se aplica sola) para volver al snapshot: recrear roles (en su orden), categorías y canales borrados con sus permisos (remapeando los ids nuevos por nombre), restaurar permisos y ajustes cambiados y volver a dar los roles a los miembros que siguen en el servidor; opciones: «solo lo que falta» (por defecto) o «también deshacer cambios», y «borrar lo que no estaba» (desactivado por defecto, con confirmación reforzada); se muestra lo que **no** se puede restaurar (mensajes, miembros expulsados o baneados que no volvieron, canales con el mismo nombre ya existentes) y la duración estimada; Apply con progreso y Stop (FASE 17); tests: servidor vaciado → restaurado igual al snapshot (mismos nombres, permisos efectivos y roles de miembros)
+
+- [ ] Detectar destrucción masiva y avisar
+  criterio: con el bot encendido, si en poco tiempo (p. ej. 5 canales o roles en 1 minuto) se borran canales o roles, ARGUS crea un snapshot de emergencia del estado anterior conocido (del mapa en vivo), muestra una alerta nativa y en Logs con quién lo hizo (registro de auditoría) y ofrece «Restore»; umbrales configurables y opción de quitar los roles al responsable automáticamente (desactivada por defecto); tests del detector con eventos simulados del Gateway
+
+Verificación manual (en tu servidor de pruebas):
+- Crear un snapshot; borrar a mano 3 canales, 1 categoría privada y 1 rol; Compare muestra justo eso; Restore → Apply → todo vuelve con los mismos permisos y el rol vuelve a los miembros.
+- Borrar 6 canales seguidos y comprobar la alerta y el snapshot de emergencia.
+- Exportar la configuración de ARGUS, importarla en otra carpeta de datos y comprobar que los bots y ajustes están.
+
 ## Después del MVP (sin criterios todavía: se detallan al empezar cada bloque)
 - **Ecosistema de complementos** (idea acordada el 2026-11-01; se detalla al empezar):
   - Modo servicio 24/7 primero: ARGUS sin ventana (en un PC, Raspberry o VPS) para que los módulos funcionen siempre.
