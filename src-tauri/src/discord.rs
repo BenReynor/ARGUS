@@ -844,7 +844,11 @@ pub async fn create_guild_channel(
             peticion = peticion.permission_overwrites(&permisos_padre);
         }
     }
-    if let Some(tema) = datos.topic.as_deref() {
+    // Voz (2), escenario (13) y categoría (4) no tienen descripción: Discord
+    // rechaza el canal entero («word that is not allowed») si se manda una,
+    // venga de una propuesta de la IA, del MCP o de la app.
+    let admite_tema = !matches!(tipo, 2 | 4 | 13);
+    if let Some(tema) = datos.topic.as_deref().filter(|_| admite_tema) {
         peticion = peticion
             .topic(tema)
             .map_err(|_| "Invalid channel topic".to_string())?;

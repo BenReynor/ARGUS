@@ -50,6 +50,10 @@ const CATALOGO_ES: &[(&str, &str)] = &[
     ("The plan is not valid: {herramienta}: {motivo}", "El plan no es válido: {herramienta}: {motivo}"),
     ("The descriptions were not written: the AI agent is not installed", "No se escribieron las descripciones: el agente de IA no está instalado"),
     ("Build from the structured plan: {n} actions", "Construir desde el plan estructurado: {n} acciones"),
+    ("Create role «{r}»", "Crear el rol «{r}»"),
+    ("Create category «{c}»", "Crear la categoría «{c}»"),
+    ("Create channel «{c}» in «{cat}»", "Crear el canal «{c}» en «{cat}»"),
+    ("Set permissions of «{o}» on «{c}»", "Permisos de «{o}» en «{c}»"),
     ("Line {linea}: {motivo}", "Línea {linea}: {motivo}"),
     ("Line {linea}: channel «{canal}» is repeated in «{categoria}»; skipped", "Línea {linea}: el canal «{canal}» está repetido en «{categoria}»; se omite"),
     ("Line {linea}: channel «{canal}» has the same name as another channel; its permissions may be applied to the wrong one", "Línea {linea}: el canal «{canal}» se llama igual que otro; sus permisos podrían aplicarse al equivocado"),
@@ -516,5 +520,32 @@ mod tests {
         assert_eq!(normalizar(" ES "), "es");
         assert_eq!(normalizar("en"), "en");
         assert_eq!(normalizar("xx"), "en");
+    }
+}
+
+#[cfg(test)]
+mod tests_textos_del_plan {
+    use super::tr;
+
+    #[test]
+    fn las_acciones_del_plan_se_traducen() {
+        assert_eq!(
+            tr("es", "Create channel «lab-01» in «Labs»"),
+            "Crear el canal «lab-01» en «Labs»"
+        );
+        assert_eq!(
+            tr("es", "Set permissions of «Guardia» on «celda-1»"),
+            "Permisos de «Guardia» en «celda-1»"
+        );
+        assert_eq!(tr("es", "Create role «O5»"), "Crear el rol «O5»");
+        assert_eq!(
+            tr("es", "Create category «Labs»"),
+            "Crear la categoría «Labs»"
+        );
+        assert_eq!(
+            tr("es", "Build from the structured plan: 87 actions"),
+            "Construir desde el plan estructurado: 87 acciones"
+        );
+        assert_eq!(tr("en", "Create role «O5»"), "Create role «O5»");
     }
 }

@@ -75,6 +75,8 @@ Inside a literal description, `{n}` is the current number.
 
 On a **category**, the description is the default for its channels that have none.
 A description is at most 1024 characters (a Discord limit).
+**Voice channels have no description** on Discord: one set on them (or inherited
+from their category) is ignored, and the AI does not write it.
 
 ### Permissions
 

@@ -401,3 +401,36 @@ async fn anuncios_sin_comunidad_avisa_sin_intentar_crear() {
         .unwrap_err();
     assert!(e.contains("Community"), "{e}");
 }
+
+#[tokio::test]
+async fn un_canal_de_voz_se_crea_sin_descripcion() {
+    let server = MockServer::start().await;
+    mock_permisos(&server, GESTIONAR_CANALES).await;
+    // Cuerpo exacto: sin `topic` aunque se haya pedido.
+    Mock::given(method("POST"))
+        .and(path("/api/v10/guilds/555/channels"))
+        .and(body_json(serde_json::json!({"name": "Sala", "type": 2})))
+        .respond_with(ResponseTemplate::new(201).set_body_json(canal_json("40", "Sala", 2, None)))
+        .expect(1)
+        .mount(&server)
+        .await;
+    mock_lista(
+        &server,
+        serde_json::json!([canal_json("40", "Sala", 2, None)]),
+    )
+    .await;
+    let state = estado("token-voz");
+    let addr = server.address().to_string();
+    let datos = DatosCanal {
+        name: Some("Sala".into()),
+        channel_type: Some(2),
+        parent_id: None,
+        topic: Some("Una descripción".into()),
+        nsfw: None,
+        rate_limit_per_user: None,
+    };
+    let canal = crear_canal(&state, "555", &datos, Some(&addr))
+        .await
+        .unwrap();
+    assert_eq!(canal.channel_type, 2);
+}

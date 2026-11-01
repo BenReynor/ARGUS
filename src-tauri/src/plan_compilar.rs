@@ -270,7 +270,11 @@ pub fn compilar(plan: &PlanEstructurado, existentes: &Existentes) -> Compilacion
                 "tipo": nombre_tipo(c.tipo),
                 "categoria_id": cat.nombre,
             });
+            // Los canales de voz no tienen descripción: Discord rechaza el
+            // canal entero si se manda una. Tampoco se le pide a la IA.
+            let admite_tema = nombre_tipo(c.tipo) != "voz";
             match &c.descripcion {
+                _ if !admite_tema => {}
                 Some(Descripcion::Literal(t)) => args["tema"] = Value::String(t.clone()),
                 Some(Descripcion::Generar(i)) => pend_rel.push((
                     canales_acc.len(),
@@ -549,6 +553,32 @@ mod tests {
     }
 
     #[test]
+    fn los_canales_de_voz_no_llevan_descripcion_ni_piden_ia() {
+        let p = analizar(
+            "## Categoría: Labs | descripción: generar: científica\n\
+             - voz: Sala | descripción: \"literal\"\n- voz: Otra\n- texto: lab",
+        );
+        let (roles, canales) = (Vec::new(), Vec::new());
+        let c = compilar(
+            &p,
+            &Existentes {
+                roles: &roles,
+                canales: &canales,
+            },
+        );
+        let voces: Vec<&Accion> = c
+            .propuesta
+            .acciones
+            .iter()
+            .filter(|a| a.args.get("tipo").and_then(Value::as_str) == Some("voz"))
+            .collect();
+        assert_eq!(voces.len(), 2);
+        assert!(voces.iter().all(|a| a.args.get("tema").is_none()));
+        // Solo el canal de texto hereda el `generar:` de la categoría.
+        assert_eq!(c.pendientes.len(), 1, "{:?}", c.pendientes);
+    }
+
+    #[test]
     fn las_descripciones_generar_quedan_pendientes() {
         let plan = analizar(EJEMPLO);
         let (roles, canales) = servidor();
@@ -559,8 +589,9 @@ mod tests {
                 canales: &canales,
             },
         );
-        // supervision-1..3, Sala de control (hereda de la categoría).
-        assert_eq!(c.pendientes.len(), 4);
+        // supervision-1..3. «Sala de control» es de voz: no tiene descripción
+        // (Discord rechaza el canal si se le manda una), así que no se pide.
+        assert_eq!(c.pendientes.len(), 3);
         let p = &c.pendientes[0];
         assert_eq!(p.canal, "supervision-1");
         assert_eq!(p.categoria, "Supervisión");
@@ -568,7 +599,7 @@ mod tests {
         let a = &c.propuesta.acciones[p.indice];
         assert_eq!(a.args["nombre"], "supervision-1");
         assert!(a.args.get("tema").is_none());
-        assert_eq!(c.pendientes[3].indicacion, "épica");
+        assert!(c.pendientes.iter().all(|p| p.canal != "Sala de control"));
     }
 
     #[test]

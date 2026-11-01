@@ -79,6 +79,8 @@ Dentro de una descripción literal, `{n}` es el número actual.
 
 En una **categoría**, la descripción es el valor por defecto de sus canales que
 no tengan una. Máximo 1024 caracteres por descripción (límite de Discord).
+Los **canales de voz no tienen descripción** en Discord: si les pones una (o la
+heredan de su categoría) se ignora, y la IA no la escribe.
 
 ### Permisos
 

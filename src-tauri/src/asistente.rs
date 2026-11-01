@@ -1598,6 +1598,12 @@ pub async fn construir_desde_plan(
             .map(|a| format!("{}: {}", a.linea, crate::i18n::tr(&idioma, &a.mensaje)))
             .collect();
         avisos.extend(comp.avisos.iter().map(|a| crate::i18n::tr(&idioma, a)));
+        // El compilador escribe en inglés; la tarjeta se muestra en el idioma
+        // de la app (solo cambian los textos visibles, no las acciones).
+        comp.propuesta.resumen = crate::i18n::tr(&idioma, &comp.propuesta.resumen);
+        for a in &mut comp.propuesta.acciones {
+            a.descripcion = crate::i18n::tr(&idioma, &a.descripcion);
+        }
         Ok(ResultadoConstruccion {
             propuesta: comp.propuesta,
             validacion,
