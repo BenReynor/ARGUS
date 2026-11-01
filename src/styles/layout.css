@@ -369,3 +369,6 @@
 
 .main-content > * { flex: none; }
 .main-content > .vista--llena { flex: 1 1 auto; min-height: 0; }
+/* Una vista llena dentro de otra (las pestañas del Asistente IA) también ocupa
+   el alto que queda; si no, sus paneles medían solo su contenido. */
+.vista--llena > .vista--llena { flex: 1 1 auto; min-height: 0; }
