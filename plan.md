@@ -517,6 +517,15 @@ Verificación manual:
 - Pedir en la app «borra todos los canales de prueba»: confirmación escribiendo el nombre del servidor.
 
 ## Después del MVP (sin criterios todavía: se detallan al empezar cada bloque)
+- **Ecosistema de complementos** (idea acordada el 2026-11-01; se detalla al empezar):
+  - Modo servicio 24/7 primero: ARGUS sin ventana (en un PC, Raspberry o VPS) para que los módulos funcionen siempre.
+  - Programa aparte en un repo propio (nombre por decidir: «Complementos», «Taller», «ARGUS Hub»…), gratuito y opcional: un botón en ARGUS lo descarga y se conecta con la app principal por un canal local; los eventos de Discord se los pasa ARGUS (nunca una segunda conexión al Gateway con el mismo token).
+  - Solo módulos ofrecidos por el autor del proyecto: paquetes comprimidos y **firmados** en las releases de ese repo; se descargan bajo demanda, se activan/desactivan por servidor y se configuran también desde el plan (`## Módulo: Tickets | …`). Primeros: tickets, roles por botón, bienvenida/verificación.
+  - Cada módulo declara qué puede hacer (permisos) y se ejecuta aislado (p. ej. WebAssembly): nunca accede a los tokens ni a archivos del usuario.
+  - Configurar otros bots conocidos (Carl-bot, Sapphire…) desde su web: MCPs/recetas de navegador por bot; navegador visible, el login lo hace el usuario (ARGUS nunca ve su contraseña), confirmación antes de guardar cada cambio y aviso previo de riesgo (actúa con su cuenta), coste en tokens y posible fallo si la web cambia; revisar las condiciones de uso de cada web antes de soportarla.
+  - Comunidad: el repo de módulos/MCPs acepta contribuciones (pull requests) con tests automáticos, pero solo el autor revisa, firma y publica; nada llega a los usuarios sin esa revisión.
+  - Catálogo curado de MCPs para el asistente (búsqueda web, GitHub…), con lo que puede hacer cada uno antes de instalarlo.
+  - Monetización: tienda gratuita por ahora. Si algún día se cobra, módulos premium con licencia propia (no MIT) validados por servidor, o alojamiento de pago; decidirlo antes de diseñar pagos.
 - Plantillas: esquema, vista de plantillas, vista previa en árbol, aplicador ordenado (roles → categorías → canales → overwrites), validación de permisos, crear servidor nuevo desde plantilla.
 - Personalidad del bot (lo básico está en la FASE 11): memoria larga por canal, modo observador, comandos slash, proveedores LLM sin CLI (Ollama / compatible OpenAI).
 - Vigilancia y logs: niveles y timestamps, eventos con filtros, vista timeline, alertas nativas, health check del Gateway, interacción opcional con otros bots con reglas anti-bucle.
