@@ -26,22 +26,93 @@ pub enum Confirmacion {
     Descartar,
 }
 
-/// «sí», «si», «yes», «ok» o «aplicar» aplican; «no» o «cancelar» descartan.
-/// Se ignoran mayúsculas, puntuación alrededor y las menciones (`<@id>`).
+/// Palabras que aprueban una propuesta pendiente.
+const AFIRMATIVAS: &[&str] = &[
+    "sí",
+    "si",
+    "sip",
+    "yes",
+    "yep",
+    "ok",
+    "okay",
+    "okey",
+    "vale",
+    "dale",
+    "aplicar",
+    "aplica",
+    "aplicala",
+    "aplícala",
+    "confirmo",
+    "confirmar",
+    "hazlo",
+    "adelante",
+    "claro",
+];
+/// Palabras que la descartan.
+const NEGATIVAS: &[&str] = &[
+    "no",
+    "nop",
+    "nope",
+    "cancelar",
+    "cancela",
+    "cancelalo",
+    "cancélalo",
+    "descartar",
+    "descarta",
+    "olvidalo",
+    "olvídalo",
+];
+/// Palabras de relleno que pueden acompañar a la respuesta («bueno, dale sí»).
+const RELLENO: &[&str] = &[
+    "bueno", "entonces", "pues", "esta", "está", "bien", "mejor", "por", "favor", "porfa", "y",
+    "ya", "please",
+];
+/// Máximo de palabras de una respuesta a una propuesta.
+const MAX_PALABRAS_CONFIRMACION: usize = 5;
+
+/// Una palabra en minúsculas, sin puntuación y sin letras repetidas («SIIII» → «si»).
+fn palabra_normalizada(p: &str) -> String {
+    let mut out = String::new();
+    for c in p
+        .trim_matches(|c: char| !c.is_alphanumeric())
+        .to_lowercase()
+        .chars()
+    {
+        if out.chars().last() != Some(c) {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Respuesta corta a una propuesta: «sí», «SIIII», «dale sí», «ok» o «aplicar»
+/// aplican; «no», «mejor no» o «cancelar» descartan. Solo cuenta si todas las
+/// palabras son de respuesta o de relleno (máx. 5) y no mezcla sí y no; así
+/// «creo que sí» o una frase normal no aplican nada. Se ignoran las menciones.
 pub fn confirmacion_de(texto: &str) -> Option<Confirmacion> {
-    let limpio: Vec<&str> = texto
+    let palabras: Vec<String> = texto
         .split_whitespace()
         .filter(|p| !p.starts_with("<@"))
+        .map(palabra_normalizada)
+        .filter(|p| !p.is_empty())
         .collect();
-    if limpio.len() != 1 {
+    if palabras.is_empty() || palabras.len() > MAX_PALABRAS_CONFIRMACION {
         return None;
     }
-    let palabra = limpio[0]
-        .trim_matches(|c: char| !c.is_alphanumeric())
-        .to_lowercase();
-    match palabra.as_str() {
-        "sí" | "si" | "yes" | "ok" | "aplicar" => Some(Confirmacion::Aplicar),
-        "no" | "cancelar" => Some(Confirmacion::Descartar),
+    let es = |lista: &[&str], p: &str| lista.iter().any(|x| palabra_normalizada(x) == p);
+    let (mut si, mut no) = (false, false);
+    for p in &palabras {
+        if es(AFIRMATIVAS, p) {
+            si = true;
+        } else if es(NEGATIVAS, p) {
+            no = true;
+        } else if !es(RELLENO, p) {
+            return None;
+        }
+    }
+    match (si, no) {
+        (true, false) => Some(Confirmacion::Aplicar),
+        (false, true) => Some(Confirmacion::Descartar),
         _ => None,
     }
 }
@@ -334,13 +405,39 @@ mod tests {
 
     #[test]
     fn confirmacion_reconoce_las_palabras_y_nada_mas() {
-        for t in ["sí", "Si", "YES", "ok!", " <@900> sí. ", "aplicar"] {
+        for t in [
+            "sí",
+            "Si",
+            "YES",
+            "ok!",
+            " <@900> sí. ",
+            "aplicar",
+            "bueno entonces SIIIII",
+            "dale sí",
+            "Sí, adelante",
+            "okey",
+        ] {
             assert_eq!(confirmacion_de(t), Some(Confirmacion::Aplicar), "{t}");
         }
-        for t in ["no", "Cancelar", "<@900> no"] {
+        for t in [
+            "no",
+            "Cancelar",
+            "<@900> no",
+            "mejor no",
+            "NOOO",
+            "no, cancela",
+        ] {
             assert_eq!(confirmacion_de(t), Some(Confirmacion::Descartar), "{t}");
         }
-        for t in ["", "sí pero cambia el nombre", "quizá", "hola"] {
+        for t in [
+            "",
+            "sí pero cambia el nombre",
+            "quizá",
+            "hola",
+            "creo que si",
+            "si no",
+            "si, esta bien si sidale el rol",
+        ] {
             assert_eq!(confirmacion_de(t), None, "{t}");
         }
     }
