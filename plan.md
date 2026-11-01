@@ -525,6 +525,17 @@ Verificación manual:
   - Configurar otros bots conocidos (Carl-bot, Sapphire…) desde su web: MCPs/recetas de navegador por bot; navegador visible, el login lo hace el usuario (ARGUS nunca ve su contraseña), confirmación antes de guardar cada cambio y aviso previo de riesgo (actúa con su cuenta), coste en tokens y posible fallo si la web cambia; revisar las condiciones de uso de cada web antes de soportarla.
   - Comunidad: el repo de módulos/MCPs acepta contribuciones (pull requests) con tests automáticos, pero solo el autor revisa, firma y publica; nada llega a los usuarios sin esa revisión.
   - Catálogo curado de MCPs para el asistente (búsqueda web, GitHub…), con lo que puede hacer cada uno antes de instalarlo.
+  - Diseño de seguridad desde el principio (decidido el 2026-11-01):
+    - Tope de peticiones por módulo: ARGUS reparte el límite de Discord y pausa al módulo que se pase, para que no frene al bot ni a la app.
+    - «Enchufe» ARGUS ↔ complementos con versión; cada módulo declara la versión mínima de ARGUS y el CI prueba los módulos con cada versión.
+    - Permisos declarados por módulo; ARGUS bloquea cualquier acción fuera de ellos.
+    - Nombres genéricos («Tickets», «Niveles»), nunca nombres, logos ni textos de otros bots.
+    - Datos personales (p. ej. tickets): borrado automático configurable (por defecto 30 días), botón de borrar y aviso al abrir un ticket.
+    - Contribuciones: tests automáticos + revisión del autor; nunca aprobar lo que no se entiende; solo el autor firma.
+    - Firma con clave Ed25519 del autor (`~/.claves-argus/firma-modulos`, con contraseña y copia fuera del PC; solo la pública va en ARGUS). Lista de claves revocadas: si la clave se compromete, se revoca, se publica una nueva y ARGUS rechaza lo firmado con la vieja.
+    - Automatización de webs de otros bots: opcional, aviso previo, navegador visible y confirmación antes de guardar.
+    - Módulos que necesiten permisos privilegiados de Discord (p. ej. Message Content) lo avisan antes de instalarse.
+    - **Aviso al descargar cualquier módulo o receta**: puede no estar actualizado con la versión actual de Discord, de ARGUS o de la web del bot que configura, y podría fallar; se muestra la fecha de su última actualización y versión probada, y el usuario confirma antes de descargarlo.
   - Monetización: **donaciones** (decidido el 2026-11-01); todo sigue gratis. `.github/FUNDING.yml` (botón «Sponsor» de GitHub), sección «Support the project» en README.md / README.es.md y un enlace discreto en Settings → About de ARGUS y en el programa de complementos; nunca bloquear funciones por no donar. Requiere que el autor cree antes su cuenta (GitHub Sponsors y/o Ko-fi).
 - Plantillas: esquema, vista de plantillas, vista previa en árbol, aplicador ordenado (roles → categorías → canales → overwrites), validación de permisos, crear servidor nuevo desde plantilla.
 - Personalidad del bot (lo básico está en la FASE 11): memoria larga por canal, modo observador, comandos slash, proveedores LLM sin CLI (Ollama / compatible OpenAI).
