@@ -405,6 +405,7 @@ pub fn validar_acciones(p: &Propuesta, existentes: &Nombres) -> Validacion {
     let (mut crear_roles, mut editar_roles) = (0, 0);
     let (mut categorias, mut canales, mut editar_canales) = (0, 0, 0);
     let (mut permisos, mut miembros_roles, mut otras) = (0, 0, 0);
+    let (mut borrar_canales, mut borrar_roles) = (0, 0);
 
     for indice in orden_de_ejecucion(p) {
         let a = &p.acciones[indice];
@@ -431,6 +432,8 @@ pub fn validar_acciones(p: &Propuesta, existentes: &Nombres) -> Validacion {
             "editar_canal" => editar_canales += 1,
             "permiso_canal" | "quitar_permiso_canal" => permisos += 1,
             "dar_rol" | "quitar_rol" => miembros_roles += 1,
+            "borrar_canal" => borrar_canales += 1,
+            "borrar_rol" => borrar_roles += 1,
             _ => otras += 1,
         }
         // Un ID provisional basta para que las siguientes acciones resuelvan.
@@ -451,6 +454,8 @@ pub fn validar_acciones(p: &Propuesta, existentes: &Nombres) -> Validacion {
         ("Channels to edit", editar_canales),
         ("Channel permissions to change", permisos),
         ("Member roles to change", miembros_roles),
+        ("Channels to delete", borrar_canales),
+        ("Roles to delete", borrar_roles),
         ("Other actions", otras),
     ]
     .into_iter()

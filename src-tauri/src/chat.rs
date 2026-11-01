@@ -234,7 +234,10 @@ pub fn prompt_chat(
          `ORDEN[estructura]: <the user's request>` when it changes the structure of the server \
          (channels, categories, roles, permissions), or \
          `ORDEN[moderacion]: <the user's request>` when it is about members or their messages \
-         (warn, mute, kick, ban, delete messages, give or remove a role to a member...)."
+         (warn, mute, kick, ban, delete messages, give or remove a role to a member...). \
+         Include in that line every detail the user gave. You do not apply anything yourself: \
+         ARGUS prepares the proposal and asks for confirmation, so never say it is done, never \
+         ask the user to confirm and never promise to proceed."
     } else {
         "You cannot make changes in the server; if asked, say so. \
          Never write a line starting with `ORDEN:` or `ORDEN[`."

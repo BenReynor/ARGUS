@@ -37,6 +37,9 @@ const CATALOGO_ES: &[(&str, &str)] = &[
     ("A proposal is being applied in this server", "Se está aplicando una propuesta en este servidor"),
     ("I could not apply the proposal: {motivo}", "No pude aplicar la propuesta: {motivo}"),
     ("Done: {n} changes, {m} with errors", "Hecho: {n} cambios, {m} con error"),
+    ("Done: 1 change, {m} with errors", "Hecho: 1 cambio, {m} con error"),
+    ("Channels to delete: {n}", "Canales a borrar: {n}"),
+    ("Roles to delete: {n}", "Roles a borrar: {n}"),
     ("…and {n} more errors", "…y {n} errores más"),
     ("{n} actions were not attempted", "{n} acciones sin intentar"),
     ("[ORDER] File {archivo} from {autor} in {servidor} #{canal}", "[ORDEN] Archivo {archivo} de {autor} en {servidor} #{canal}"),
@@ -547,5 +550,17 @@ mod tests_textos_del_plan {
             "Construir desde el plan estructurado: 87 acciones"
         );
         assert_eq!(tr("en", "Create role «O5»"), "Create role «O5»");
+    }
+    #[test]
+    fn hecho_en_singular_y_grupos_de_borrado() {
+        assert_eq!(
+            tr("es", "Done: 1 change, 0 with errors"),
+            "Hecho: 1 cambio, 0 con error"
+        );
+        assert_eq!(
+            tr("es", "Done: 3 changes, 1 with errors"),
+            "Hecho: 3 cambios, 1 con error"
+        );
+        assert_eq!(tr("es", "Channels to delete: 1"), "Canales a borrar: 1");
     }
 }

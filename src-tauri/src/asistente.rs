@@ -1018,6 +1018,9 @@ changes to the structure of the server (channels, categories, roles, permissions
 - Do not include `guild_id` and never use `elegir_servidor`: the active server is used.\n\
 - In `descripcion` name the member and give the reason, citing the message when there is one.\n\
 - Only propose what the user asked for or what the evidence clearly supports.\n\
+- If the request is ambiguous or you lack something essential (e.g. which member, which \
+channel), do NOT write a JSON block: say briefly what you found and ask the one question \
+needed, in the user's language.\n\
 - Use exactly these arguments for each tool (required ones must be present):\n{firmas}\n\n\
 Example of a valid answer block (warn a member and delete a message):\n```json\n{ejemplo}\n```\n",
             acciones = ACCIONES_MODERACION.join(", "),
@@ -1146,6 +1149,9 @@ action creates.\n\
 `ordenar_roles` or `ordenar_canales` unless the plan asks to reorder something.\n\
 - Only propose what is needed: do not recreate what already exists, and never delete, move \
 or rename anything the plan does not explicitly ask for.\n\
+- If the request is ambiguous or you lack something essential (e.g. which member, which \
+channel), do NOT write a JSON block: say briefly what you found and ask the one question \
+needed, in the user's language.\n\
 - Use exactly these arguments for each tool (required ones must be present):\n{firmas}\n\n\
 Example of a valid answer block (a role, a category, a channel with topic and a permission by \
 name):\n```json\n{ejemplo}\n```\n",

@@ -694,9 +694,19 @@ impl Conversador {
         }
         let inicio = Instant::now();
         match self.construir(e, ajustes, tipo, orden, &idioma).await {
-            Ok(ev) => {
+            Ok(Construido::Propuesta(ev)) => {
                 self.publicar_propuesta(e, ajustes, ev, "", &idioma, inicio)
                     .await
+            }
+            // Sin propuesta pero con explicación (p. ej. una pregunta): se publica tal cual.
+            Ok(Construido::Respuesta(texto)) => {
+                self.log(format!(
+                    "[ORDER] No proposal for {} in {} #{}: the builder answered in text",
+                    e.autor_nombre, e.servidor, e.canal
+                ));
+                if let Err(err) = self.enviar(e, &texto).await {
+                    tracing::warn!("No se pudo publicar la respuesta del constructor: {err}");
+                }
             }
             Err(motivo) => self.fallo_orden(e, &idioma, &motivo).await,
         }
@@ -921,7 +931,7 @@ impl Conversador {
         tipo: TipoOrden,
         orden: &str,
         idioma: &str,
-    ) -> Result<crate::asistente::EventoPropuesta, String> {
+    ) -> Result<Construido, String> {
         use crate::asistente::{
             comprobar_acciones_moderacion, orden_agente, prompt_asistente_tipo,
             propuesta_de_respuesta, texto_del_constructor, ModoAsistente, TipoAsistente,
@@ -960,6 +970,16 @@ impl Conversador {
         )?;
         let _permiso = self.coord.permiso_agente().await;
         let texto = texto_del_constructor(&lanzar, agente, self.limite_constructor).await?;
+        if !texto.to_ascii_lowercase().contains("```json") {
+            let visible: String = texto
+                .trim()
+                .chars()
+                .take(MAX_RESPUESTA_CONSTRUCTOR)
+                .collect();
+            if !visible.is_empty() {
+                return Ok(Construido::Respuesta(visible));
+            }
+        }
         let nombres = (self.ordenes.nombres)(e.guild_id);
         propuesta_de_respuesta(&texto, |p| {
             let mut v = crate::propuesta::validar_traducida(p, &nombres, idioma);
@@ -974,6 +994,7 @@ impl Conversador {
             }
             v
         })
+        .map(Construido::Propuesta)
     }
 
     /// Mensajes previos del canal, del más antiguo al más reciente, sin el que
@@ -1039,13 +1060,25 @@ const MOTIVO_APLICANDO: &str = "A proposal is being applied in this server";
 /// Errores que se listan al publicar el resultado.
 const MAX_ERRORES: usize = 10;
 
+/// Lo que devuelve el constructor: una propuesta o, si no la incluyó, su texto
+/// (una pregunta o el motivo), que se publica en el canal.
+enum Construido {
+    Propuesta(crate::asistente::EventoPropuesta),
+    Respuesta(String),
+}
+
+/// Máximo de caracteres de la respuesta del constructor que se publica.
+const MAX_RESPUESTA_CONSTRUCTOR: usize = 1500;
+
 /// Resultado de aplicar: «Hecho: N cambios, M con error» y los errores.
 pub fn texto_resultado(r: &ResumenPropuesta, idioma: &str) -> String {
     let fallos = r.fallidas + r.omitidas;
-    let mut texto = crate::i18n::tr(
-        idioma,
-        &format!("Done: {} changes, {} with errors", r.hechas, fallos),
-    );
+    let resumen = if r.hechas == 1 {
+        format!("Done: 1 change, {fallos} with errors")
+    } else {
+        format!("Done: {} changes, {} with errors", r.hechas, fallos)
+    };
+    let mut texto = crate::i18n::tr(idioma, &resumen);
     let con_error: Vec<&ResultadoAccion> = r
         .resultados
         .iter()
@@ -1500,6 +1533,28 @@ EOF"#;
     }
 
     #[tokio::test]
+    async fn si_el_constructor_no_propone_se_publica_su_pregunta() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let constructor = r#"cat <<'EOF'
+{"type":"assistant","message":{"content":[{"type":"text","text":"¿A qué miembro te refieres?"}]}}
+EOF"#;
+        let (c, _) = conversador(
+            &server,
+            agente_con_orden("orden-pregunta", constructor),
+            LIMITE_AGENTE,
+        );
+        c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), 3, "{t:?}");
+        assert_eq!(t[2], "¿A qué miembro te refieres?");
+        assert!(matches!(
+            c.coord.sacar_pendiente((555, 10, 1)),
+            EstadoPendiente::Ninguna
+        ));
+    }
+
+    #[tokio::test]
     async fn un_solo_constructor_a_la_vez_por_servidor() {
         let server = MockServer::start().await;
         mock_discord(&server).await;
@@ -1587,7 +1642,7 @@ EOF"#;
         let env = envios(&server).await;
         let t = textos(&env);
         assert_eq!(t.len(), antes + 1, "{t:?}");
-        assert_eq!(t[antes], "Done: 1 changes, 0 with errors");
+        assert_eq!(t[antes], "Done: 1 change, 0 with errors");
         assert_eq!(env[antes]["message_reference"]["message_id"], "700");
 
         // Ya aplicada: un segundo «sí» no hace nada.
@@ -1694,7 +1749,7 @@ EOF"#;
         let t = textos(&envios(&server).await);
         assert_eq!(t.len(), 4, "{t:?}");
         assert!(!t[2].contains("Reply **yes**"));
-        assert_eq!(t[3], "Done: 1 changes, 0 with errors");
+        assert_eq!(t[3], "Done: 1 change, 0 with errors");
         // Nada queda pendiente.
         let r = c.atender(confirmar(1, "sí"), &ajustes_ordenes(false)).await;
         assert_eq!(r, Resultado::Ignorado);
@@ -1758,10 +1813,10 @@ EOF"#;
         let t = texto_resultado(&resumen, "en");
         assert_eq!(
             t,
-            "Done: 1 changes, 2 with errors\n• Create 1: Missing permission\n• Create 2: No role named X"
+            "Done: 1 change, 2 with errors\n• Create 1: Missing permission\n• Create 2: No role named X"
         );
         let es = texto_resultado(&resumen, "es");
-        assert!(es.starts_with("Hecho: 1 cambios, 2 con error\n"), "{es}");
+        assert!(es.starts_with("Hecho: 1 cambio, 2 con error\n"), "{es}");
     }
 
     #[test]
