@@ -918,7 +918,11 @@ pub const ACCIONES_MODERACION: &[&str] = &[
     "expulsar",
     "banear",
     "desbanear",
+    // Un mensaje (lo más habitual) y varios a la vez (2–100, recientes).
+    "borrar_mensaje",
     "borrar_mensajes",
+    "fijar_mensaje",
+    "desfijar_mensaje",
     "dar_rol",
     "quitar_rol",
     "cambiar_apodo",

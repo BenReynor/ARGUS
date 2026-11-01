@@ -1206,6 +1206,11 @@ impl ArgusMcp {
         channel_id: &str,
         message_ids: &[String],
     ) -> Result<String, String> {
+        // Discord exige de 2 a 100 mensajes para el borrado masivo: con uno
+        // solo se borra ese mensaje en vez de fallar.
+        if let [unico] = message_ids {
+            return self.borrar_mensaje_json(guild_id, channel_id, unico).await;
+        }
         let gid = self.servidor_de(guild_id).await?;
         let texto = commands::borrar_mensajes_en_masa(
             &self.state,
@@ -3865,12 +3870,17 @@ mod tests {
             .await;
         let ok = mcp.borrar_mensajes_json(None, "11", &[a.clone(), b]).await;
         assert!(ok.unwrap().contains("2 messages deleted"));
-        // Una sola, o una de más de 14 días: error de la app, sin llamar a Discord.
-        let e = mcp
-            .borrar_mensajes_json(None, "11", &[a.clone()])
+        // Con un solo mensaje se borra ese (Discord exige 2–100 para el masivo).
+        Mock::given(method("DELETE"))
+            .and(path(format!("/api/v10/channels/11/messages/{a}")))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&s)
+            .await;
+        mcp.borrar_mensajes_json(None, "11", &[a.clone()])
             .await
-            .unwrap_err();
-        assert!(e.contains("between 2 and 100"), "{e}");
+            .unwrap();
+        // Uno de más de 14 días: error de la app, sin llamar a Discord.
         let e = mcp
             .borrar_mensajes_json(None, "11", &[a, snowflake_hace_dias(20)])
             .await

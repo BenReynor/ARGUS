@@ -156,9 +156,9 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
     const a = agentes.find((x) => x.agente === agente) ?? agentes[0];
     if (a.agente !== agente) {
       setAgente(a.agente);
-      setModelo(a.modelos[0] ?? '');
+      setModelo(modeloPorDefecto(a.agente, a.modelos));
     } else if (!modelo && a.modelos.length > 0) {
-      setModelo(a.modelos[0]);
+      setModelo(modeloPorDefecto(a.agente, a.modelos));
     }
   }, [agentes, agente, modelo]);
 
@@ -407,7 +407,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
     if (nombre === agente) return;
     const a = agentes?.find((x) => x.agente === nombre);
     setAgente(nombre);
-    setModelo(a?.modelos[0] ?? '');
+    setModelo(modeloPorDefecto(nombre, a?.modelos ?? []));
     // La sesión de un agente no vale para otro: la conversación empieza de cero.
     if (guildId && mensajes.length > 0) void reiniciar(guildId);
   };
@@ -810,7 +810,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
                 {avisos.map((a) => (
                   <li key={a.user_id}>
                     <strong>{nombreMiembro(a.user_id)}</strong>
-                    <span>{t('{count} warnings', { count: a.total })}</span>
+                    <span>{a.total === 1 ? t('1 warning') : t('{count} warnings', { count: a.total })}</span>
                     <small>{t('Last reason: {reason}', { reason: a.motivo })}</small>
                   </li>
                 ))}
@@ -866,3 +866,10 @@ export const AsistenteView: React.FC = () => {
     </div>
   );
 };
+
+/** Default model for the assistant: sonnet on claude (good quality and price to
+ *  build and moderate; opus costs much more), otherwise the first one listed. */
+export function modeloPorDefecto(agente: string, modelos: string[]): string {
+  if (agente === 'claude' && modelos.includes('sonnet')) return 'sonnet';
+  return modelos[0] ?? '';
+}
