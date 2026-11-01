@@ -987,7 +987,26 @@ pub fn prompt_moderacion(
     } else {
         contexto
     };
-    let limite = limite_por_canal.clamp(1, 500);
+    let limite = limite_por_canal.clamp(1, crate::mcp::BUSQUEDA_MAX as u32);
+    let regla_limite = if limite as usize >= crate::mcp::BUSQUEDA_MAX {
+        format!(
+            "- The user chose to read ALL the history of each channel (up to {limite} messages). \
+Use `buscar_mensajes` with `limite_por_canal` = {limite} to find what matters (it filters \
+locally), and `leer_mensajes` (up to 500 per call) only for the conversations you must read in \
+full.\n"
+        )
+    } else if limite > 500 {
+        format!(
+            "- Check at most {limite} messages per channel: use `buscar_mensajes` with \
+`limite_por_canal` = {limite}, and `leer_mensajes` (up to 500 per call) for what you must read in \
+full. Do not exceed it unless the user asks for more.\n"
+        )
+    } else {
+        format!(
+            "- Read at most {limite} messages per channel (`limite` / `limite_por_canal` = \
+{limite}) unless the user asks for more.\n"
+        )
+    };
     let mut p = format!(
         "You are the moderation assistant built into ARGUS, a desktop app to administer Discord \
 servers with the user's own bot. You reach the server through the ARGUS MCP tools. You focus on \
@@ -999,8 +1018,7 @@ The active server is \"{nombre}\" (id {id}). Pass guild_id \"{id}\" in every too
 - Always reply in {lengua}, the language of the ARGUS interface.\n\
 - Tools to use: `buscar_mensajes` (find who said something), `leer_mensajes` (read a channel), \
 `listar_avisos` (warnings a member already has), plus the member and role read tools.\n\
-- Read at most {limite} messages per channel (`limite_por_canal` = {limite}) unless the user asks \
-for more.\n\
+{regla_limite}\
 - Base every conclusion on evidence. For each relevant message cite the author (name and id), \
 the date and the message link. If the evidence is not enough, say so clearly instead of guessing.\n\n\
 ## Server context\n<context>\n{contexto}\n</context>\n"

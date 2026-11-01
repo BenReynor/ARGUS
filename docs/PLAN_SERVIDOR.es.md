@@ -106,6 +106,15 @@ sustituye en nombres, descripciones literales e indicaciones `generar:`, y se
 combina con rangos (`$area-{1..3}`). Una variable sin definir da un aviso y el
 texto se deja tal cual.
 
+### Título
+
+```
+@titulo = Fundación SCP
+```
+
+Opcional. Al exportar el plan, el título es el nombre del archivo
+(`Fundación SCP.md`). También vale `@title`.
+
 ### Texto libre
 
 Cualquier otra línea (notas, ideas, peticiones al asistente) se guarda como texto

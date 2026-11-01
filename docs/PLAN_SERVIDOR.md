@@ -101,6 +101,15 @@ those of its category.
 names, literal descriptions and `generate:` hints, and combines with ranges
 (`$area-{1..3}`). An undefined variable gives a warning and the text stays as is.
 
+### Title
+
+```
+@title = SCP Foundation
+```
+
+Optional. When you export the plan, the title is the file name
+(`SCP Foundation.md`). `@titulo` also works.
+
 ### Free text
 
 Any other line (notes, ideas, requests to the assistant) is kept as free text

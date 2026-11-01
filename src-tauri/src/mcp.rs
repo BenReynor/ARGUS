@@ -31,10 +31,14 @@ pub const SIN_SERVIDOR: &str =
     "No active server in ARGUS: pass `guild_id` or choose one with `elegir_servidor`";
 
 /// Mensajes que devuelve `leer_mensajes` como máximo.
-const MENSAJES_MAX: usize = 50;
+/// Máximo de `leer_mensajes` por llamada (más de 50 se lee paginando).
+const MENSAJES_MAX: usize = 500;
+/// Lo que devuelve `leer_mensajes` si no se indica `limite`.
+const MENSAJES_DEFECTO: usize = 50;
 /// Mensajes revisados por canal en `buscar_mensajes` (por defecto y máximo).
 const BUSQUEDA_DEFECTO: usize = 100;
-const BUSQUEDA_MAX: usize = 500;
+/// «Todos» en la búsqueda: el historial completo, hasta este tope por canal.
+pub const BUSQUEDA_MAX: usize = 5000;
 /// Caracteres máximos del fragmento que devuelve `buscar_mensajes`.
 const FRAGMENTO_MAX: usize = 160;
 /// Miembros por defecto y máximo de `listar_miembros`.
@@ -75,7 +79,7 @@ pub struct LeerMensajesParams {
     pub guild_id: Option<String>,
     /// ID del canal.
     pub channel_id: String,
-    /// Cuántos de los últimos mensajes devolver (por defecto y máximo 50).
+    /// Cuántos de los últimos mensajes devolver (por defecto 50, máximo 500).
     pub limite: Option<u32>,
 }
 
@@ -90,7 +94,7 @@ pub struct BuscarMensajesParams {
     pub canales: Option<Vec<String>>,
     /// Solo mensajes de este autor (ID o parte del nombre).
     pub autor: Option<String>,
-    /// Mensajes recientes que se revisan por canal (por defecto 100, máximo 500).
+    /// Mensajes recientes que se revisan por canal (por defecto 100, máximo 5000).
     pub limite_por_canal: Option<u32>,
 }
 
@@ -900,10 +904,14 @@ impl ArgusMcp {
         limite: Option<u32>,
     ) -> Result<String, String> {
         let gid = self.servidor_de(guild_id).await?;
-        let limite = (limite.unwrap_or(MENSAJES_MAX as u32) as usize).clamp(1, MENSAJES_MAX);
-        let mensajes = commands::leer_mensajes(&self.state, &gid, channel_id.trim(), self.url())
-            .await
-            .map_err(|e| self.limpiar(e))?;
+        let limite = (limite.unwrap_or(MENSAJES_DEFECTO as u32) as usize).clamp(1, MENSAJES_MAX);
+        // Hasta 50 basta una petición; más, se pagina hacia atrás.
+        let mensajes = if limite <= MENSAJES_DEFECTO {
+            commands::leer_mensajes(&self.state, &gid, channel_id.trim(), self.url()).await
+        } else {
+            commands::leer_historial(&self.state, &gid, channel_id.trim(), limite, self.url()).await
+        }
+        .map_err(|e| self.limpiar(e))?;
         // Discord los entrega del más nuevo al más antiguo.
         let lista: Vec<_> = mensajes.into_iter().take(limite).collect();
         Ok(json!({ "canal_id": channel_id.trim(), "mensajes": lista }).to_string())
@@ -2288,7 +2296,7 @@ impl ArgusMcp {
 
     #[tool(
         name = "leer_mensajes",
-        description = "Reads the latest messages of a channel (`limite` from 1 to 50, newest first). Requires «Read Message History». Read-only. `guild_id` is optional."
+        description = "Reads the latest messages of a channel (`limite` from 1 to 500, default 50, newest first). Requires «Read Message History». Read-only. `guild_id` is optional."
     )]
     async fn leer_mensajes(
         &self,
@@ -2302,7 +2310,7 @@ impl ArgusMcp {
 
     #[tool(
         name = "buscar_mensajes",
-        description = "Searches messages by text (ignoring case and accents). Bots cannot use Discord search, so it reads the recent history of each channel (`limite_por_canal`, default 100, max 500) and filters locally. `canales` (IDs or names) defaults to all text channels; `autor` (ID or name) is optional. Returns matches (channel, author, message id, link, date, snippet) and how many messages were checked per channel. Requires «Read Message History». Read-only. `guild_id` is optional."
+        description = "Searches messages by text (ignoring case and accents). Bots cannot use Discord search, so it reads the recent history of each channel (`limite_por_canal`, default 100, max 5000 = the whole history) and filters locally. `canales` (IDs or names) defaults to all text channels; `autor` (ID or name) is optional. Returns matches (channel, author, message id, link, date, snippet) and how many messages were checked per channel. Requires «Read Message History». Read-only. `guild_id` is optional."
     )]
     async fn buscar_mensajes(
         &self,

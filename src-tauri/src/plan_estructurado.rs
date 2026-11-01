@@ -73,6 +73,9 @@ pub struct Aviso {
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PlanEstructurado {
+    /// Título del plan (`@title = …`); da nombre al archivo al exportar.
+    #[serde(default)]
+    pub titulo: Option<String>,
     pub roles: Vec<RolPlan>,
     pub categorias: Vec<CategoriaPlan>,
     /// Líneas que no encajan en la sintaxis, tal como se escribieron.
@@ -346,6 +349,23 @@ fn es_resto_nombre(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
+/// Interpreta `@title = Nombre` (también `@titulo`/`@título`). `None` si la
+/// línea no es un título.
+fn definicion_titulo(linea: &str) -> Option<String> {
+    let resto = ["@title", "@titulo", "@título"]
+        .iter()
+        .find_map(|k| linea.strip_prefix(k))?;
+    let resto = resto.trim_start();
+    let valor = resto
+        .strip_prefix('=')
+        .or_else(|| resto.strip_prefix(':'))?;
+    let valor = valor
+        .trim()
+        .trim_matches(|c| c == '"' || c == '“' || c == '”')
+        .trim();
+    Some(valor.to_string())
+}
+
 /// Interpreta `@var nombre = valor`. `None` si la línea no es una definición;
 /// `Some(Err)` si lo es pero está mal escrita.
 fn definicion_var(linea: &str) -> Option<Result<(String, String), String>> {
@@ -423,6 +443,10 @@ pub fn analizar(texto: &str) -> PlanEstructurado {
         let libre = cruda.trim_end().to_string();
         let mut avisos: Vec<String> = Vec::new();
 
+        if let Some(titulo) = definicion_titulo(linea) {
+            plan.titulo = (!titulo.is_empty()).then_some(titulo);
+            continue;
+        }
         if let Some(def) = definicion_var(linea) {
             match def {
                 Ok((nombre, valor)) => {
@@ -1027,5 +1051,16 @@ Añade también algo para eventos, ya veremos.
         assert!(c.canales.iter().all(|c| c.linea == 2));
         let distintos: std::collections::HashSet<_> = c.canales.iter().map(|c| &c.nombre).collect();
         assert_eq!(distintos.len(), 120);
+    }
+
+    #[test]
+    fn el_titulo_se_lee_y_no_es_texto_libre() {
+        let p = analizar("@title = Fundación SCP\n## Rol: A");
+        assert_eq!(p.titulo.as_deref(), Some("Fundación SCP"));
+        assert!(p.texto_libre.is_empty());
+        assert!(p.avisos.is_empty());
+        let p = analizar("@titulo: \"Mi servidor\"");
+        assert_eq!(p.titulo.as_deref(), Some("Mi servidor"));
+        assert_eq!(analizar("@titular algo").titulo, None);
     }
 }

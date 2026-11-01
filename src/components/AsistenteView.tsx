@@ -59,6 +59,16 @@ const ordenar = (acciones: AccionPropuesta[]) =>
 const esErrorSinSesion = (m: string) => m.startsWith(t('The AI agent is not signed in. Sign in with its command line and try again'));
 
 const LIMITE_POR_DEFECTO = 100;
+/** «Todos»: el historial completo de cada canal, hasta este tope (igual que el backend). */
+const LIMITE_TODOS = 5000;
+const LIMITES_MENSAJES = [50, 100, 200, 500, 1000, LIMITE_TODOS];
+
+/** Nombre de archivo a partir de `@title = …` (o `@titulo`); si no hay, «server-plan». */
+function nombreArchivoDelPlan(plan: string): string {
+  const m = /^[ \t]*@(?:title|titulo|título)[ \t]*[=:][ \t]*(.+)$/im.exec(plan);
+  const titulo = (m?.[1] ?? '').replace(/["“”]/g, '').replace(/[\\/:*?<>|]/g, '-').trim().slice(0, 80);
+  return titulo || 'server-plan';
+}
 
 /** Primer valor de texto no vacío de los argumentos de una acción, probando varias claves. */
 const argTexto = (args: unknown, claves: string[]): string => {
@@ -317,6 +327,9 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
     if (plan.trim() && !window.confirm(t('Replace the current plan with the example template?'))) return;
     const lineas = [
       t('// Example plan. Lines starting with // are comments and are ignored.'),
+      t('// The title names the file when you export the plan.'),
+      `@title = ${t('My server')}`,
+      '',
       t('// Roles are created in the order written, highest first.'),
       '## Role: Admin | color: #E74C3C | permissions: Administrator | hoist',
       '## Role: Moderator | color: #3498DB | permissions: KickMembers, ManageMessages | mentionable: no',
@@ -444,7 +457,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
 
   const exportar = async () => {
     try {
-      const ruta = await save({ defaultPath: 'server-plan.md', filters: [{ name: 'Markdown', extensions: ['md'] }] });
+      const ruta = await save({ defaultPath: `${nombreArchivoDelPlan(plan)}.md`, filters: [{ name: 'Markdown', extensions: ['md'] }] });
       if (!ruta) return;
       await writeTextFile(ruta, plan);
       showNotification(t('Plan exported'), 'success');
@@ -532,6 +545,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
                 <li><strong>{t('Literal description')}</strong>: <code>description: "Welcome!"</code></li>
                 <li><strong>{t('AI-written description')}</strong>: <code>description: generate: short hint</code></li>
                 <li><strong>{t('Permissions')}</strong>: <code>view: Role1, Role2</code> · <code>write: Role</code> · <code>read only: Role</code> · <code>hide from: @everyone</code></li>
+                <li><strong>{t('Title')}</strong>: <code>@title = {t('My server')}</code> {t('names the file when you export the plan.')}</li>
                 <li><strong>{t('Variables and comments')}</strong>: <code>@var name = value</code> {t('used as $name;')} <code>// {t('comment')}</code></li>
                 <li><strong>{t('Free text')}</strong>: {t('any other line is notes for you and the assistant; it is never built.')}</li>
               </ul>
@@ -603,15 +617,16 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
             {moderacion && (
               <label className="asistente__limite">
                 {t('Messages to read per channel')}
-                <input
+                <select
                   className="ui-control"
-                  type="number"
-                  min={1}
-                  max={1000}
                   value={limite}
                   disabled={enviando}
-                  onChange={(e) => setLimite(Math.max(1, Math.min(1000, Math.floor(Number(e.target.value)) || LIMITE_POR_DEFECTO)))}
-                />
+                  onChange={(e) => setLimite(Number(e.target.value))}
+                >
+                  {LIMITES_MENSAJES.map((n) => (
+                    <option key={n} value={n}>{n === LIMITE_TODOS ? t('All (up to {n})', { n }) : n}</option>
+                  ))}
+                </select>
               </label>
             )}
             <Button variante="ghost" tamano="sm" disabled={enviando || aplicando || !hayMensajes} onClick={() => { void reiniciar(guildId); }}>{t('New conversation')}</Button>
