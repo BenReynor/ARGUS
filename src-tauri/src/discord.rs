@@ -1365,6 +1365,16 @@ fn normalizar_permiso(texto: &str) -> String {
 /// Convierte una lista de nombres de permisos en el texto de bits que espera
 /// Discord. Acepta el nombre de la API (`ManageMessages`, `MANAGE_MESSAGES`) o
 /// el nombre en español que ARGUS muestra («Gestionar mensajes»).
+/// Nombres de la API de Discord (`ViewChannel`, `SendMessages`…) de los bits
+/// activos: los mismos que acepta `bits_desde_nombres`.
+pub fn nombres_api_de_permisos(bits: u64) -> Vec<String> {
+    PERMISOS_API
+        .iter()
+        .filter(|(bit, _)| bits & (1u64 << bit) != 0)
+        .map(|(_, nombre)| nombre.to_string())
+        .collect()
+}
+
 pub fn bits_desde_nombres(nombres: &[String]) -> Result<String, String> {
     let mut bits: u64 = 0;
     for nombre in nombres {

@@ -700,6 +700,21 @@ impl ArgusMcp {
         let canales = commands::leer_canales(&self.state, &gid, self.url())
             .await
             .map_err(|e| self.limpiar(e))?;
+        // Nombres de los roles para los permisos (el de @everyone es el del servidor).
+        let roles = commands::leer_roles(&self.state, &gid, self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        let nombre_de = |id: &str, tipo: u8| -> Option<String> {
+            if tipo != 0 {
+                return None;
+            }
+            if id == gid {
+                return Some("@everyone".into());
+            }
+            roles.iter().find(|r| r.id == id).map(|r| r.name.clone())
+        };
+        let nombres =
+            |bits: &str| crate::discord::nombres_api_de_permisos(bits.parse::<u64>().unwrap_or(0));
         let lista: Vec<_> = canales
             .iter()
             .map(|c| {
@@ -716,9 +731,11 @@ impl ArgusMcp {
                         .iter()
                         .map(|o| json!({
                             "id": o.id,
+                            "nombre": nombre_de(&o.id, o.type_),
                             "tipo": if o.type_ == 0 { "rol" } else { "miembro" },
-                            "permitir": o.allow,
-                            "denegar": o.deny,
+                            // Nombres de la API, los mismos que acepta `permiso_canal`.
+                            "permitir": nombres(&o.allow),
+                            "denegar": nombres(&o.deny),
                         }))
                         .collect::<Vec<_>>());
                 }
@@ -3163,6 +3180,10 @@ mod tests {
         let general = &canales["canales"][1];
         assert_eq!(general["categoria"], "Texto");
         assert_eq!(general["overwrites"][0]["tipo"], "rol");
+        // Legibles: nombre del rol y nombres de la API, como los que acepta permiso_canal.
+        assert_eq!(general["overwrites"][0]["nombre"], "Moderadores");
+        assert_eq!(general["overwrites"][0]["permitir"], json!(["ViewChannel"]));
+        assert_eq!(general["overwrites"][0]["denegar"], json!([]));
 
         let roles = v(mcp.listar_roles_json(None).await.unwrap());
         assert_eq!(roles["roles"][0]["nombre"], "Bot");
