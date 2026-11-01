@@ -74,7 +74,7 @@ things you do from the app.
   Discord (channels, roles, members joining or leaving) shows up instantly,
   without reloading, and a history is kept in **Logs**.
 - **Per-server settings**, kept when you switch from one server to another.
-- **Connect an AI (MCP):** the `argus-mcp` binary offers 44 tools so Claude Code
+- **Connect an AI (MCP):** the `argus-mcp` binary offers 47 tools so Claude Code
   or another MCP client can manage Discord with your bots, even with ARGUS
   closed.
 - **10 themes:** Discord (default), minimal, cyberpunk, warm, data, anime, manga,
@@ -87,7 +87,8 @@ things you do from the app.
 | System | Status |
 |---|---|
 | **Linux** | ✅ Developed and used here. |
-| **Windows** | 🧪 Experimental: tests pass and the installer is built in CI, but it has not been tried on a real PC yet. |
+| **Windows** | 🧪 Experimental, not 100% ready: tests pass and the installer is built in CI, but it has not been tried on a real PC yet. |
+| **AI agents** | ✅ `claude` tested on a real server. 🧪 `opencode` (including its free models) is supported in the code and covered by tests, but not fully configured or tested against a real server yet. |
 
 ### Download
 
@@ -179,13 +180,15 @@ Tool list, other clients and troubleshooting: [`docs/MCP.md`](docs/MCP.md).
 
 ## Status and what's next
 
-Done: several bots, real data and actions, live server, themed interface, full
-server control and the MCP. Still missing: the final manual test on a real
-server and trying Windows on a PC.
+Done and tested on a real server: several bots, live server, full server
+control, the MCP, the AI assistant (build and moderation), the structured plan,
+the bot's personality on Discord and orders from Discord (with `claude`).
 
-Next (no date): templates to copy a server's structure to another one, **bot
-personality** (replies with a configurable language model), monitoring with
-alerts, notifications and backups. Details are in [`CONTEXTO.md`](CONTEXTO.md)
+Not fully tested yet: Windows on a real PC (experimental) and the `opencode`
+agent with its free models.
+
+Next (no date): templates to copy a server's structure to another one,
+monitoring with alerts, notifications and backups. Details are in [`CONTEXTO.md`](CONTEXTO.md)
 and [`plan.md`](plan.md) (both in Spanish).
 
 ## Development

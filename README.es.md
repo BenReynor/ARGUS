@@ -75,7 +75,7 @@ mismo que tú desde la app.
   Discord (canales, roles, miembros que entran o salen) aparece al instante, sin
   recargar, y queda un historial en **Logs**.
 - **Ajustes propios por servidor**, que se conservan al cambiar de uno a otro.
-- **Conecta una IA (MCP):** el binario `argus-mcp` ofrece 44 herramientas para que
+- **Conecta una IA (MCP):** el binario `argus-mcp` ofrece 47 herramientas para que
   Claude Code u otro cliente MCP gestione Discord con tus bots, incluso con ARGUS
   cerrado.
 - **10 temas:** Discord (por defecto), minimal, cyberpunk, cálido, datos, anime,
@@ -88,7 +88,8 @@ mismo que tú desde la app.
 | Sistema | Estado |
 |---|---|
 | **Linux** | ✅ Se desarrolla y se usa aquí. |
-| **Windows** | 🧪 Experimental: los tests pasan y el instalador se genera en el CI, pero aún no se ha probado en un PC real. |
+| **Windows** | 🧪 Experimental, no está al 100 %: los tests pasan y el instalador se genera en el CI, pero aún no se ha probado en un PC real. |
+| **Agentes de IA** | ✅ `claude` probado en un servidor real. 🧪 `opencode` (incluidos sus modelos gratis) está soportado en el código y cubierto por tests, pero aún no está completamente configurado ni probado en un servidor real. |
 
 ### Descargar
 
@@ -181,13 +182,16 @@ Lista de herramientas, otros clientes y solución de problemas:
 
 ## Estado y lo que viene
 
-Hecho: varios bots, datos y acciones reales, servidor en vivo, interfaz con
-temas, control total del servidor y el MCP. Falta la prueba manual final en un
-servidor real y probar Windows en un PC.
+Hecho y probado en un servidor real: varios bots, servidor en vivo, control
+total del servidor, el MCP, el asistente IA (construcción y moderación), el plan
+estructurado, la personalidad del bot en Discord y las órdenes desde Discord (con
+`claude`).
+
+Sin probar del todo: Windows en un PC real (experimental) y el agente `opencode`
+con sus modelos gratis.
 
 Lo siguiente (sin fecha): plantillas para copiar la estructura de un servidor a
-otro, **personalidad del bot** (respuestas con un modelo de lenguaje
-configurable), vigilancia con alertas, notificaciones y copias de seguridad. Los
+otro, vigilancia con alertas, notificaciones y copias de seguridad. Los
 detalles están en [`CONTEXTO.md`](CONTEXTO.md) y [`plan.md`](plan.md).
 
 ## Desarrollo
