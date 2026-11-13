@@ -253,6 +253,8 @@ export const SettingsView: React.FC = () => {
   }, []);
   const comandoMcp = `claude mcp add argus -- ${/\s/.test(rutaMcpBin) ? JSON.stringify(rutaMcpBin) : rutaMcpBin}`;
   const jsonMcp = JSON.stringify({ mcpServers: { argus: { command: rutaMcpBin, args: [] } } }, null, 2);
+  const comandoCodex = `codex mcp add argus -- ${/\s/.test(rutaMcpBin) ? JSON.stringify(rutaMcpBin) : rutaMcpBin}`;
+  const jsonOpencode = JSON.stringify({ $schema: 'https://opencode.ai/config.json', mcp: { servers: { argus: { type: 'local', command: [rutaMcpBin] } } } }, null, 2);
   const copiar = async (texto: string, aviso: string) => {
     try {
       await navigator.clipboard.writeText(texto);
@@ -386,6 +388,20 @@ export const SettingsView: React.FC = () => {
               </div>
               <pre><code>{comandoMcp}</code></pre>
             </div>
+            {[
+              { nombre: 'Codex', texto: comandoCodex, aviso: t('Command copied') },
+              { nombre: 'OpenCode · opencode.json', texto: jsonOpencode, aviso: t('JSON copied') },
+            ].map(({ nombre, texto, aviso }) => (
+              <div className="ajustes__codigo" key={nombre}>
+                <div className="ajustes__codigo-cabecera">
+                  <span className="ajustes__codigo-etiqueta">{nombre}</span>
+                  <Button variante="secundario" onClick={() => copiar(texto, aviso)}>
+                    <Copy size={14} /> {t('Copy')}
+                  </Button>
+                </div>
+                <pre><code>{texto}</code></pre>
+              </div>
+            ))}
             <div className="ajustes__codigo">
               <div className="ajustes__codigo-cabecera">
                 <span className="ajustes__codigo-etiqueta">{t('Other clients (JSON)')}</span>

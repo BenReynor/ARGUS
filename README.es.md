@@ -33,7 +33,7 @@ mismo que tú desde la app.
 
 - **Asistente IA (la función principal):** escribe el plan de tu servidor en
   Markdown (categorías, canales con descripción, roles con permisos, permisos de
-  cada canal) y habla con un agente de IA (`claude` u `opencode`, incluidos
+  cada canal) y habla con un agente de IA (`claude`, `codex` u `opencode`, incluidos
   modelos gratis). En modo Execute propone los cambios, tú los revisas y pulsas
   **Apply**, y ARGUS construye el servidor entero en orden. El agente solo puede
   leer; ten en cuenta que tu plan y lo que lea del servidor van al proveedor del
@@ -89,7 +89,7 @@ mismo que tú desde la app.
 |---|---|
 | **Linux** | ✅ Se desarrolla y se usa aquí. |
 | **Windows** | 🧪 Experimental, no está al 100 %: los tests pasan y el instalador se genera en el CI, pero aún no se ha probado en un PC real. |
-| **Agentes de IA** | ✅ `claude` probado en un servidor real. 🧪 `opencode` (incluidos sus modelos gratis) está soportado en el código y cubierto por tests, pero aún no está completamente configurado ni probado en un servidor real. |
+| **Agentes de IA** | ✅ `claude` probado en un servidor real. 🧪 `codex` y OpenCode v2 tienen integración y pruebas automáticas; falta la validación en un servidor real. Los modelos gratis dependen del proveedor de OpenCode. |
 
 ### Descargar
 
@@ -138,6 +138,10 @@ Icon=argus
 Tras cada compilación instala el icono `argus` en tu tema de iconos. El binario y
 el log de compilación están en `~/.local/share/argus-app/`.
 
+Para probar cambios locales ya compilados: `npm run tauri build -- --no-bundle`
+y luego `scripts/abrir-argus.sh --local`. Este modo abre los binarios release
+de esta copia sin sustituirlos por la versión de `main`.
+
 ## Primeros pasos
 
 1. **Crea tu bot** en el [Developer Portal de Discord](https://discord.com/developers/applications):
@@ -164,6 +168,9 @@ copiar. Con Claude Code:
 claude mcp add argus -- /ruta/a/argus-mcp
 ```
 
+Para Codex, usa `codex mcp add argus -- /ruta/a/argus-mcp`. Para OpenCode,
+Ajustes → MCP ofrece el bloque específico de `opencode.json`.
+
 > [!WARNING]
 > El MCP puede hacer **todo lo que permitan los permisos del bot**, incluido
 > borrar canales o banear miembros. Conéctalo solo a clientes de confianza y
@@ -187,8 +194,7 @@ total del servidor, el MCP, el asistente IA (construcción y moderación), el pl
 estructurado, la personalidad del bot en Discord y las órdenes desde Discord (con
 `claude`).
 
-Sin probar del todo: Windows en un PC real (experimental) y el agente `opencode`
-con sus modelos gratis.
+Sin probar del todo: Windows en un PC real (experimental) y los agentes `codex` / `opencode`.
 
 Lo siguiente (sin fecha): plantillas para copiar la estructura de un servidor a
 otro, vigilancia con alertas, notificaciones y copias de seguridad. Los

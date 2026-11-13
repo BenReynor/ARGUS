@@ -165,22 +165,6 @@ const CLAUDE_TODAS: [&str; 11] = [
     "TodoWrite",
 ];
 
-/// Herramientas integradas de opencode, todas desactivadas en el chat.
-const OPENCODE_TODAS: [&str; 12] = [
-    "bash",
-    "edit",
-    "write",
-    "read",
-    "glob",
-    "grep",
-    "list",
-    "patch",
-    "webfetch",
-    "websearch",
-    "task",
-    "todowrite",
-];
-
 /// Carpeta de trabajo propia del chat (no se crea aquí).
 pub fn directorio_chat() -> PathBuf {
     std::env::temp_dir().join("argus-chat")
@@ -215,27 +199,28 @@ pub fn orden_chat(
             ];
             (a, Vec::new())
         }
+        "codex" => {
+            let mut a = crate::asistente::argumentos_codex(modelo, None);
+            a.extend(["--ephemeral".into(), "-".into()]);
+            (a, Vec::new())
+        }
         "opencode" => {
-            let mut tools = serde_json::Map::new();
-            tools.insert("*".into(), false.into());
-            for t in OPENCODE_TODAS {
-                tools.insert(t.into(), false.into());
-            }
-            // Agente propio con TODO denegado: integradas (read, execute…) y los
-            // MCP del usuario. opencode v2 lo lee del opencode.json de la carpeta.
+            // Configuración v2: todas las herramientas denegadas, incluidas
+            // las integraciones que pueda tener el usuario en su configuración.
             let cfg = serde_json::json!({
-                "mcp": {},
-                "tools": tools,
-                "agent": { AGENTE_CHAT: {
+                "$schema": "https://opencode.ai/config.json",
+                "mcp": { "servers": {} },
+                "agents": { AGENTE_CHAT: {
                     "description": "ARGUS Discord replies: text only, no tools",
                     "mode": "primary",
-                    "permission": { "*": "deny" },
+                    "permissions": [{"action": "*", "resource": "*", "effect": "deny"}],
                 } },
             });
             archivos.push(("opencode.json".to_string(), cfg.to_string()));
             (
                 vec![
                     "run".into(),
+                    "--standalone".into(),
                     "--agent".into(),
                     AGENTE_CHAT.into(),
                     "--model".into(),
@@ -588,28 +573,47 @@ mod tests {
     #[test]
     fn orden_opencode_sin_herramientas() {
         let o = orden("opencode");
-        assert_eq!(o.args, ["run", "--agent", AGENTE_CHAT, "--model", "mod/x"]);
+        assert_eq!(
+            o.args,
+            [
+                "run",
+                "--standalone",
+                "--agent",
+                AGENTE_CHAT,
+                "--model",
+                "mod/x"
+            ]
+        );
         // opencode v2 lee el agente del opencode.json de la carpeta de trabajo:
         // todo denegado, sin ninguna excepción.
         assert_eq!(o.archivos.len(), 1);
         assert_eq!(o.archivos[0].0, "opencode.json");
         let archivo: serde_json::Value = serde_json::from_str(&o.archivos[0].1).unwrap();
-        let permisos = archivo["agent"][AGENTE_CHAT]["permission"]
-            .as_object()
-            .unwrap();
-        assert_eq!(permisos.len(), 1);
-        assert_eq!(permisos["*"], "deny");
-        assert_eq!(archivo["mcp"].as_object().unwrap().len(), 0);
-        let (k, v) = &o.env[0];
-        assert_eq!(k, "OPENCODE_CONFIG_CONTENT");
-        let cfg: serde_json::Value = serde_json::from_str(v).unwrap();
-        assert_eq!(cfg["mcp"].as_object().unwrap().len(), 0);
-        let tools = cfg["tools"].as_object().unwrap();
-        assert!(!tools.is_empty());
-        assert!(tools.values().all(|v| v == false));
-        for t in ["bash", "edit", "write", "read", "webfetch"] {
-            assert_eq!(tools[t], false);
-        }
+        let permisos = &archivo["agents"][AGENTE_CHAT]["permissions"];
+        assert_eq!(
+            permisos,
+            &serde_json::json!([{ "action":"*", "resource":"*", "effect":"deny" }])
+        );
+        assert_eq!(archivo["mcp"]["servers"].as_object().unwrap().len(), 0);
+        assert_eq!(o.env[0].0, "OPENCODE_CONFIG_CONTENT");
+        let cfg: serde_json::Value = serde_json::from_str(&o.env[0].1).unwrap();
+        assert_eq!(cfg, archivo);
+    }
+
+    #[test]
+    fn orden_codex_sin_mcp_y_sin_sesion_persistida() {
+        let o = orden("codex");
+        assert_eq!(o.args[0], "exec");
+        assert!(o.args.contains(&"--ephemeral".into()));
+        assert!(o.args.contains(&"--ignore-user-config".into()));
+        assert!(o.args.contains(&"features.shell_tool=false".into()));
+        assert!(o.args.contains(&"web_search=\"disabled\"".into()));
+        assert!(!o.args.iter().any(|a| a.starts_with("mcp_servers")));
+        assert!(!o.args.contains(&"--json".into()));
+        assert_eq!(o.args.last().unwrap(), "-");
+        assert_eq!(o.stdin, "hola");
+        assert!(o.env.is_empty());
+        assert!(o.archivos.is_empty());
     }
 
     #[test]

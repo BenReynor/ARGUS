@@ -1,7 +1,7 @@
 //! Descripciones de canales con una sola llamada barata a la IA (FASE 13).
 //!
 //! Las descripciones `generar:` que dejó `compilar` como pendientes se piden al
-//! agente constructor (claude u opencode, el modelo elegido) **sin ninguna
+//! agente constructor (claude, codex u opencode, el modelo elegido) **sin ninguna
 //! herramienta** (la misma orden que el chat de Discord), con el contexto del
 //! servidor y una lista compacta (id, canal, categoría, indicación). El agente
 //! devuelve un JSON `{id: descripción}`; cada una admite como mucho 1024

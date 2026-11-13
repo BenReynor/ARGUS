@@ -33,7 +33,7 @@ things you do from the app.
 
 - **AI Assistant (the main feature):** write your server plan in Markdown
   (categories, channels with descriptions, roles with permissions, per-channel
-  permissions) and chat with an AI agent (`claude` or `opencode`, including free
+  permissions) and chat with an AI agent (`claude`, `codex` or `opencode`, including free
   models). In Execute mode it proposes the changes, you review them and press
   **Apply**, and ARGUS builds the whole server in order. The agent can only read;
   note that your plan and what it reads from the server go to the model's
@@ -88,7 +88,7 @@ things you do from the app.
 |---|---|
 | **Linux** | ✅ Developed and used here. |
 | **Windows** | 🧪 Experimental, not 100% ready: tests pass and the installer is built in CI, but it has not been tried on a real PC yet. |
-| **AI agents** | ✅ `claude` tested on a real server. 🧪 `opencode` (including its free models) is supported in the code and covered by tests, but not fully configured or tested against a real server yet. |
+| **AI agents** | ✅ `claude` tested on a real server. 🧪 `codex` and OpenCode v2 have integration and automated tests; real-server validation is pending. Free models depend on the OpenCode provider. |
 
 ### Download
 
@@ -137,6 +137,9 @@ Icon=argus
 After each build it installs the `argus` icon in your icon theme. The binary and
 the build log are in `~/.local/share/argus-app/`.
 
+To try local changes, build with `npm run tauri build -- --no-bundle` and run
+`scripts/abrir-argus.sh --local`; this opens this checkout’s release binaries.
+
 ## Getting started
 
 1. **Create your bot** in the [Discord Developer Portal](https://discord.com/developers/applications):
@@ -163,6 +166,9 @@ blocks. With Claude Code:
 claude mcp add argus -- /path/to/argus-mcp
 ```
 
+For Codex, use `codex mcp add argus -- /path/to/argus-mcp`. For OpenCode,
+Settings → MCP provides the specific `opencode.json` block.
+
 > [!WARNING]
 > The MCP can do **everything the bot's permissions allow**, including deleting
 > channels or banning members. Connect it only to trusted clients and try it
@@ -184,8 +190,8 @@ Done and tested on a real server: several bots, live server, full server
 control, the MCP, the AI assistant (build and moderation), the structured plan,
 the bot's personality on Discord and orders from Discord (with `claude`).
 
-Not fully tested yet: Windows on a real PC (experimental) and the `opencode`
-agent with its free models.
+Not fully tested yet: Windows on a real PC (experimental) and the `codex` / `opencode`
+agents.
 
 Next (no date): templates to copy a server's structure to another one,
 monitoring with alerts, notifications and backups. Details are in [`CONTEXTO.md`](CONTEXTO.md)

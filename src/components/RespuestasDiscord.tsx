@@ -55,7 +55,7 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
   if (error) return <ErrorPanel mensaje={error} />;
   if (!ajustes || !agentes) return <Cargando lineas={4} />;
   if (agentes.length === 0) {
-    return <EstadoVacio titulo={t('No AI agent installed')} descripcion={t('The assistant needs the claude or opencode command line. Install one of them, sign in with it, and press Check again.')} />;
+    return <EstadoVacio titulo={t('No AI agent installed')} descripcion={t('The assistant needs the claude, codex or opencode command line. Install one of them, sign in with it, and press Check again.')} />;
   }
 
   const cambiar = (parte: Partial<GuildSettings>) => { setAjustes({ ...ajustes, ...parte }); setSucio(true); };

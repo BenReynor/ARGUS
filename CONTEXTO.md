@@ -47,7 +47,7 @@ en vivo y, más adelante, darle personalidad y automatismos.
 
 Construir servidores enormes en minutos: el usuario escribe el **plan del
 servidor** (Markdown, uno por servidor) y habla con un agente por línea de
-comandos (`claude` u `opencode`, modelo a elegir) en un chat dentro de ARGUS.
+comandos (`claude`, `codex` u `opencode`, modelo a elegir) en un chat dentro de ARGUS.
 
 - El agente solo se conecta a `argus-mcp` y **solo tiene herramientas de
   lectura**. En modo Read conversa; en modo Execute devuelve una **propuesta

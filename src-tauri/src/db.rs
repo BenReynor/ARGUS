@@ -697,7 +697,7 @@ pub struct GuildSettings {
     /// Interruptor de la conversación del bot en este servidor.
     pub personality_enabled: bool,
     pub templates_enabled: bool,
-    /// Agente de línea de comandos: "claude" u "opencode".
+    /// Agente de línea de comandos: "claude", "opencode" o "codex".
     #[serde(default = "chat_agente_defecto")]
     pub chat_agente: String,
     #[serde(default)]
@@ -789,7 +789,7 @@ impl Default for GuildSettings {
 impl GuildSettings {
     /// Corrige valores fuera de rango (agente desconocido, contexto > 30).
     pub fn normalizado(mut self) -> Self {
-        if self.chat_agente != "claude" && self.chat_agente != "opencode" {
+        if !matches!(self.chat_agente.as_str(), "claude" | "opencode" | "codex") {
             self.chat_agente = chat_agente_defecto();
         }
         self.chat_contexto = self.chat_contexto.min(CHAT_CONTEXTO_MAX);
@@ -1405,6 +1405,18 @@ mod guild_settings_tests {
         }
         .normalizado();
         assert_eq!(o.chat_agente, "opencode");
+        let codex = GuildSettings {
+            chat_agente: "codex".into(),
+            chat_modelo: "default".into(),
+            ordenes_agente: "codex".into(),
+            ordenes_modelo: "default".into(),
+            ..Default::default()
+        };
+        assert_eq!(codex.clone().normalizado(), codex);
+        assert_eq!(
+            serde_json::from_str::<GuildSettings>(&serde_json::to_string(&codex).unwrap()).unwrap(),
+            codex
+        );
     }
 }
 

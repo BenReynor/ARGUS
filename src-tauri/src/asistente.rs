@@ -1,5 +1,5 @@
 //! Asistente IA: detección de los agentes de línea de comandos (`claude`,
-//! `opencode`) y de los modelos que ofrece cada uno.
+//! `opencode`, `codex`) y de los modelos que ofrece cada uno.
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ use crate::i18n::localizar_error;
 use crate::state::AppState;
 
 /// Agentes soportados, en el orden en que se listan.
-pub const AGENTES: [&str; 2] = ["claude", "opencode"];
+pub const AGENTES: [&str; 3] = ["claude", "opencode", "codex"];
 
 /// Alias de modelo que acepta `claude --model`.
 const MODELOS_CLAUDE: [&str; 3] = ["opus", "sonnet", "haiku"];
@@ -184,16 +184,49 @@ fn modelos_opencode(ruta: &Path) -> Vec<String> {
     modelos
 }
 
+/// Codex no ofrece `models` en su CLI. Lee solo su catálogo local (no las
+/// credenciales) y permite siempre usar el modelo predeterminado de la CLI.
+fn modelos_codex() -> Vec<String> {
+    let home = std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .or_else(|| std::env::var_os("USERPROFILE"))
+                .map(|p| PathBuf::from(p).join(".codex"))
+        });
+    let catalogo = home
+        .and_then(|p| std::fs::read_to_string(p.join("models_cache.json")).ok())
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
+    modelos_codex_del_catalogo(catalogo.as_ref())
+}
+
+fn modelos_codex_del_catalogo(catalogo: Option<&serde_json::Value>) -> Vec<String> {
+    let mut modelos = vec!["default".to_string()];
+    if let Some(lista) = catalogo.and_then(|v| v["models"].as_array()) {
+        for m in lista {
+            if m["visibility"].as_str() == Some("hidden") {
+                continue;
+            }
+            if let Some(slug) = m["slug"].as_str().filter(|s| !s.trim().is_empty()) {
+                if !modelos.iter().any(|s| s == slug) {
+                    modelos.push(slug.to_string());
+                }
+            }
+        }
+    }
+    modelos
+}
+
 /// Agentes encontrados en `carpetas`, con sus modelos.
 pub fn agentes_en(carpetas: &[PathBuf]) -> Vec<AgenteIa> {
     AGENTES
         .iter()
         .filter_map(|&agente| {
             let ruta = buscar_binario(agente, carpetas)?;
-            let modelos = if agente == "claude" {
-                MODELOS_CLAUDE.iter().map(|m| m.to_string()).collect()
-            } else {
-                modelos_opencode(&ruta)
+            let modelos = match agente {
+                "claude" => MODELOS_CLAUDE.iter().map(|m| m.to_string()).collect(),
+                "codex" => modelos_codex(),
+                _ => modelos_opencode(&ruta),
             };
             Some(AgenteIa {
                 agente: agente.to_string(),
@@ -238,9 +271,6 @@ const CLAUDE_PROHIBIDAS: [&str; 7] = [
     "Task",
 ];
 
-/// Herramientas nativas de opencode desactivadas.
-const OPENCODE_PROHIBIDAS: [&str; 4] = ["bash", "edit", "write", "webfetch"];
-
 /// Orden de lanzamiento de un agente: qué ejecutar, sin ejecutarlo.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OrdenAgente {
@@ -277,6 +307,39 @@ pub(crate) fn preparar_directorio(orden: &OrdenAgente) -> Result<(), String> {
 /// Carpeta de trabajo propia del agente (no se crea aquí).
 pub fn directorio_agente() -> PathBuf {
     std::env::temp_dir().join("argus-asistente")
+}
+
+/// Configuración aislada, conservando el inicio de sesión de Codex. Se aplica
+/// también al reanudar: ninguna herramienta heredada ni acceso de escritura.
+pub(crate) fn argumentos_codex(modelo: &str, sesion: Option<&str>) -> Vec<String> {
+    let mut args = vec!["exec".into()];
+    for ajuste in [
+        "approval_policy=\"never\"",
+        "sandbox_mode=\"read-only\"",
+        "web_search=\"disabled\"",
+        "features.shell_tool=false",
+        "features.unified_exec=false",
+        "features.apply_patch_freeform=false",
+        "features.view_image=false",
+        "features.apps=false",
+        "features.multi_agent=false",
+        "features.multi_agent_v2=false",
+        "agents.enabled=false",
+        "skills.include_instructions=false",
+    ] {
+        args.extend(["-c".into(), ajuste.into()]);
+    }
+    if let Some(id) = sesion {
+        args.extend(["resume".into(), id.into()]);
+    }
+    args.extend([
+        "--ignore-user-config".into(),
+        "--skip-git-repo-check".into(),
+    ]);
+    if !modelo.trim().is_empty() && modelo != "default" {
+        args.extend(["--model".into(), modelo.into()]);
+    }
+    args
 }
 
 /// Construye la orden para (agente, modelo, modo, sesión previa, prompt).
@@ -342,33 +405,45 @@ pub fn orden_agente(
             }
             (a, Vec::new())
         }
+        "codex" => {
+            let mut a = argumentos_codex(modelo, sesion);
+            a.push("--json".into());
+            let mcp = serde_json::json!({
+                "command": ruta_mcp_s,
+                "enabled_tools": crate::mcp::HERRAMIENTAS_LECTURA,
+                "required": true,
+            });
+            // JSON escapa las cadenas y los arrays para TOML; la tabla usa
+            // la sintaxis inline de TOML, sin interpolación por un shell.
+            let table = format!(
+                "mcp_servers.argus={{command={}, enabled_tools={}, required=true}}",
+                mcp["command"], mcp["enabled_tools"]
+            );
+            a.extend(["-c".into(), table, "-".into()]);
+            (a, Vec::new())
+        }
         "opencode" => {
-            let mut tools = serde_json::Map::new();
-            for t in OPENCODE_PROHIBIDAS {
-                tools.insert(t.into(), false.into());
-            }
-            for t in crate::mcp::HERRAMIENTAS_ESCRITURA {
-                tools.insert(format!("argus_{t}"), false.into());
-            }
-            // Todo denegado y, después, solo las de lectura de ARGUS (en opencode
-            // gana la última regla que coincide). Cubre las integradas (read,
-            // grep, execute…) y los MCP del usuario, que opencode mezcla.
-            let mut permisos = serde_json::Map::new();
-            permisos.insert("*".into(), "deny".into());
+            // OpenCode v2: reglas ordenadas. La denegación global precede a
+            // las excepciones de lectura, incluso si hay MCP globales del usuario.
+            let mut permisos = vec![serde_json::json!({
+                "action": "*", "resource": "*", "effect": "deny"
+            })];
             for h in crate::mcp::HERRAMIENTAS_LECTURA {
-                permisos.insert(format!("argus_{h}"), "allow".into());
+                permisos.push(serde_json::json!({
+                    "action": format!("argus_{h}"), "resource": "*", "effect": "allow"
+                }));
             }
             let cfg = serde_json::json!({
-                "mcp": { "argus": { "type": "local", "command": [ruta_mcp_s], "enabled": true } },
-                "tools": tools,
-                "agent": { OPENCODE_AGENTE_ASISTENTE: {
+                "$schema": "https://opencode.ai/config.json",
+                "mcp": { "servers": { "argus": { "type": "local", "command": [ruta_mcp_s] } } },
+                "agents": { OPENCODE_AGENTE_ASISTENTE: {
                     "description": "ARGUS assistant: reads the Discord server, never changes it",
                     "mode": "primary",
-                    "permission": permisos,
+                    "permissions": permisos,
                 } },
             });
             archivos.push(("opencode.json".to_string(), cfg.to_string()));
-            let mut a: Vec<String> = ["run", "--format", "json", "--agent"]
+            let mut a: Vec<String> = ["run", "--standalone", "--format", "json", "--agent"]
                 .map(String::from)
                 .to_vec();
             a.push(OPENCODE_AGENTE_ASISTENTE.into());
@@ -472,10 +547,10 @@ impl Lector {
         let Ok(v) = serde_json::from_str::<serde_json::Value>(linea) else {
             return Vec::new();
         };
-        if agente == "claude" {
-            self.claude(&v)
-        } else {
-            self.opencode(&v)
+        match agente {
+            "claude" => self.claude(&v),
+            "codex" => self.codex(&v),
+            _ => self.opencode(&v),
         }
     }
 
@@ -485,6 +560,46 @@ impl Lector {
         } else {
             vec![EventoAsistente::Texto { texto: t.into() }]
         }
+    }
+
+    fn codex(&mut self, v: &serde_json::Value) -> Vec<EventoAsistente> {
+        match v["type"].as_str() {
+            Some("thread.started") => {
+                self.sesion = v["thread_id"].as_str().map(String::from);
+            }
+            Some("item.completed") if v["item"]["type"] == "agent_message" => {
+                return Self::texto(v["item"]["text"].as_str().unwrap_or(""));
+            }
+            Some("item.started" | "item.completed") if v["item"]["type"] == "mcp_tool_call" => {
+                let item = &v["item"];
+                let ok = if v["type"] == "item.started" {
+                    None
+                } else {
+                    Some(
+                        item["status"] == "completed"
+                            && item["error"].is_null()
+                            && !item["result"]["isError"].as_bool().unwrap_or(false),
+                    )
+                };
+                return vec![EventoAsistente::Herramienta {
+                    id: item["id"].as_str().unwrap_or("").into(),
+                    nombre: item["tool"].as_str().unwrap_or("").into(),
+                    ok,
+                }];
+            }
+            Some("error" | "turn.failed") => {
+                self.error = true;
+                let mensaje = v["message"]
+                    .as_str()
+                    .or_else(|| v["error"]["message"].as_str())
+                    .unwrap_or("unknown error");
+                return vec![EventoAsistente::Error {
+                    mensaje: clasificar_error(mensaje),
+                }];
+            }
+            _ => {}
+        }
+        Vec::new()
     }
 
     fn claude(&mut self, v: &serde_json::Value) -> Vec<EventoAsistente> {
@@ -1936,12 +2051,66 @@ mod tests_orden {
     }
 
     #[test]
+    fn codex_solo_lectura_y_reanudacion() {
+        for sesion in [None, Some("thread-123")] {
+            let o = orden("codex", sesion);
+            assert_eq!(o.args[0], "exec");
+            assert_eq!(valor(&o, "--model"), "mod");
+            assert!(o.args.contains(&"--json".into()));
+            assert!(o.args.contains(&"--ignore-user-config".into()));
+            assert!(o.args.contains(&"sandbox_mode=\"read-only\"".into()));
+            assert!(o.args.contains(&"approval_policy=\"never\"".into()));
+            assert!(o.args.contains(&"features.shell_tool=false".into()));
+            assert!(o.args.contains(&"features.apps=false".into()));
+            assert_eq!(o.args.last().unwrap(), "-");
+            let mcp = o
+                .args
+                .iter()
+                .find(|s| s.starts_with("mcp_servers.argus="))
+                .unwrap();
+            assert!(mcp.contains("required=true"));
+            assert!(mcp.contains("command=\"/opt/argus-mcp\""));
+            for h in HERRAMIENTAS_LECTURA {
+                assert!(mcp.contains(&format!("\"{h}\"")));
+            }
+            for h in HERRAMIENTAS_ESCRITURA {
+                assert!(!mcp.contains(&format!("\"{h}\"")));
+            }
+            assert_eq!(o.args.contains(&"resume".into()), sesion.is_some());
+            if let Some(id) = sesion {
+                assert_eq!(valor(&o, "resume"), id);
+            }
+            assert_eq!(o.stdin, "hola");
+            assert!(o.env.is_empty());
+        }
+        let args = argumentos_codex("default", None);
+        assert!(!args.contains(&"--model".into()));
+    }
+
+    #[test]
+    fn catalogo_codex_sin_red_y_con_fallback() {
+        assert_eq!(modelos_codex_del_catalogo(None), ["default"]);
+        let catalogo = serde_json::json!({"models": [
+            {"slug": "modelo-a", "visibility": "list"},
+            {"slug": "modelo-a"},
+            {"slug": "oculto", "visibility": "hidden"},
+            {"slug": ""},
+            {"slug": "modelo-b"}
+        ]});
+        assert_eq!(
+            modelos_codex_del_catalogo(Some(&catalogo)),
+            ["default", "modelo-a", "modelo-b"]
+        );
+    }
+
+    #[test]
     fn opencode_con_y_sin_sesion() {
         let o = orden("opencode", None);
         assert_eq!(
             o.args,
             [
                 "run",
+                "--standalone",
                 "--format",
                 "json",
                 "--agent",
@@ -1955,23 +2124,26 @@ mod tests_orden {
         assert_eq!(o.archivos.len(), 1);
         assert_eq!(o.archivos[0].0, "opencode.json");
         let archivo: Value = serde_json::from_str(&o.archivos[0].1).unwrap();
-        let permisos = archivo["agent"][OPENCODE_AGENTE_ASISTENTE]["permission"]
-            .as_object()
+        let permisos = archivo["agents"][OPENCODE_AGENTE_ASISTENTE]["permissions"]
+            .as_array()
             .unwrap();
         assert_eq!(permisos.len(), HERRAMIENTAS_LECTURA.len() + 1);
         assert_eq!(
-            permisos.keys().next().unwrap(),
-            "*",
-            "la denegación va primero"
+            permisos[0],
+            serde_json::json!({"action":"*", "resource":"*", "effect":"deny"})
         );
-        assert_eq!(permisos["*"], "deny");
         for l in HERRAMIENTAS_LECTURA {
-            assert_eq!(permisos[&format!("argus_{l}")], "allow", "{l}");
+            assert!(permisos.iter().any(|p| p["action"] == format!("argus_{l}")
+                && p["effect"] == "allow"
+                && p["resource"] == "*"));
         }
         for e in HERRAMIENTAS_ESCRITURA {
-            assert!(permisos.get(&format!("argus_{e}")).is_none(), "{e}");
+            assert!(!permisos.iter().any(|p| p["action"] == format!("argus_{e}")));
         }
-        assert_eq!(archivo["mcp"]["argus"]["command"][0], "/opt/argus-mcp");
+        assert_eq!(
+            archivo["mcp"]["servers"]["argus"]["command"][0],
+            "/opt/argus-mcp"
+        );
         let o2 = orden("opencode", Some("ses_1"));
         assert_eq!(valor(&o2, "--session"), "ses_1");
         assert_eq!(o2.stdin, "hola");
@@ -1979,24 +2151,16 @@ mod tests_orden {
         let (k, v) = &o2.env[0];
         assert_eq!(k, "OPENCODE_CONFIG_CONTENT");
         let cfg: Value = serde_json::from_str(v).unwrap();
-        let mcp = cfg["mcp"].as_object().unwrap();
+        let mcp = cfg["mcp"]["servers"].as_object().unwrap();
         assert_eq!(mcp.len(), 1);
         assert_eq!(mcp["argus"]["type"], "local");
         assert_eq!(mcp["argus"]["command"][0], "/opt/argus-mcp");
-        for t in ["bash", "edit", "write", "webfetch"] {
-            assert_eq!(cfg["tools"][t], false, "{t}");
-        }
-        for e in HERRAMIENTAS_ESCRITURA {
-            assert_eq!(cfg["tools"][format!("argus_{e}")], false, "{e}");
-        }
-        for l in HERRAMIENTAS_LECTURA {
-            assert!(cfg["tools"].get(format!("argus_{l}")).is_none());
-        }
+        assert_eq!(cfg, archivo);
     }
 
     #[test]
     fn sin_token_y_agente_desconocido() {
-        for ag in ["claude", "opencode"] {
+        for ag in AGENTES {
             let o = orden(ag, Some("s"));
             let todo = format!("{:?}{:?}", o.args, o.env).to_lowercase();
             assert!(!todo.contains("token"));
@@ -2128,6 +2292,52 @@ EOF"#,
     }
 
     #[tokio::test]
+    async fn codex_falso_emite_texto_herramientas_y_sesion() {
+        let (s, ev) = correr(
+            "codex_ok", "codex",
+            r#"cat <<'EOF'
+{"type":"thread.started","thread_id":"thread-1"}
+{"type":"item.started","item":{"id":"t1","type":"mcp_tool_call","server":"argus","tool":"listar_roles","status":"in_progress"}}
+{"type":"item.completed","item":{"id":"t1","type":"mcp_tool_call","tool":"listar_roles","status":"completed","result":{"isError":false},"error":null}}
+{"type":"item.completed","item":{"id":"t2","type":"mcp_tool_call","tool":"info_miembro","status":"failed","error":{"message":"missing permission"}}}
+{"type":"item.completed","item":{"id":"t3","type":"mcp_tool_call","tool":"listar_canales","status":"completed","result":{"isError":true}}}
+{"type":"item.completed","item":{"id":"a1","type":"agent_message","text":"Listo"}}
+{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}
+EOF"#,
+        ).await;
+        assert_eq!(s.as_deref(), Some("thread-1"));
+        assert_eq!(
+            ev,
+            vec![
+                herr("t1", "listar_roles", None),
+                herr("t1", "listar_roles", Some(true)),
+                herr("t2", "info_miembro", Some(false)),
+                herr("t3", "listar_canales", Some(false)),
+                EventoAsistente::Texto {
+                    texto: "Listo".into()
+                },
+                EventoAsistente::Fin {
+                    sesion: Some("thread-1".into()),
+                    cancelado: false
+                },
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn codex_falso_clasifica_error_de_turno() {
+        let (_, ev) = correr(
+            "codex_error",
+            "codex",
+            r#"echo '{"type":"turn.failed","error":{"message":"unauthorized"}}'"#,
+        )
+        .await;
+        assert!(
+            matches!(&ev[0], EventoAsistente::Error { mensaje } if mensaje.contains("not signed in"))
+        );
+    }
+
+    #[tokio::test]
     async fn errores_se_clasifican() {
         let (_, ev) = correr(
             "err_login",
@@ -2233,13 +2443,14 @@ mod tests {
     fn encuentra_binarios_falsos_y_sus_modelos() {
         let d = dir_temporal("con");
         falso(&d, "claude", "exit 0");
+        falso(&d, "codex", "exit 0");
         falso(
             &d,
             "opencode",
             "echo 'opencode/big-pickle'\necho 'anthropic/claude-sonnet'",
         );
         let r = agentes_en(&[d.clone()]);
-        assert_eq!(r.len(), 2);
+        assert_eq!(r.len(), 3);
         assert_eq!(r[0].agente, "claude");
         assert_eq!(r[0].modelos, ["opus", "sonnet", "haiku"]);
         assert_eq!(r[0].ruta, d.join("claude").to_string_lossy());
@@ -2248,6 +2459,8 @@ mod tests {
             r[1].modelos,
             ["opencode/big-pickle", "anthropic/claude-sonnet"]
         );
+        assert_eq!(r[2].agente, "codex");
+        assert_eq!(r[2].modelos[0], "default");
         let _ = std::fs::remove_dir_all(&d);
     }
 

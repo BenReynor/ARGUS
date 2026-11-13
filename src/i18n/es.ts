@@ -579,8 +579,8 @@ export const es: Record<string, string> = {
     'Elige un servidor en la columna de la izquierda para escribir su plan y hablar con el asistente.',
   'Could not detect AI agents': 'No se pudieron detectar los agentes de IA',
   'No AI agent installed': 'No hay ningún agente de IA instalado',
-  'The assistant needs the claude or opencode command line. Install one of them, sign in with it, and press Check again.':
-    'El asistente necesita la línea de comandos de claude u opencode. Instala una de ellas, inicia sesión y pulsa Comprobar de nuevo.',
+  'The assistant needs the claude, codex or opencode command line. Install one of them, sign in with it, and press Check again.':
+    'El asistente necesita la línea de comandos de claude, codex u opencode. Instala una de ellas, inicia sesión y pulsa Comprobar de nuevo.',
   'then run': 'después ejecuta',
   'and sign in': 'e inicia sesión',
   'Check again': 'Comprobar de nuevo',

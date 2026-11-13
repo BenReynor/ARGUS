@@ -119,7 +119,7 @@ export interface GuildSettings {
   personality_enabled: boolean;
   templates_enabled: boolean;
   /** Conversación del bot: `personality_enabled` es el interruptor. */
-  chat_agente: 'claude' | 'opencode';
+  chat_agente: 'claude' | 'opencode' | 'codex';
   chat_modelo: string;
   chat_personalidad: string;
   /** IDs de canales; vacía = todos. */
@@ -134,7 +134,7 @@ export interface GuildSettings {
   /** IDs que pueden dar órdenes; vacía = nadie. */
   chat_ordenes_usuarios: string[];
   chat_ordenes_confirmar: boolean;
-  ordenes_agente: 'claude' | 'opencode';
+  ordenes_agente: 'claude' | 'opencode' | 'codex';
   ordenes_modelo: string;
 }
 

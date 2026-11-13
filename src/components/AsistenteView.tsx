@@ -491,9 +491,10 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
   if (!agentes) return <Cargando lineas={4} />;
   if (agentes.length === 0) {
     return (
-      <EstadoVacio titulo={t('No AI agent installed')} descripcion={t('The assistant needs the claude or opencode command line. Install one of them, sign in with it, and press Check again.')}>
+      <EstadoVacio titulo={t('No AI agent installed')} descripcion={t('The assistant needs the claude, codex or opencode command line. Install one of them, sign in with it, and press Check again.')}>
         <ul className="asistente__instalar">
           <li><strong>claude</strong>: <code>npm install -g @anthropic-ai/claude-code</code>, {t('then run')} <code>claude</code> {t('and sign in')}</li>
+          <li><strong>codex</strong>: <code>npm install -g @openai/codex</code>, {t('then run')} <code>codex login</code></li>
           <li><strong>opencode</strong>: <code>npm install -g opencode-ai</code>, {t('then run')} <code>opencode auth login</code></li>
         </ul>
         <Button variante="secundario" onClick={() => { setAgentes(null); void cargarAgentes(); }}>{t('Check again')}</Button>
@@ -650,7 +651,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
             {sinSesion && (
               <div className="asistente__aviso" role="alert">
                 <TriangleAlert size={16} />
-                <span>{t('The AI agent is not signed in. Sign in with its command line and try again')}: <code>{agente === 'opencode' ? 'opencode auth login' : 'claude'}</code></span>
+                <span>{t('The AI agent is not signed in. Sign in with its command line and try again')}: <code>{agente === 'opencode' ? 'opencode auth login' : agente === 'codex' ? 'codex login' : 'claude'}</code></span>
               </div>
             )}
             {mensajes.map((m) => (

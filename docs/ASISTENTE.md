@@ -27,6 +27,7 @@ and sign in to once. Install at least one of them:
 | Agent | Install | Sign in |
 |---|---|---|
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`) | `npm install -g @anthropic-ai/claude-code` | run `claude` and follow the prompts (Claude subscription or API key) |
+| [Codex](https://learn.chatgpt.com/docs/non-interactive-mode) (`codex`) | `npm install -g @openai/codex` | run `codex login` |
 | [opencode](https://opencode.ai) (`opencode`) | `npm install -g opencode-ai` | run `opencode auth login` and pick a provider |
 
 Notes:
@@ -46,9 +47,19 @@ Pick the agent first, then one of its models:
 
 - **claude:** the aliases `opus` (most capable, slowest), `sonnet` (a good balance;
   the best default for building servers) and `haiku` (fastest and cheapest).
+- **codex:** `default` uses the CLI’s built-in default model; cached models from
+  `CODEX_HOME/models_cache.json` (or `~/.codex/models_cache.json`) are also listed.
+  Use a current Codex CLI with `--ignore-user-config` support. ARGUS reuses its
+  login, isolates the run from user MCP settings, disables shell tools and web
+  search, and exposes only ARGUS read tools. Chat replies use ephemeral runs
+  without MCP. Conversations in the assistant can be resumed.
 - **opencode:** every model in its catalog, listed as `provider/model`. ARGUS
   reads them from `opencode models`. Run `opencode auth login` to add providers;
-  the list updates after that.
+  restart ARGUS to refresh a previously loaded catalog. ARGUS uses a private
+  `--standalone` server so its assistant/chat configuration is loaded for each run
+  instead of reusing the shared OpenCode service (OpenCode v2 required). Its config uses `agents`, ordered `permissions`
+  rules and `mcp.servers`, as described in the
+  [OpenCode permission reference](https://opencode.ai/docs/permissions/).
 
 ### Free models with opencode
 
@@ -262,7 +273,7 @@ agent reads go to the AI provider, as explained below.
 
 ARGUS has no telemetry and never sends your bot's token to the agent: the token is
 stored encrypted and `argus-mcp` reads it from the local database. But the agent is
-a program that talks to an **AI provider** (Anthropic for `claude`; whichever
+a program that talks to an **AI provider** (Anthropic for `claude`; OpenAI for `codex`; whichever
 provider you chose for `opencode`), and that provider receives:
 
 - **Your server plan,** in full, with every message.
@@ -304,7 +315,7 @@ Replies are off by default and each server has its own settings.
 
 ### Choose agent and model
 
-Pick `claude` or `opencode`, then a model. **To just chat, use a free opencode
+Pick `claude`, `codex` or `opencode`, then a model. **To just chat, use a free opencode
 model**: they appear first, in the **Free models** group marked with ★ and
 “(free)”, and ARGUS preselects one when you switch to opencode. They are enough for
 friendly conversation and cost nothing. The conversation agent has no tools, so a
@@ -419,7 +430,7 @@ in addition to what is described above for chatting.
 ## Troubleshooting
 
 - **No agents found:** install one (section 1) and reopen ARGUS.
-- **“The AI agent is not signed in”:** run `claude`, or `opencode auth login`, in
+- **“The AI agent is not signed in”:** run `claude`, `codex login`, or `opencode auth login`, in
   a terminal.
 - **Invalid model or no quota:** pick another model or check your plan with the
   provider.

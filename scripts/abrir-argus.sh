@@ -4,12 +4,22 @@
 #
 #   abrir-argus.sh             actualiza si hace falta y abre la app
 #   abrir-argus.sh --compilar  solo actualiza (en segundo plano, sin abrir)
+#   abrir-argus.sh --local     abre la compilación release de esta copia local
 #
 # Compila en una copia aparte del repo (git worktree) que sigue a `main`, así
 # nunca empaqueta trabajo a medias de otra rama (p. ej. un loop de Dédalo).
 set -u
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# Permite probar cambios locales ya compilados sin que el actualizador los
+# sustituya por main. No modifica la instalación ni su marca de versión.
+if [ "${1:-}" = "--local" ]; then
+    if [ ! -x "$REPO/src-tauri/target/release/argus" ] || [ ! -x "$REPO/src-tauri/target/release/argus-mcp" ]; then
+        echo "Build ARGUS first: npm run tauri build -- --no-bundle" >&2
+        exit 1
+    fi
+    exec "$REPO/src-tauri/target/release/argus"
+fi
 DATOS="${XDG_DATA_HOME:-$HOME/.local/share}/argus-app"
 FUENTE="$DATOS/fuente"
 BIN="$DATOS/argus"

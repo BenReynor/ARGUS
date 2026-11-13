@@ -40,6 +40,44 @@ you have registered in ARGUS.
 claude mcp add argus -- /path/to/argus-mcp
 ```
 
+**Codex** (CLI, IDE and app configuration):
+
+```bash
+codex mcp add argus -- /path/to/argus-mcp
+```
+
+Or add to `~/.codex/config.toml` (escape backslashes on Windows):
+
+```toml
+[mcp_servers.argus]
+command = "/path/to/argus-mcp"
+args = []
+```
+
+**OpenCode** (`opencode.json` in your project, or the global config):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "argus": {
+        "type": "local",
+        "command": ["/path/to/argus-mcp"]
+      }
+    }
+  }
+}
+```
+
+Merge the `argus` entry into an existing `mcp.servers` section (OpenCode v2).
+OpenCode uses `mcp.servers`, whereas Claude-compatible clients use `mcpServers`; they are different formats.
+These external clients have full MCP access; the assistant inside ARGUS exposes
+only read tools and keeps Apply as the approval step.
+
+Configuration references: [Codex MCP](https://learn.chatgpt.com/docs/extend/mcp)
+and [OpenCode MCP](https://opencode.ai/docs/mcp-servers/).
+
 **Other clients** (MCP JSON configuration):
 
 ```json
