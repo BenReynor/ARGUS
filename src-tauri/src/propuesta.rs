@@ -54,6 +54,46 @@ pub struct Propuesta {
 }
 
 impl Propuesta {
+    /// Solo para el origen Discord. Deniega herramientas sin grupo conocido.
+    pub fn validar_desde_discord(
+        &self,
+        permisos: &crate::db::PermisosOrdenes,
+    ) -> Result<(), String> {
+        for accion in &self.acciones {
+            let h = accion.herramienta.as_str();
+            let permitido = match h {
+                "crear_canal"
+                | "editar_canal"
+                | "ordenar_canales"
+                | "crear_rol"
+                | "editar_rol"
+                | "ordenar_roles"
+                | "dar_rol"
+                | "quitar_rol"
+                | "permiso_canal"
+                | "quitar_permiso_canal"
+                | "cambiar_apodo"
+                | "editar_servidor"
+                | "crear_invitacion"
+                | "borrar_invitacion"
+                | "crear_webhook"
+                | "borrar_webhook" => permisos.estructura,
+                "borrar_canal" | "borrar_rol" => permisos.borrar_canales_roles,
+                "silenciar" => permisos.silenciar,
+                "expulsar" => permisos.expulsar,
+                "banear" | "desbanear" => permisos.banear,
+                "borrar_mensaje" | "borrar_mensajes" => permisos.borrar_mensajes,
+                "avisar" | "enviar_mensaje" | "enviar_dm" | "fijar_mensaje"
+                | "desfijar_mensaje" => permisos.avisos,
+                _ => false,
+            };
+            if !permitido {
+                return Err(format!("Action «{h}» is not allowed from Discord. Check Allow from Discord in Discord replies"));
+            }
+        }
+        Ok(())
+    }
+
     /// Herramientas irreversibles presentes, sin duplicados y en orden estable.
     pub fn acciones_destructivas(&self) -> Vec<&'static str> {
         ACCIONES_DESTRUCTIVAS
@@ -601,6 +641,85 @@ mod tests {
             resumen: "r".to_string(),
             acciones,
         }
+    }
+
+    #[test]
+    fn permisos_discord_cubren_cada_grupo_y_no_alteran_validacion_app() {
+        let grupos: &[(&str, &[&str])] = &[
+            (
+                "estructura",
+                &[
+                    "crear_canal",
+                    "editar_canal",
+                    "ordenar_canales",
+                    "crear_rol",
+                    "editar_rol",
+                    "ordenar_roles",
+                    "dar_rol",
+                    "quitar_rol",
+                    "permiso_canal",
+                    "quitar_permiso_canal",
+                    "cambiar_apodo",
+                    "editar_servidor",
+                    "crear_invitacion",
+                    "borrar_invitacion",
+                    "crear_webhook",
+                    "borrar_webhook",
+                ],
+            ),
+            ("borrar_canales_roles", &["borrar_canal", "borrar_rol"]),
+            ("silenciar", &["silenciar"]),
+            ("expulsar", &["expulsar"]),
+            ("banear", &["banear", "desbanear"]),
+            ("borrar_mensajes", &["borrar_mensaje", "borrar_mensajes"]),
+            (
+                "avisos",
+                &[
+                    "avisar",
+                    "enviar_mensaje",
+                    "enviar_dm",
+                    "fijar_mensaje",
+                    "desfijar_mensaje",
+                ],
+            ),
+        ];
+        let defecto = crate::db::PermisosOrdenes::default();
+        for (grupo, herramientas) in grupos {
+            for h in *herramientas {
+                let p = prop(vec![
+                    acc("crear_canal", json!({"nombre": "nuevo"})),
+                    acc(h, json!({})),
+                ]);
+                let mut valor = serde_json::to_value(&defecto).unwrap();
+                valor[*grupo] = json!(true);
+                let permitido = serde_json::from_value(valor.clone()).unwrap();
+                assert!(p.validar_desde_discord(&permitido).is_ok(), "{h}");
+                valor[*grupo] = json!(false);
+                let denegado = serde_json::from_value(valor).unwrap();
+                let err = prop(vec![acc(h, json!({}))])
+                    .validar_desde_discord(&denegado)
+                    .unwrap_err();
+                assert!(err.contains(h) && err.contains("not allowed from Discord"));
+                let es = crate::i18n::tr("es", &err);
+                assert!(es.contains(h) && es.contains("no está permitida"));
+                assert_eq!(
+                    prop(vec![acc(h, json!({}))])
+                        .validar_desde_discord(&defecto)
+                        .is_ok(),
+                    !matches!(*grupo, "banear" | "borrar_canales_roles")
+                );
+            }
+        }
+        assert!(prop(vec![acc("herramienta_futura", json!({}))])
+            .validar_desde_discord(&defecto)
+            .is_err());
+        // La validación de propuestas de la app no consulta permisos de Discord.
+        assert!(validar_acciones(
+            &prop(vec![acc("borrar_canal", json!({"channel_id": "10"}))]),
+            &existentes()
+        )
+        .errores
+        .is_empty());
     }
 
     #[test]

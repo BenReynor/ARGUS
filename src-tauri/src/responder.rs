@@ -476,7 +476,7 @@ impl Conversador {
 
     /// Decide, encola y responde. No devuelve error: lo que falle queda en Logs.
     pub async fn atender(&self, e: Entrada, ajustes: &GuildSettings) -> Resultado {
-        if let Some(r) = self.confirmacion(&e).await {
+        if let Some(r) = self.confirmacion(&e, ajustes).await {
             return r;
         }
         let ahora = ahora_s();
@@ -526,7 +526,7 @@ impl Conversador {
 
     /// Trata «sí»/«no» sobre una propuesta pendiente de este autor en este canal.
     /// `None` si el mensaje no tiene que ver (sigue el flujo normal).
-    async fn confirmacion(&self, e: &Entrada) -> Option<Resultado> {
+    async fn confirmacion(&self, e: &Entrada, ajustes: &GuildSettings) -> Option<Resultado> {
         if e.msg.autor_es_bot {
             return None;
         }
@@ -558,6 +558,13 @@ impl Conversador {
                     Some(Resultado::Respondido)
                 }
                 Confirmacion::Aplicar => {
+                    if let Err(motivo) = p
+                        .propuesta
+                        .validar_desde_discord(&ajustes.ordenes_permitidas)
+                    {
+                        self.fallo_orden(e, &idioma, &motivo).await;
+                        return Some(Resultado::Respondido);
+                    }
                     let Some(guardia) = self.coord.tomar_aplicacion(e.guild_id) else {
                         // Otra propuesta se está aplicando: esta sigue esperando.
                         self.coord
@@ -723,6 +730,13 @@ impl Conversador {
         idioma: &str,
         inicio: Instant,
     ) {
+        if let Err(motivo) = ev
+            .propuesta
+            .validar_desde_discord(&ajustes.ordenes_permitidas)
+        {
+            self.fallo_orden(e, idioma, &motivo).await;
+            return;
+        }
         let n = ev.propuesta.acciones.len();
         let max = ajustes.ordenes_max_acciones.clamp(1, 500);
         if n > max as usize {
@@ -1812,6 +1826,69 @@ EOF"#;
     }
 
     #[tokio::test]
+    async fn archivo_rechazado_si_estructura_no_esta_permitida() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (mut c, _) = conversador(
+            &server,
+            agente_falso("archivo-permisos", "exit 1"),
+            LIMITE_AGENTE,
+        );
+        let aplicadas = aplicador_falso(&mut c);
+        let mut ajustes = ajustes_ordenes(false);
+        ajustes.ordenes_permitidas.estructura = false;
+        let e = con_archivo(
+            &server,
+            1,
+            "plan.md",
+            PLAN_VALIDO.as_bytes().to_vec(),
+            PLAN_VALIDO.len() as u64,
+        )
+        .await;
+        c.atender(e, &ajustes).await;
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert!(
+            t[0].contains("crear_rol") && t[0].contains("not allowed from Discord"),
+            "{t:?}"
+        );
+        c.atender(confirmar(1, "yes"), &ajustes).await;
+        assert!(aplicadas.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn orden_denegada_no_publica_propuesta_ni_aplica_y_revalida_al_confirmar() {
+        for confirmar_primero in [false, true] {
+            let server = MockServer::start().await;
+            mock_discord(&server).await;
+            let (mut c, _) = conversador(
+                &server,
+                agente_con_orden(
+                    &format!("permisos-discord-{confirmar_primero}"),
+                    &propuesta_canal("borrar_canal"),
+                ),
+                LIMITE_AGENTE,
+            );
+            let aplicadas = aplicador_falso(&mut c);
+            let mut ajustes = ajustes_ordenes(false);
+            ajustes.ordenes_permitidas.borrar_canales_roles = confirmar_primero;
+            c.atender(entrada(1, true), &ajustes).await;
+            ajustes.ordenes_permitidas.borrar_canales_roles = false;
+            c.atender(confirmar(1, "yes"), &ajustes).await;
+            let t = textos(&envios(&server).await);
+            assert!(
+                t.iter()
+                    .any(|m| m.contains("borrar_canal") && m.contains("not allowed from Discord")),
+                "{t:?}"
+            );
+            if !confirmar_primero {
+                assert!(!t.iter().any(|m| m.contains("Reply **yes**")));
+            }
+            assert!(aplicadas.lock().unwrap().is_empty());
+        }
+    }
+
+    #[tokio::test]
     async fn borrar_canal_sin_confirmacion_espera_el_si_del_autor() {
         for idioma in ["en", "es"] {
             let server = MockServer::start().await;
@@ -1826,7 +1903,8 @@ EOF"#;
             );
             c.ordenes.idioma = Arc::new(move || idioma.to_string());
             let aplicadas = aplicador_falso(&mut c);
-            let ajustes = ajustes_ordenes(false);
+            let mut ajustes = ajustes_ordenes(false);
+            ajustes.ordenes_permitidas.borrar_canales_roles = true;
             c.atender(entrada(1, true), &ajustes).await;
             assert!(aplicadas.lock().unwrap().is_empty());
             let t = textos(&envios(&server).await);

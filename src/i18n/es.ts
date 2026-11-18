@@ -8,6 +8,15 @@ export const es: Record<string, string> = {
     'Elige el idioma de la interfaz. Se aplica al instante y se guarda.',
   'Could not save the language': 'No se pudo guardar el idioma',
 
+  'Allow from Discord': 'Permitir desde Discord',
+  'These permissions only affect Discord orders. Actions in the app are unchanged.': 'Estos permisos solo afectan a las órdenes de Discord. Las acciones de la app no cambian.',
+  'Create / edit structure': 'Crear / editar estructura',
+  'Delete channels and roles': 'Borrar canales y roles',
+  'Timeout members': 'Silenciar miembros',
+  'Ban / unban members': 'Banear / desbanear miembros',
+  'Delete messages': 'Borrar mensajes',
+  'Warnings and messages': 'Avisos y mensajes',
+
   // Pantalla de carga (carga.ts, index.html, App.tsx)
   'Loading…': 'Cargando la interfaz…',
   'Loading ARGUS': 'Cargando ARGUS',

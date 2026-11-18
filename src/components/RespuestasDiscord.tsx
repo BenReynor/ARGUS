@@ -210,6 +210,38 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
             <input type="checkbox" role="switch" checked={ajustes.chat_ordenes_confirmar} onChange={(e) => cambiar({ chat_ordenes_confirmar: e.target.checked })} />
             <span>{t('Ask for confirmation before applying')}</span>
           </label>
+          <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+            <legend>{t('Allow from Discord')}</legend>
+            <small>{t('These permissions only affect Discord orders. Actions in the app are unchanged.')}</small>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <input type="checkbox" checked={ajustes.ordenes_permitidas.estructura} onChange={(e) => cambiar({ ordenes_permitidas: { ...ajustes.ordenes_permitidas, estructura: e.target.checked } })} />
+              <span>{t('Create / edit structure')}</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <input type="checkbox" checked={ajustes.ordenes_permitidas.borrar_canales_roles} onChange={(e) => cambiar({ ordenes_permitidas: { ...ajustes.ordenes_permitidas, borrar_canales_roles: e.target.checked } })} />
+              <span>{t('Delete channels and roles')}</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <input type="checkbox" checked={ajustes.ordenes_permitidas.silenciar} onChange={(e) => cambiar({ ordenes_permitidas: { ...ajustes.ordenes_permitidas, silenciar: e.target.checked } })} />
+              <span>{t('Timeout members')}</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <input type="checkbox" checked={ajustes.ordenes_permitidas.expulsar} onChange={(e) => cambiar({ ordenes_permitidas: { ...ajustes.ordenes_permitidas, expulsar: e.target.checked } })} />
+              <span>{t('Kick members')}</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <input type="checkbox" checked={ajustes.ordenes_permitidas.banear} onChange={(e) => cambiar({ ordenes_permitidas: { ...ajustes.ordenes_permitidas, banear: e.target.checked } })} />
+              <span>{t('Ban / unban members')}</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <input type="checkbox" checked={ajustes.ordenes_permitidas.borrar_mensajes} onChange={(e) => cambiar({ ordenes_permitidas: { ...ajustes.ordenes_permitidas, borrar_mensajes: e.target.checked } })} />
+              <span>{t('Delete messages')}</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <input type="checkbox" checked={ajustes.ordenes_permitidas.avisos} onChange={(e) => cambiar({ ordenes_permitidas: { ...ajustes.ordenes_permitidas, avisos: e.target.checked } })} />
+              <span>{t('Warnings and messages')}</span>
+            </label>
+          </fieldset>
           <Input
             etiqueta={t('Maximum actions per Discord order')}
             ayuda={t('From 1 to 500. Build and Moderation in the app have no limit.')}

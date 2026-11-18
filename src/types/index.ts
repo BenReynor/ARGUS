@@ -135,6 +135,15 @@ export interface GuildSettings {
   chat_ordenes_usuarios: string[];
   chat_ordenes_confirmar: boolean;
   ordenes_max_acciones: number;
+  ordenes_permitidas: {
+    estructura: boolean;
+    borrar_canales_roles: boolean;
+    silenciar: boolean;
+    expulsar: boolean;
+    banear: boolean;
+    borrar_mensajes: boolean;
+    avisos: boolean;
+  };
   ordenes_agente: 'claude' | 'opencode' | 'codex';
   ordenes_modelo: string;
 }

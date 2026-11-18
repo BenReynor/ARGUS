@@ -687,6 +687,33 @@ pub async fn set_setting(pool: &SqlitePool, key: &str, value: &str) -> Result<()
     Ok(())
 }
 
+/// Capacidades de las órdenes de Discord; no restringen las acciones de la app.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct PermisosOrdenes {
+    pub estructura: bool,
+    pub borrar_canales_roles: bool,
+    pub silenciar: bool,
+    pub expulsar: bool,
+    pub banear: bool,
+    pub borrar_mensajes: bool,
+    pub avisos: bool,
+}
+
+impl Default for PermisosOrdenes {
+    fn default() -> Self {
+        Self {
+            estructura: true,
+            borrar_canales_roles: false,
+            silenciar: true,
+            expulsar: true,
+            banear: false,
+            borrar_mensajes: true,
+            avisos: true,
+        }
+    }
+}
+
 // Ajustes propios de cada servidor (por bot)
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
@@ -729,6 +756,7 @@ pub struct GuildSettings {
     /// Máximo de acciones por orden de Discord (1–500).
     #[serde(default = "ordenes_max_acciones_defecto")]
     pub ordenes_max_acciones: u32,
+    pub ordenes_permitidas: PermisosOrdenes,
     /// Agente que ejecuta las órdenes.
     #[serde(default = "ordenes_agente_defecto")]
     pub ordenes_agente: String,
@@ -788,6 +816,7 @@ impl Default for GuildSettings {
             chat_ordenes_usuarios: Vec::new(),
             chat_ordenes_confirmar: ordenes_confirmar_defecto(),
             ordenes_max_acciones: ordenes_max_acciones_defecto(),
+            ordenes_permitidas: PermisosOrdenes::default(),
             ordenes_agente: ordenes_agente_defecto(),
             ordenes_modelo: ordenes_modelo_defecto(),
         }
@@ -1289,6 +1318,71 @@ mod guild_settings_tests {
             .expect("BD temporal");
         run_migrations(&pool).await.expect("migraciones");
         (pool, ruta)
+    }
+
+    #[tokio::test]
+    async fn permisos_ordenes_defaults_antiguos_y_persistencia() {
+        let (pool, ruta) = pool_temporal("permisos_ordenes").await;
+        let esperado = PermisosOrdenes {
+            estructura: true,
+            borrar_canales_roles: false,
+            silenciar: true,
+            expulsar: true,
+            banear: false,
+            borrar_mensajes: true,
+            avisos: true,
+        };
+        assert_eq!(PermisosOrdenes::default(), esperado);
+        assert_eq!(
+            get_guild_settings(&pool, "b1", "g1")
+                .await
+                .unwrap()
+                .ordenes_permitidas,
+            esperado
+        );
+        // Simula datos anteriores a este ajuste, ya guardados en guild_settings.
+        sqlx::query(
+            "INSERT INTO guild_settings (bot_id, guild_id, data, updated_at) VALUES (?, ?, ?, ?)",
+        )
+        .bind("b1")
+        .bind("g1")
+        .bind(r#"{"notes":"legacy","chat_ordenes":true}"#)
+        .bind("2026-01-01T00:00:00Z")
+        .execute(&pool)
+        .await
+        .unwrap();
+        let mut s = get_guild_settings(&pool, "b1", "g1").await.unwrap();
+        assert_eq!(s.ordenes_permitidas, esperado);
+        assert_eq!(s.notes, "legacy");
+        s.ordenes_permitidas = PermisosOrdenes {
+            estructura: false,
+            borrar_canales_roles: true,
+            silenciar: false,
+            expulsar: false,
+            banear: true,
+            borrar_mensajes: false,
+            avisos: false,
+        };
+        save_guild_settings(&pool, "b1", "g1", &s).await.unwrap();
+        assert_eq!(get_guild_settings(&pool, "b1", "g1").await.unwrap(), s);
+        assert_eq!(
+            get_guild_settings(&pool, "b1", "g2")
+                .await
+                .unwrap()
+                .ordenes_permitidas,
+            esperado
+        );
+        assert_eq!(
+            get_guild_settings(&pool, "b2", "g1")
+                .await
+                .unwrap()
+                .ordenes_permitidas,
+            esperado
+        );
+        let parcial: PermisosOrdenes = serde_json::from_str(r#"{"estructura":false}"#).unwrap();
+        assert!(!parcial.estructura && parcial.silenciar && !parcial.banear);
+        pool.close().await;
+        let _ = std::fs::remove_file(ruta);
     }
 
     #[tokio::test]
