@@ -522,7 +522,7 @@ Quien instaló un `.deb`, `.AppImage` o `.exe` no se entera de las versiones nue
 - [x] Avisos de dependencias
   criterio: `.github/dependabot.yml` con actualizaciones semanales para `cargo` (src-tauri), `npm` (raíz) y `github-actions`, agrupadas por ecosistema y con un máximo de 5 PR abiertas; CONTRIBUTING o README (Development) explica que las PR de Dependabot pasan el mismo CI antes de fusionarse
 
-- [ ] Actualizaciones automáticas firmadas
+- [B] Actualizaciones automáticas firmadas
   criterio: plugin updater de Tauri configurado con la clave **pública** en tauri.conf.json y el endpoint `https://github.com/BenReynor/ARGUS/releases/latest/download/latest.json`; el CI de release firma los paquetes con los secretos `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` y publica `latest.json`; al arrancar (y en Settings → About con «Check for updates») ARGUS comprueba si hay versión nueva y muestra un aviso con las notas, **nunca instala sin que el usuario pulse Update**, verifica la firma y reinicia; opción «comprobar al arrancar» (por defecto sí); el `.deb` (que el updater no actualiza) muestra el aviso con el enlace de descarga; sin red no molesta; tests de la comparación de versiones y del aviso; **paso del autor antes de la release**: crear la clave con `npm run tauri signer generate` (con contraseña) y guardarla como secretos del repo y con copia fuera del PC; documentado en docs/FICHA_TECNICA.md
 
 - [ ] Copia de seguridad de la configuración de ARGUS
