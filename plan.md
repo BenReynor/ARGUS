@@ -489,7 +489,7 @@ Verificación manual (en tu servidor de pruebas):
 ## FASE 17 — Advertencias y control: avisar antes de lo caro o arriesgado y poder parar
 Hoy se puede pedir algo muy caro (leer todo el historial, cientos de descripciones con `generar:`) o muy grande (una propuesta de 80 acciones) sin aviso, y una vez que se aplica una propuesta no se puede detener. El chat de la app ya tiene **Stop** para la IA, pero no hay forma de parar al aplicar ni desde Discord. Objetivo: avisar con una estimación antes de lo que cuesta tiempo, tokens o es irreversible, y poder parar a mitad sin dejar nada a medias sin informar. Toda la UI y mensajes nuevos con `t()`; tests con el Discord falso y agentes falsos.
 
-- [ ] Aviso al elegir muchos mensajes en Moderación
+- [x] Aviso al elegir muchos mensajes en Moderación
   criterio: al elegir 500, 1000 o «All» en «Messages to read per channel» aparece una advertencia en línea (no bloqueante) con lo que implica: tarda más, gasta más tokens y el proveedor del modelo ve más mensajes; al enviar el primer mensaje con ese límite se pide confirmación una vez por conversación («Leer hasta N mensajes por canal en M canales: ~X peticiones a Discord. ¿Continuar?»), con «No volver a preguntar en este servidor» persistido; tests del cálculo de la estimación y de que «no volver a preguntar» se recuerda
 
 - [ ] Parar mientras se aplica una propuesta
