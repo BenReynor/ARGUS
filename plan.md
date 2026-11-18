@@ -462,7 +462,7 @@ ARGUS ya exige estar en la lista de órdenes, el «sí» del autor y un agente c
 - [x] Las acciones destructivas siempre piden confirmación
   criterio: lista `ACCIONES_DESTRUCTIVAS` (borrar_canal, borrar_rol, banear, expulsar, borrar_mensajes y cualquier otra irreversible) en propuesta.rs; una propuesta de una orden de Discord que contenga alguna pide «sí» aunque `chat_ordenes_confirmar` sea false, y el mensaje lo dice («Contiene acciones irreversibles: …»); tests: con confirmación desactivada, crear un canal se aplica directo y borrar uno espera el «sí»
 
-- [ ] Tope de acciones por orden de Discord
+- [x] Tope de acciones por orden de Discord
   criterio: ajuste por servidor `ordenes_max_acciones` (por defecto 50, editable en Discord replies, 1–500); una propuesta de una orden (texto o archivo .md) con más acciones no se publica y se avisa con el motivo y el número; la app (Build/Moderation) no tiene tope; tests del límite en orden de texto y en archivo
 
 - [ ] El constructor solo obedece al autor autorizado
