@@ -5098,6 +5098,122 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn archivo_de_sitio_19_aplica_con_siete_peticiones_de_escritura_antes_25() {
+        let (_d, mcp, s) = mcp_con_servidor(TODO, true).await;
+        let creado = std::sync::Arc::new(AtomicBool::new(false));
+        let para_roles = creado.clone();
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .respond_with(move |_: &wiremock::Request| {
+                let mut roles = vec![
+                    rol("555", "@everyone", 0, 0),
+                    rol("600", "Bot", 5, TODO),
+                    rol("700", "Muteado", 1, 0),
+                ];
+                if para_roles.load(Ordering::SeqCst) {
+                    roles.push(rol("1200", "Archivista", 2, 0));
+                }
+                ResponseTemplate::new(200).set_body_json(roles)
+            })
+            .with_priority(1)
+            .mount(&s)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "Archivista"}),
+            ))
+            .respond_with(move |_: &wiremock::Request| {
+                creado.store(true, Ordering::SeqCst);
+                ResponseTemplate::new(200).set_body_json(rol("1200", "Archivista", 2, 0))
+            })
+            .expect(1)
+            .mount(&s)
+            .await;
+        let overwrites = json!([
+            {"id": "555", "type": 0, "allow": "0", "deny": "1024"},
+            {"id": "1200", "type": 0, "allow": "3072", "deny": "0"},
+            {"id": "700", "type": 0, "allow": "0", "deny": "1024"}
+        ]);
+        for i in 0..=5 {
+            let nombre = if i == 0 {
+                "Archivo".to_string()
+            } else {
+                format!("expediente-{i}")
+            };
+            let tipo = if i == 0 { 4 } else { 0 };
+            let mut cuerpo = json!({"name": nombre, "type": tipo,
+                "permission_overwrites": overwrites});
+            if i > 0 {
+                cuerpo["parent_id"] = json!("40");
+            }
+            let mut respuesta = cuerpo.clone();
+            respuesta["id"] = json!((40 + i).to_string());
+            respuesta["guild_id"] = json!("555");
+            Mock::given(method("POST"))
+                .and(path("/api/v10/guilds/555/channels"))
+                .and(wiremock::matchers::body_partial_json(cuerpo))
+                .respond_with(ResponseTemplate::new(201).set_body_json(respuesta))
+                .expect(1)
+                .mount(&s)
+                .await;
+        }
+        let roles = commands::leer_roles(&mcp.state, "555", mcp.url())
+            .await
+            .unwrap();
+        let canales = commands::leer_canales(&mcp.state, "555", mcp.url())
+            .await
+            .unwrap();
+        // Mismo contrato que el test del compilador: 1 rol, 1 categoría,
+        // 5 canales, con 3 overwrites por categoría/canal (18 en total).
+        let plan = crate::plan_estructurado::analizar(
+            "# Archivo de Sitio-19\n\
+            ## Rol: Archivista\n\
+            ## Categoría: Archivo | ver: Archivista | escribir: Archivista | ocultar a: Muteado\n\
+            - texto: expediente-{1..5}",
+        );
+        let compilado = crate::plan_compilar::compilar(
+            &plan,
+            &crate::plan_compilar::Existentes {
+                roles: &roles,
+                canales: &canales,
+            },
+        );
+        assert!(compilado.avisos.is_empty(), "{:?}", compilado.avisos);
+        let inicio = s.received_requests().await.unwrap().len();
+        let resultados = mcp.ejecutar_propuesta(&compilado.propuesta).await.unwrap();
+        assert_eq!(resultados.len(), 7);
+        assert!(
+            resultados.iter().all(|r| r.estado == EstadoAccion::Ok),
+            "{resultados:?}"
+        );
+        let recibidas = s.received_requests().await.unwrap();
+        let aplicacion = &recibidas[inicio..];
+        let escrituras: Vec<_> = aplicacion
+            .iter()
+            .filter(|r| r.method.as_str() != "GET")
+            .map(|r| format!("{} {}", r.method, r.url.path()))
+            .collect();
+        // Antes: 7 creaciones + 18 PUT de permisos = 25 escrituras.
+        // Contar HTTP real detecta también peticiones extra dentro de una acción.
+        // Las lecturas de validación/categoría siguen existiendo, fuera de este presupuesto.
+        let lecturas = aplicacion.len() - escrituras.len();
+        eprintln!(
+            "Archivo de Sitio-19: {} escrituras (antes 25), {lecturas} lecturas",
+            escrituras.len()
+        );
+        assert_eq!(
+            escrituras.len(),
+            7,
+            "Regresión del presupuesto HTTP: {escrituras:?}"
+        );
+        assert_eq!(escrituras[0], "POST /api/v10/guilds/555/roles");
+        assert!(escrituras[1..]
+            .iter()
+            .all(|r| r == "POST /api/v10/guilds/555/channels"));
+    }
+
+    #[tokio::test]
     async fn aplicar_propuesta_crea_en_orden_con_avance() {
         let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_CANALES | GESTIONAR_ROLES, true).await;
         for (id, nombre) in [("1100", "Staff"), ("1101", "Miembro")] {

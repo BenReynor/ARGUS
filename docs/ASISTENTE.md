@@ -206,6 +206,17 @@ cannot touch a role at or above its own highest role, for example), and each
 failure is reported with a clear message. The proposal card is not saved: if you
 close ARGUS before applying, it disappears.
 
+For new categories and channels, the Execute proposal includes permissions in
+`crear_canal.permisos`, applied in the same request that creates them. Channels
+combine category permissions with their own, with the channel taking precedence
+for the same target. Separate `permiso_canal` actions update existing channels
+and categories; older proposals using them after creation remain supported.
+
+Discord may show **“Not synced with category”** («no sincronizado con la
+categoría») for a channel with its own permissions. This is expected and keeps
+its specific rules. Later category permission changes do not automatically
+propagate to it; syncing in Discord replaces its own rules with the category's.
+
 Tip: try a plan on a **test server** first, and apply large builds in stages.
 
 ## Moderation: manage members and messages

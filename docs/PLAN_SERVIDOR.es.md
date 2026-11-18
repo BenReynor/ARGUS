@@ -94,6 +94,21 @@ heredan de su categoría) se ignora, y la IA no la escribe.
 `@everyone` vale como rol. En un canal, los permisos se **suman** a los de su
 categoría.
 
+Las categorías y canales nuevos reciben sus permisos en la misma petición que
+los crea. Cada canal incluye los permisos de su categoría y los propios; si
+ambos definen el mismo objetivo, prevalece el canal. Los canales y categorías
+que ya existen siguen usando actualizaciones de permisos separadas.
+
+Discord puede mostrar **«no sincronizado con la categoría»** cuando un canal
+tiene permisos propios. Es normal: conserva las reglas particulares del plan.
+Los cambios posteriores en los permisos de la categoría no se propagan
+automáticamente a un canal no sincronizado; sincronizarlo en Discord reemplaza
+sus reglas propias por las de la categoría.
+
+El test de regresión «Archivo de Sitio-19» mide **7 peticiones de escritura en
+vez de 25**: 1 rol, 1 categoría y 5 canales, con 18 overwrites incluidos en la
+creación. Las lecturas de validación y categoría se cuentan aparte.
+
 ### Variables
 
 ```
