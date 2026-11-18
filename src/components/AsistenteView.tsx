@@ -1,17 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { confirm, open, save } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { BookOpen, Check, CircleDashed, FilePlus, Download, Hammer, Loader2, Square, TriangleAlert, Undo2, Upload, X } from 'lucide-react';
 import { useActiveGuildId, useShowNotification, useStore } from '../store/useStore';
 import {
   prepararLecturaModeracion, type EstimacionLectura, listarAgentesIa, enviarAlAsistente, leerPlanServidor, guardarPlanServidor, leerConversacion,
   guardarConversacion, nuevaConversacion, aplicarPropuesta, listarAvisosRecientes, listMembers,
-  type TipoAsistente, cancelarAsistente, resumirPlan, construirDesdePlan, compararPlan, onAsistentePlan,
+  type TipoAsistente, cancelarAsistente, resumirPlan, costeDescripcionesPlan, construirDesdePlan, compararPlan, onAsistentePlan,
   onAsistenteEvento, onAsistentePropuesta, onAsistenteAccion,
 } from '../api/tauri';
 import type { AccionPropuesta, AgenteIa, AvanceAccion, AvisoReciente, Member, CambiosPlan, EstadoAccion, EventoPropuesta, ResultadoConstruccion, ResumenPlan, ResumenPropuesta } from '../types';
 import { Badge, Button, Cargando, ConfirmarPeligroso, Dialogo, EstadoVacio, ErrorPanel, Input, Select } from './ui';
 import { seguridadPropuesta } from '../propuestaSeguridad';
+import { confirmarDescripciones } from '../costeDescripciones';
 import { t } from '../i18n';
 import { RespuestasDiscord } from './RespuestasDiscord';
 import { ContextoPersonalidad } from './ContextoPersonalidad';
@@ -402,7 +403,11 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
     setErrorAplicar(null);
     setSinSesion(false);
     try {
-      const res = await construirDesdePlan(agente, modelo, plan);
+      const coste = await costeDescripcionesPlan(plan);
+      if (!await confirmarDescripciones(coste, () => confirm(t('Generate {descriptions} descriptions with approximately {calls} AI calls? This may incur costs. Continue?', {
+        descriptions: coste.descripciones, calls: coste.llamadas,
+      }), { kind: 'warning', okLabel: t('Continue'), cancelLabel: t('Cancel') }))) return;
+      const res = await construirDesdePlan(agente, modelo, plan, coste.confirmar ? coste.descripciones : undefined);
       const ev: EventoPropuesta = { propuesta: res.propuesta, validacion: res.validacion };
       setConstruccion({ ev, res });
       setPropuesta(ev);

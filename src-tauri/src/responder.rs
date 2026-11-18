@@ -44,6 +44,7 @@ pub struct Coordinador {
     aplicando: Mutex<HashSet<u64>>,
     /// Cuánto vive una propuesta pendiente.
     caducidad: Duration,
+    costes: Mutex<HashMap<(u64, u64, u64), tokio::sync::oneshot::Sender<bool>>>,
     activas: Mutex<HashMap<(u64, u64, u64), Arc<Parada>>>,
 }
 
@@ -63,6 +64,7 @@ struct GuardiaOrden {
 impl Drop for GuardiaOrden {
     fn drop(&mut self) {
         self.coord.activas.lock().unwrap().remove(&self.clave);
+        self.coord.costes.lock().unwrap().remove(&self.clave);
     }
 }
 
@@ -128,6 +130,7 @@ impl Coordinador {
             pendientes: Mutex::new(HashMap::new()),
             aplicando: Mutex::new(HashSet::new()),
             caducidad,
+            costes: Mutex::new(HashMap::new()),
             activas: Mutex::new(HashMap::new()),
         }
     }
@@ -582,6 +585,22 @@ impl Conversador {
         }
         let accion = confirmacion_de(&e.texto)?;
         let clave = (e.guild_id, e.msg.canal_id, e.msg.autor_id);
+        let coste = { self.coord.costes.lock().unwrap().remove(&clave) };
+        if let Some(respuesta) = coste {
+            let permitido = crate::db::ordenes_activas(ajustes, &e.msg.autor_id.to_string());
+            let _ = respuesta.send(accion == Confirmacion::Aplicar && permitido);
+            return Some(Resultado::Respondido);
+        }
+        if self
+            .coord
+            .costes
+            .lock()
+            .unwrap()
+            .keys()
+            .any(|k| k.0 == e.guild_id && k.1 == e.msg.canal_id)
+        {
+            return Some(Resultado::Ignorado);
+        }
         let idioma = (self.ordenes.idioma)();
         match self.coord.sacar_pendiente(clave) {
             EstadoPendiente::Ninguna => {
@@ -942,6 +961,28 @@ impl Conversador {
         }
     }
 
+    /// La preparación queda suspendida sin ocupar un agente hasta el «sí» del autor.
+    async fn confirmar_coste(&self, e: &Entrada, n: usize, idioma: &str) -> Result<bool, String> {
+        let coste = crate::plan_descripciones::coste_descripciones(n);
+        if !coste.confirmar {
+            return Ok(true);
+        }
+        let clave = (e.guild_id, e.msg.canal_id, e.msg.autor_id);
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.coord.costes.lock().unwrap().insert(clave, tx);
+        let aviso = crate::i18n::tr(idioma, &format!(
+            "Generate {} descriptions with approximately {} AI calls? This may incur costs. Reply **yes** within 5 minutes to generate, or **no** to cancel",
+            coste.descripciones, coste.llamadas,
+        ));
+        if let Err(err) = self.enviar(e, &aviso).await {
+            self.coord.costes.lock().unwrap().remove(&clave);
+            return Err(err);
+        }
+        let aceptado = tokio::time::timeout(self.coord.caducidad, rx).await;
+        self.coord.costes.lock().unwrap().remove(&clave);
+        Ok(matches!(aceptado, Ok(Ok(true))))
+    }
+
     /// Descarga, analiza y compila el archivo. Devuelve la propuesta validada y
     /// el texto de avisos para publicar tras ella.
     async fn compilar_archivo(
@@ -978,6 +1019,12 @@ impl Conversador {
                 canales: &canales,
             },
         );
+        if !self
+            .confirmar_coste(e, comp.pendientes.len(), idioma)
+            .await?
+        {
+            return Err("Description generation cancelled; no AI calls made".into());
+        }
         if !comp.pendientes.is_empty() {
             let agente = ajustes.ordenes_agente.as_str();
             match (self.buscar_agente)(agente) {
@@ -2834,6 +2881,122 @@ EOF"#;
             .iter()
             .filter(|r| r.url.path().starts_with("/files/"))
             .count()
+    }
+
+    #[tokio::test]
+    async fn discord_coste_umbral_y_si_solo_del_autor_antes_de_ia() {
+        for n in [29usize, 30, 31, 40, 41] {
+            let server = MockServer::start().await;
+            mock_discord(&server).await;
+            let ruta = agente_falso(
+                &format!("coste-{n}"),
+                r#"echo x >> "$(dirname "$0")/llamadas"
+echo '{}'"#,
+            );
+            let marca = ruta.with_file_name("llamadas");
+            let _ = std::fs::remove_file(&marca);
+            let (c, _) = conversador(&server, ruta, LIMITE_AGENTE);
+            let c = Arc::new(c);
+            let a = GuildSettings {
+                ordenes_max_acciones: 100,
+                ..ajustes_ordenes(true)
+            };
+            let plan = format!("## Category: Rooms\n- text: room-{{1..{n}}} | description: generate: short description\n");
+            let e = con_archivo(&server, 1, "plan.md", plan.into_bytes(), 100).await;
+            let tarea = {
+                let c = c.clone();
+                let a = a.clone();
+                tokio::spawn(async move { c.atender(e, &a).await })
+            };
+            if n > 30 {
+                tokio::time::timeout(Duration::from_secs(5), async {
+                    while envios(&server).await.is_empty() {
+                        tokio::time::sleep(Duration::from_millis(5)).await;
+                    }
+                })
+                .await
+                .unwrap();
+                let mensajes = textos(&envios(&server).await);
+                assert_eq!(mensajes.len(), 1);
+                assert!(
+                    mensajes[0].contains(&format!("Generate {n} descriptions")),
+                    "{mensajes:?}"
+                );
+                assert!(mensajes[0].contains(&format!("approximately {} AI calls", n.div_ceil(40))));
+                assert!(!marca.exists(), "ninguna IA antes del sí");
+                assert_eq!(c.atender(confirmar(2, "sí"), &a).await, Resultado::Ignorado);
+                let mut otro_canal = confirmar(1, "sí");
+                otro_canal.msg.canal_id = 11;
+                assert!(c.confirmacion(&otro_canal, &a).await.is_none());
+                assert!(!marca.exists());
+                assert!(!tarea.is_finished());
+                c.atender(confirmar(1, "sí"), &a).await;
+            }
+            tokio::time::timeout(Duration::from_secs(5), tarea)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                std::fs::read_to_string(&marca).unwrap().lines().count(),
+                n.div_ceil(40)
+            );
+            let mensajes = textos(&envios(&server).await);
+            assert_eq!(mensajes.len(), if n > 30 { 2 } else { 1 });
+            // Confirmar el coste genera la propuesta; aplicar sigue requiriendo otro «sí».
+            assert!(matches!(
+                c.coord.sacar_pendiente((555, 10, 1)),
+                EstadoPendiente::Vigente(_)
+            ));
+            assert!(c.coord.costes.lock().unwrap().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn discord_coste_no_parada_y_caducidad_no_llaman_ia() {
+        for respuesta in ["no", "stop", "caduca"] {
+            let server = MockServer::start().await;
+            mock_discord(&server).await;
+            let ruta = agente_falso(
+                &format!("coste-{respuesta}"),
+                r#"echo x >> "$(dirname "$0")/llamadas"
+echo '{}'"#,
+            );
+            let marca = ruta.with_file_name("llamadas");
+            let _ = std::fs::remove_file(&marca);
+            let (mut c, _) = conversador(&server, ruta, LIMITE_AGENTE);
+            if respuesta == "caduca" {
+                c.coord = Arc::new(Coordinador::con_caducidad(3, Duration::from_millis(100)));
+            }
+            let c = Arc::new(c);
+            let a = ajustes_ordenes(true);
+            let plan = b"## Category: Rooms\n- text: room-{1..31} | description: generate: short\n";
+            let e = con_archivo(&server, 1, "plan.md", plan.to_vec(), 100).await;
+            let tarea = {
+                let c = c.clone();
+                let a = a.clone();
+                tokio::spawn(async move { c.atender(e, &a).await })
+            };
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while envios(&server).await.is_empty() {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .unwrap();
+            if respuesta != "caduca" {
+                c.atender(confirmar(1, respuesta), &a).await;
+            }
+            tokio::time::timeout(Duration::from_secs(5), tarea)
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(!marca.exists());
+            assert!(c.coord.costes.lock().unwrap().is_empty());
+            assert!(matches!(
+                c.coord.sacar_pendiente((555, 10, 1)),
+                EstadoPendiente::Ninguna
+            ));
+        }
     }
 
     #[tokio::test]

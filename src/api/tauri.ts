@@ -175,8 +175,10 @@ export const nuevaConversacion = (guildId: string, tipo?: TipoAsistente) =>
 export const aplicarPropuesta = (propuesta: Propuesta, anteriores: ResumenPropuesta['resultados'] = []) =>
   invoke<ResumenPropuesta>('aplicar_propuesta', { propuesta, anteriores });
 export const resumirPlan = (plan: string) => invoke<ResumenPlan>('resumir_plan', { plan });
-export const construirDesdePlan = (agente: string, modelo: string, plan?: string) =>
-  invoke<ResultadoConstruccion>('construir_desde_plan', { agente, modelo, plan });
+export interface CosteDescripciones { descripciones: number; llamadas: number; confirmar: boolean }
+export const costeDescripcionesPlan = (plan: string) => invoke<CosteDescripciones>('coste_descripciones_plan', { plan });
+export const construirDesdePlan = (agente: string, modelo: string, plan?: string, descripcionesConfirmadas?: number) =>
+  invoke<ResultadoConstruccion>('construir_desde_plan', { agente, modelo, plan, descripcionesConfirmadas });
 export const compararPlan = (actual: string, propuesto: string) =>
   invoke<CambiosPlan>('comparar_plan', { actual, propuesto });
 export const onAsistentePlan = (cb: (e: EventoPlan) => void) =>

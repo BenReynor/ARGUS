@@ -13,6 +13,9 @@ pub const IDIOMA_DEFECTO: &str = "en";
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
     // <CATALOGO>
+    ("Confirm the description generation cost before continuing", "Confirma el coste de generar las descripciones antes de continuar"),
+    ("Description generation cancelled; no AI calls made", "Generación de descripciones cancelada; no se hicieron llamadas a la IA"),
+    ("Generate {n} descriptions with approximately {calls} AI calls? This may incur costs. Reply **yes** within 5 minutes to generate, or **no** to cancel", "¿Generar {n} descripciones con aproximadamente {calls} llamadas a la IA? Esto puede tener un coste. Responde **sí** en 5 minutos para generar, o **no** para cancelar"),
     ("Unlock the system keyring and restart ARGUS to access migrated tokens", "Desbloquea el llavero del sistema y reinicia ARGUS para acceder a los tokens migrados"),
     ("Invalid keyring key length", "La clave del llavero tiene una longitud no válida"),
     ("Encryption is already initialized", "El cifrado ya está inicializado"),

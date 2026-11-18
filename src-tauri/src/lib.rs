@@ -150,6 +150,7 @@ pub fn run() {
             asistente::preparar_lectura_moderacion,
             asistente::construir_desde_plan,
             asistente::resumir_plan,
+            asistente::coste_descripciones_plan,
             asistente::comparar_plan,
             asistente::leer_plan_servidor,
             asistente::guardar_plan_servidor,

@@ -3,6 +3,7 @@
 export const NOMBRE_ES = 'Español';
 
 export const es: Record<string, string> = {
+  'Generate {descriptions} descriptions with approximately {calls} AI calls? This may incur costs. Continue?': '¿Generar {descriptions} descripciones con aproximadamente {calls} llamadas a la IA? Esto puede tener un coste. ¿Continuar?',
   'Continue': 'Continuar',
   'Reading more messages takes longer, uses more tokens, and exposes more messages to the model provider.': 'Leer más mensajes tarda más, gasta más tokens y permite que el proveedor del modelo vea más mensajes.',
   'Confirm message history reading': 'Confirmar lectura del historial',

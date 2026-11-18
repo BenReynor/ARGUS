@@ -1677,6 +1677,25 @@ pub fn resumir_plan(state: tauri::State<'_, AppState>, plan: String) -> ResumenP
     }
 }
 
+/// Preflight local: usa el mismo compilador y mapa que la construcción.
+#[tauri::command]
+pub fn coste_descripciones_plan(
+    state: tauri::State<'_, AppState>,
+    plan: String,
+) -> crate::plan_descripciones::CosteDescripciones {
+    let gid = state.get_active_guild();
+    let mapas = state.server_maps.lock().unwrap();
+    let mapa = gid.as_ref().and_then(|g| mapas.get(g));
+    let comp = crate::plan_compilar::compilar(
+        &crate::plan_estructurado::analizar(&plan),
+        &crate::plan_compilar::Existentes {
+            roles: mapa.map_or(&[], |m| m.roles.as_slice()),
+            canales: mapa.map_or(&[], |m| m.channels.as_slice()),
+        },
+    );
+    crate::plan_descripciones::coste_descripciones(comp.pendientes.len())
+}
+
 /// Resultado de «Build from plan»: la propuesta compilada y de dónde salió.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ResultadoConstruccion {
@@ -1701,6 +1720,7 @@ pub async fn construir_desde_plan(
     agente: String,
     modelo: String,
     plan: Option<String>,
+    descripciones_confirmadas: Option<usize>,
 ) -> Result<ResultadoConstruccion, String> {
     let r = async {
         let gid = state
@@ -1735,6 +1755,10 @@ pub async fn construir_desde_plan(
                 canales: &canales,
             },
         );
+        crate::plan_descripciones::validar_confirmacion(
+            comp.pendientes.len(),
+            descripciones_confirmadas,
+        )?;
         let desde_estructura = comp.propuesta.acciones.len();
         let mut descripciones_ia = 0;
         if !comp.pendientes.is_empty() {
