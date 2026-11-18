@@ -471,7 +471,7 @@ ARGUS ya exige estar en la lista de órdenes, el «sí» del autor y un agente c
 - [x] Elegir qué se puede ordenar desde Discord
   criterio: en Discord replies, casillas «Allow from Discord»: crear/editar estructura, borrar canales y roles, sanciones (silenciar/expulsar/banear), borrar mensajes, avisos (por defecto: todo menos borrar canales/roles y banear); validar la propuesta de una orden contra lo permitido y rechazar con un motivo claro qué acción no está permitida; la app no se ve afectada; persistido en guild_settings con valores por defecto para los ajustes existentes; tests de cada grupo y de los valores por defecto
 
-- [ ] Aviso de permisos del bot
+- [x] Aviso de permisos del bot
   criterio: si el bot activo tiene Administrator en el servidor, la sección Discord replies (con órdenes activadas) y Server muestran un aviso no bloqueante explicando que con menos permisos el daño posible es menor y qué permisos bastan para lo que usa ARGUS; tests del cálculo (con y sin Administrator)
 
 - [ ] Clave de cifrado en el llavero del sistema
