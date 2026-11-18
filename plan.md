@@ -459,7 +459,7 @@ Verificación manual (en tu servidor de pruebas):
 ## FASE 16 — Seguridad: órdenes a prueba de engaños, límites desde Discord y llavero del sistema
 ARGUS ya exige estar en la lista de órdenes, el «sí» del autor y un agente con solo herramientas de lectura. Esta fase cierra tres huecos: (1) **prompt injection**: el chat lee mensajes previos del canal de cualquier usuario y podría convertir un texto malicioso en una orden; con la confirmación desactivada se aplicaría sola; (2) desde Discord se puede pedir **todo** (borrar canales/roles, banear); (3) la clave que cifra los tokens se **deriva del machine-id**, legible por cualquier programa del PC. Toda la UI y los mensajes nuevos con `t()`; tests con el Discord falso y agentes falsos; ningún test toca el llavero real.
 
-- [ ] Las acciones destructivas siempre piden confirmación
+- [x] Las acciones destructivas siempre piden confirmación
   criterio: lista `ACCIONES_DESTRUCTIVAS` (borrar_canal, borrar_rol, banear, expulsar, borrar_mensajes y cualquier otra irreversible) en propuesta.rs; una propuesta de una orden de Discord que contenga alguna pide «sí» aunque `chat_ordenes_confirmar` sea false, y el mensaje lo dice («Contiene acciones irreversibles: …»); tests: con confirmación desactivada, crear un canal se aplica directo y borrar uno espera el «sí»
 
 - [ ] Tope de acciones por orden de Discord
