@@ -504,7 +504,7 @@ Hoy se puede pedir algo muy caro (leer todo el historial, cientos de descripcion
 - [x] Aviso de coste con `generar:`
   criterio: al compilar un plan (Build from plan, archivo .md por Discord) con más de 30 descripciones `generar:`, antes de llamar a la IA se avisa con el número de descripciones y la estimación de llamadas, y se pide confirmar (en la app un diálogo; en Discord el «sí» del autor antes de generar); con menos, sin cambios; tests del umbral en la app y en Discord
 
-- [ ] Tope diario de respuestas del bot
+- [x] Tope diario de respuestas del bot
   criterio: ajuste por servidor `chat_max_diario` (por defecto 200 respuestas al día, 0 = sin tope) en Discord replies, con el contador del día visible; al llegar al tope el bot deja de responder hasta el día siguiente, lo anota en Logs y avisa una sola vez en el canal; las órdenes cuentan también; protege del gasto si alguien llena el canal de menciones; tests del contador, el reinicio diario y el aviso único
 
 - [ ] Tiempo máximo por petición a la IA
