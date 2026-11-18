@@ -446,7 +446,7 @@ Hoy cada canal se crea (heredando los permisos de su categoría) y después se l
 - [x] El compilador del plan mete los permisos en la creación
   criterio: `plan_compilar` deja de emitir `permiso_canal` para categorías y canales que crea en la misma propuesta y pone sus permisos en el `crear_canal` (la categoría con los suyos; cada canal con los de la categoría + los propios); sigue emitiendo `permiso_canal` solo para canales/categorías que ya existían; el diff del modo Plan y el resumen siguen siendo correctos («Permisos incluidos en la creación: N» o equivalente, traducido); tests: el plan de prueba «Archivo de Sitio-19» compila a 7 acciones (1 rol, 1 categoría, 5 canales) con los mismos permisos efectivos que antes, un canal con `solo leer: X` dentro de una categoría privada, y un canal existente que sigue usando `permiso_canal`
 
-- [ ] El asistente IA y las órdenes de Discord usan los permisos en la creación
+- [x] El asistente IA y las órdenes de Discord usan los permisos en la creación
   criterio: el prompt de Execute (construcción) indica que, para un canal o categoría nuevos, los permisos van en `permisos` de `crear_canal` y `permiso_canal` solo para lo que ya existe; el ejemplo de propuesta (`EJEMPLO_PROPUESTA`) lo muestra; `orden_de_ejecucion` y la validación siguen funcionando con propuestas antiguas que aún usan `permiso_canal` tras crear; tests del prompt y de una propuesta mixta
 
 - [ ] Medir y documentar
