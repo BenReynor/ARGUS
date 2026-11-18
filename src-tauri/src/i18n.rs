@@ -13,6 +13,9 @@ pub const IDIOMA_DEFECTO: &str = "en";
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
     // <CATALOGO>
+    ("AI time limits must be between 1 and 30 minutes", "Los límites de tiempo de IA deben estar entre 1 y 30 minutos"),
+    ("The AI time limit was exceeded and the agent was stopped. Try a more specific request or fewer messages per channel", "Se superó el tiempo máximo de IA y se detuvo el agente. Prueba una petición más concreta o menos mensajes por canal"),
+
     ("Daily reply budget unavailable", "El presupuesto diario de respuestas no está disponible"),
     ("Daily reply limit reached", "Se alcanzó el tope diario de respuestas"),
     ("Daily reply limit reached. I will reply again tomorrow (00:00 UTC).", "Se alcanzó el tope diario de respuestas. Volveré a responder mañana (00:00 UTC)."),

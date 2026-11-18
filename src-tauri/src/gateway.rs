@@ -12,9 +12,7 @@ use twilight_model::gateway::event::Event;
 
 use crate::chat::MensajeEntrante;
 use crate::mapa::{aplicar_evento, ResumenCambio};
-use crate::responder::{
-    ContextoOrdenes, Conversador, Coordinador, Entrada, LIMITE_AGENTE, LIMITE_CONSTRUCTOR,
-};
+use crate::responder::{ContextoOrdenes, Conversador, Coordinador, Entrada, LIMITE_AGENTE};
 use crate::state::ServerMap;
 
 /// Intents que ARGUS necesita: servidores/canales/roles, miembros y mensajes de
@@ -89,6 +87,7 @@ fn conversador(
     pool: Option<sqlx::SqlitePool>,
     mapas: Arc<Mutex<HashMap<String, ServerMap>>>,
 ) -> Conversador {
+    let app_limite = app.clone();
     let app_idioma = app.clone();
     let app = app.clone();
     let pool_chat = pool.clone();
@@ -159,7 +158,12 @@ fn conversador(
     };
     Conversador {
         pool: pool_chat,
-        limite_constructor: LIMITE_CONSTRUCTOR,
+        limite_constructor: Arc::new(move || {
+            app_limite
+                .try_state::<crate::state::AppState>()
+                .map(|s| s.config.lock().unwrap().ai_order_time_limit())
+                .unwrap_or_else(|| crate::state::Config::default().ai_order_time_limit())
+        }),
         ordenes,
         token: token.to_string(),
         base_url: None,

@@ -111,6 +111,8 @@ export const SettingsView: React.FC = () => {
     });
 
   const [formData, setFormData] = useState({
+    ai_time_limit_minutes: config.ai_time_limit_minutes,
+    ai_order_time_limit_minutes: config.ai_order_time_limit_minutes,
     server_id: config.active_guild_id ?? '',
     auto_start: uiSettings.auto_start,
     minimize_to_tray: uiSettings.minimize_to_tray,
@@ -118,6 +120,8 @@ export const SettingsView: React.FC = () => {
 
   useEffect(() => {
     setFormData({
+      ai_time_limit_minutes: config.ai_time_limit_minutes,
+      ai_order_time_limit_minutes: config.ai_order_time_limit_minutes,
       server_id: config.active_guild_id ?? '',
       auto_start: uiSettings.auto_start,
       minimize_to_tray: uiSettings.minimize_to_tray,
@@ -129,7 +133,7 @@ export const SettingsView: React.FC = () => {
   };
 
   const persist = async () => {
-    const next = { ...config, active_guild_id: formData.server_id.trim() || null };
+    const next = { ...config, ai_time_limit_minutes: formData.ai_time_limit_minutes, ai_order_time_limit_minutes: formData.ai_order_time_limit_minutes, active_guild_id: formData.server_id.trim() || null };
     await saveConfig(next);
     if (token) {
       // El backend valida el token con Discord y guarda id, nombre y avatar oficiales.
@@ -158,6 +162,10 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleSave = async () => {
+    if ([formData.ai_time_limit_minutes, formData.ai_order_time_limit_minutes].some((v) => !Number.isInteger(v) || v < 1 || v > 30)) {
+      showNotification(t('AI time limits must be between 1 and 30 minutes'), 'error');
+      return;
+    }
     const id = formData.server_id.trim();
     if (id && !/^\d+$/.test(id)) {
       setServerIdError(t('The server ID contains only digits.'));
@@ -481,6 +489,15 @@ export const SettingsView: React.FC = () => {
         </Select>
       </Seccion>
 
+      <Seccion ancha titulo={t('AI time limit')} descripcion={t('Maximum time per AI request, from 1 to 30 minutes.')}>
+        <Input etiqueta={t('App assistant (minutes)')} type="number" min={1} max={30} step={1}
+          value={formData.ai_time_limit_minutes}
+          onChange={(e) => handleChange('ai_time_limit_minutes', Number(e.target.value))} />
+        <Input etiqueta={t('Discord order builder (minutes)')} type="number" min={1} max={30} step={1}
+          value={formData.ai_order_time_limit_minutes}
+          onChange={(e) => handleChange('ai_order_time_limit_minutes', Number(e.target.value))} />
+        <Button onClick={handleSave} cargando={saving}>{t('Save settings')}</Button>
+      </Seccion>
       <Seccion ancha titulo={t('General')} descripcion={t('Application behavior and the server it starts with.')}>
         <Input
           etiqueta={t('Active server ID')}

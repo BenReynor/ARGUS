@@ -3,6 +3,12 @@
 export const NOMBRE_ES = 'Español';
 
 export const es: Record<string, string> = {
+  "AI time limits must be between 1 and 30 minutes": "Los límites de tiempo de IA deben estar entre 1 y 30 minutos",
+  "AI time limit": "Tiempo máximo de IA",
+  "Maximum time per AI request, from 1 to 30 minutes.": "Tiempo máximo por petición a la IA, de 1 a 30 minutos.",
+  "App assistant (minutes)": "Asistente de la app (minutos)",
+  "Discord order builder (minutes)": "Constructor de órdenes de Discord (minutos)",
+
   'Daily reply limit': 'Tope diario de respuestas',
   'Default: 200. 0 = unlimited. Resets at 00:00 UTC. Orders count too; failed attempts also consume budget to prevent repeated costs.': 'Por defecto: 200. 0 = sin tope. Se reinicia a las 00:00 UTC. Las órdenes también cuentan; los intentos fallidos consumen cupo para evitar costes repetidos.',
   'Replies reserved today (UTC): {count}': 'Respuestas reservadas hoy (UTC): {count}',

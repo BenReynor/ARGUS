@@ -342,8 +342,6 @@ type BuscarAgente = Arc<dyn Fn(&str) -> Option<PathBuf> + Send + Sync>;
 type FuturoPlan = Pin<Box<dyn Future<Output = String> + Send>>;
 type FuturoAplicar = Pin<Box<dyn Future<Output = Result<Vec<ResultadoAccion>, String>> + Send>>;
 
-/// Tiempo máximo del constructor de propuestas (lee el servidor con varias herramientas).
-pub const LIMITE_CONSTRUCTOR: Duration = Duration::from_secs(600);
 /// Tamaño máximo (caracteres) del resumen y la lista de cambios en Discord.
 pub const MAX_PROPUESTA: usize = 1800;
 
@@ -378,7 +376,7 @@ pub struct Conversador {
     pub limite: Duration,
     pub registro: Registro,
     pub buscar_agente: BuscarAgente,
-    pub limite_constructor: Duration,
+    pub limite_constructor: Arc<dyn Fn() -> Duration + Send + Sync>,
     pub ordenes: ContextoOrdenes,
 }
 
@@ -482,7 +480,7 @@ pub async fn ejecutar_texto(orden: &OrdenAgente, limite: Duration) -> Result<Str
                 crate::asistente::matar_grupo(p);
             }
             let _ = hijo.start_kill();
-            return Err("The AI agent took too long to reply".into());
+            return Err(crate::asistente::ERROR_TIEMPO_IA.into());
         }
     };
     if !matches!(&estado, Ok(s) if s.success()) {
@@ -1085,7 +1083,7 @@ impl Conversador {
                         agente,
                         &ruta,
                         &ajustes.ordenes_modelo,
-                        self.limite_constructor,
+                        (self.limite_constructor)(),
                     )
                     .await;
                 }
@@ -1238,7 +1236,7 @@ impl Conversador {
         let texto = texto_del_constructor_cancelable(
             &lanzar,
             agente,
-            self.limite_constructor,
+            (self.limite_constructor)(),
             &parada.aviso,
         )
         .await?;
@@ -1543,7 +1541,7 @@ mod tests {
             limite,
             registro: Arc::new(move |t| l.lock().unwrap().push(t)),
             buscar_agente: Arc::new(move |_| Some(agente.clone())),
-            limite_constructor: Duration::from_secs(20),
+            limite_constructor: Arc::new(|| Duration::from_secs(20)),
             ordenes: ContextoOrdenes {
                 ruta_mcp: Arc::new(|| Ok("/opt/argus-mcp".to_string())),
                 leer_plan: Arc::new(|_| Box::pin(async { "PLAN-DEL-SERVIDOR".to_string() })),
@@ -2120,6 +2118,35 @@ printf 'Hola.'
                 assert_eq!(aplicadas.lock().unwrap().len(), 1, "{t:?}");
             }
         }
+    }
+
+    #[tokio::test]
+    async fn constructor_lento_avisa_del_plazo_sin_publicar_propuesta() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let agente = agente_con_orden("constructor-plazo", "sleep 30");
+        let (mut c, logs) = conversador(&server, agente, LIMITE_AGENTE).await;
+        let limite = Arc::new(Mutex::new(Duration::from_secs(20)));
+        let actual = limite.clone();
+        c.limite_constructor = Arc::new(move || *actual.lock().unwrap());
+        // Cambiar el ajuste debe afectar a la siguiente petición sin reconectar.
+        *limite.lock().unwrap() = Duration::from_millis(150);
+        let inicio = Instant::now();
+        c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
+        assert!(inicio.elapsed() < Duration::from_secs(5));
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), 3, "{t:?}");
+        assert!(t[2].contains(crate::asistente::ERROR_TIEMPO_IA), "{t:?}");
+        assert!(!t.iter().any(|m| m.contains("Reply **yes**")));
+        assert!(matches!(
+            c.coord.sacar_pendiente((555, 10, 1)),
+            EstadoPendiente::Ninguna
+        ));
+        assert!(logs
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|m| m.contains(crate::asistente::ERROR_TIEMPO_IA)));
     }
 
     #[tokio::test]
@@ -3137,10 +3164,10 @@ EOF"#;
         let r = c.atender(entrada(1, true), &ajustes()).await;
         assert_eq!(
             r,
-            Resultado::Error("The AI agent took too long to reply".into())
+            Resultado::Error(crate::asistente::ERROR_TIEMPO_IA.into())
         );
         assert!(envios(&server).await.is_empty());
-        assert!(logs.lock().unwrap()[0].contains("took too long"));
+        assert!(logs.lock().unwrap()[0].contains(crate::asistente::ERROR_TIEMPO_IA));
     }
 
     #[tokio::test]

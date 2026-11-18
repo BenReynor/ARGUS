@@ -64,6 +64,8 @@ export interface Config {
   plan_provider: string;
   ask_provider: string;
   cli_agents: Record<string, CliAgentConfig>;
+  ai_time_limit_minutes: number;
+  ai_order_time_limit_minutes: number;
 
   context_limit_per_user: number;
   context_limit_per_channel: number;

@@ -738,7 +738,7 @@ pub async fn ejecutar_orden(
         });
     }
     let mut stderr = hijo.stderr.take().expect("stderr piped");
-    let errores = tokio::spawn(async move {
+    let mut errores = tokio::spawn(async move {
         let mut s = String::new();
         let _ = stderr.read_to_string(&mut s).await;
         s
@@ -766,8 +766,25 @@ pub async fn ejecutar_orden(
             }
         }
     }
-    let estado = hijo.wait().await;
-    let stderr = errores.await.unwrap_or_default();
+    // El agente puede cerrar stdout antes de terminar o dejar stderr en un hijo.
+    // La parada sigue activa durante ambas esperas.
+    let estado = tokio::select! {
+        estado = hijo.wait() => estado,
+        _ = cancelar.notified(), if !cancelado => {
+            cancelado = true;
+            if let Some(p) = pid { matar_grupo(p); }
+            let _ = hijo.start_kill();
+            hijo.wait().await
+        }
+    };
+    let stderr = tokio::select! {
+        r = &mut errores => r.unwrap_or_default(),
+        _ = cancelar.notified(), if !cancelado => {
+            cancelado = true;
+            if let Some(p) = pid { matar_grupo(p); }
+            errores.await.unwrap_or_default()
+        }
+    };
     if !cancelado && !lector.error {
         let fallo = !matches!(&estado, Ok(s) if s.success());
         if fallo && !stderr.trim().is_empty() {
@@ -787,6 +804,40 @@ pub async fn ejecutar_orden(
         cancelado,
     });
     Ok(lector.sesion)
+}
+
+/// Ejecuta con plazo total, incluyendo herramientas y esperas del agente.
+pub const ERROR_TIEMPO_IA: &str = "The AI time limit was exceeded and the agent was stopped. Try a more specific request or fewer messages per channel";
+
+pub async fn ejecutar_orden_con_limite(
+    orden: &OrdenAgente,
+    agente: &str,
+    cancelar: &tokio::sync::Notify,
+    limite: std::time::Duration,
+    mut emitir: impl FnMut(EventoAsistente),
+) -> Result<Option<String>, String> {
+    let agotado = std::sync::atomic::AtomicBool::new(false);
+    let ejecucion = ejecutar_orden(orden, agente, cancelar, |mut e| {
+        // Un fin simultáneo al vencimiento nunca publica una propuesta o plan.
+        if agotado.load(std::sync::atomic::Ordering::SeqCst) {
+            if let EventoAsistente::Fin { cancelado, .. } = &mut e {
+                *cancelado = true;
+            } else {
+                return;
+            }
+        }
+        emitir(e);
+    });
+    tokio::pin!(ejecucion);
+    tokio::select! {
+        r = &mut ejecucion => r,
+        _ = tokio::time::sleep(limite) => {
+            agotado.store(true, std::sync::atomic::Ordering::SeqCst);
+            cancelar.notify_one();
+            let _ = ejecucion.await;
+            Err(ERROR_TIEMPO_IA.into())
+        }
+    }
 }
 
 /// Lanza el agente constructor sin interfaz y devuelve todo el texto de su
@@ -810,25 +861,15 @@ pub async fn texto_del_constructor_cancelable(
 ) -> Result<String, String> {
     let mut texto = String::new();
     let mut error: Option<String> = None;
-    {
-        let ejecucion = ejecutar_orden(orden, agente, &cancelar, |e| match e {
-            EventoAsistente::Texto { texto: t } => {
-                texto.push_str(&t);
-                texto.push('\n');
-            }
-            EventoAsistente::Error { mensaje } => error = Some(mensaje),
-            _ => {}
-        });
-        tokio::pin!(ejecucion);
-        tokio::select! {
-            r = &mut ejecucion => { r?; }
-            _ = tokio::time::sleep(limite) => {
-                cancelar.notify_one();
-                let _ = ejecucion.await;
-                return Err("The AI agent took too long to reply".into());
-            }
+    ejecutar_orden_con_limite(orden, agente, cancelar, limite, |e| match e {
+        EventoAsistente::Texto { texto: t } => {
+            texto.push_str(&t);
+            texto.push('\n');
         }
-    }
+        EventoAsistente::Error { mensaje } => error = Some(mensaje),
+        _ => {}
+    })
+    .await?;
     if let Some(e) = error {
         return Err(e);
     }
@@ -1577,7 +1618,8 @@ pub async fn enviar_al_asistente(
         };
         let mut respuesta = String::new();
         let mut con_error = false;
-        let nueva_sesion = ejecutar_orden(&orden, &agente, &cancelar, |e| {
+        let limite = { state.config.lock().unwrap().ai_time_limit() };
+        let nueva_sesion = ejecutar_orden_con_limite(&orden, &agente, &cancelar, limite, |e| {
             match &e {
                 EventoAsistente::Texto { texto } => {
                     respuesta.push_str(texto);
@@ -1766,14 +1808,9 @@ pub async fn construir_desde_plan(
                 .ok_or_else(|| format!("{agente} is not installed"))?;
             let cancelar = std::sync::Arc::new(tokio::sync::Notify::new());
             let _turno = Turno::tomar(cancelar)?;
+            let limite = { state.config.lock().unwrap().ai_time_limit() };
             descripciones_ia = crate::plan_descripciones::escribir_descripciones(
-                &mut comp,
-                &contexto,
-                &idioma,
-                &agente,
-                &ruta,
-                &modelo,
-                std::time::Duration::from_secs(300),
+                &mut comp, &contexto, &idioma, &agente, &ruta, &modelo, limite,
             )
             .await;
         }
@@ -2561,6 +2598,78 @@ EOF"#,
         );
         tokio::time::sleep(std::time::Duration::from_millis(2500)).await;
         assert!(!marca.exists(), "el nieto sobrevivió");
+    }
+
+    #[tokio::test]
+    async fn plazo_detiene_asistente_y_constructor_lentos() {
+        use std::time::{Duration, Instant};
+        for constructor in [false, true] {
+            let marca = std::env::temp_dir()
+                .join(format!("argus_plazo_{}_{constructor}", std::process::id()));
+            let _ = std::fs::remove_file(&marca);
+            let cuerpo = format!(
+                "(sleep 1; touch {}) &\n{}sleep 30",
+                marca.display(),
+                if constructor { "exec 1>&-\n" } else { "" }
+            );
+            let o = orden(guion(
+                if constructor {
+                    "plazo_constructor"
+                } else {
+                    "plazo_app"
+                },
+                &cuerpo,
+            ));
+            let cancelar = tokio::sync::Notify::new();
+            let inicio = Instant::now();
+            let mut eventos = Vec::new();
+            let resultado = if constructor {
+                texto_del_constructor_cancelable(
+                    &o,
+                    "claude",
+                    Duration::from_millis(150),
+                    &cancelar,
+                )
+                .await
+                .map(|_| None)
+            } else {
+                ejecutar_orden_con_limite(
+                    &o,
+                    "claude",
+                    &cancelar,
+                    Duration::from_millis(150),
+                    |e| eventos.push(e),
+                )
+                .await
+            };
+            assert_eq!(resultado.unwrap_err(), ERROR_TIEMPO_IA);
+            assert!(inicio.elapsed() < Duration::from_secs(3));
+            if !constructor {
+                assert!(matches!(
+                    eventos.last(),
+                    Some(EventoAsistente::Fin {
+                        cancelado: true,
+                        ..
+                    })
+                ));
+                assert!(!eventos.iter().any(|e| matches!(
+                    e,
+                    EventoAsistente::Fin {
+                        cancelado: false,
+                        ..
+                    }
+                )));
+            }
+            tokio::time::sleep(Duration::from_millis(1100)).await;
+            assert!(!marca.exists(), "el proceso hijo sobrevivió al plazo");
+        }
+        let o = orden(guion(
+            "plazo_rapido",
+            "echo '{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"ok\"}]}}'",
+        ));
+        assert!(texto_del_constructor(&o, "claude", Duration::from_secs(3))
+            .await
+            .is_ok());
     }
 
     #[test]
