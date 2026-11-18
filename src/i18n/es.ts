@@ -748,4 +748,9 @@ export const es: Record<string, string> = {
   'Write literal descriptions; use generate: only where you really want the AI to write.': 'Escribe descripciones literales; usa generate: solo donde quieras que la IA escriba.',
   'Keep the plan short and remove free text you no longer need.': 'Mantén el plan corto y quita el texto libre que ya no necesites.',
   'Line {warning}': 'Línea {warning}',
+  'Irreversible actions — review before applying': 'Acciones irreversibles — revisa antes de aplicar',
+  'Estimated duration: ≈{seconds} s (≈2 s per Discord request). Permission checks and rate limits may take longer.': 'Duración estimada: ≈{seconds} s (≈2 s por petición a Discord). Las comprobaciones de permisos y los límites de peticiones pueden alargarla.',
+  'Confirm destructive proposal': 'Confirmar propuesta destructiva',
+  'This proposal deletes more than 5 channels/roles or bans more than 3 members. Type the server name to apply it.': 'Esta propuesta borra más de 5 canales/roles o banea a más de 3 miembros. Escribe el nombre del servidor para aplicarla.',
+  'The server name is not available. Reload the server before applying this proposal.': 'El nombre del servidor no está disponible. Recarga el servidor antes de aplicar esta propuesta.',
 };

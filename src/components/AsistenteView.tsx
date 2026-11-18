@@ -10,7 +10,8 @@ import {
   onAsistenteEvento, onAsistentePropuesta, onAsistenteAccion,
 } from '../api/tauri';
 import type { AccionPropuesta, AgenteIa, AvanceAccion, AvisoReciente, Member, CambiosPlan, EstadoAccion, EventoPropuesta, ResultadoConstruccion, ResumenPlan, ResumenPropuesta } from '../types';
-import { Badge, Button, Cargando, Dialogo, EstadoVacio, ErrorPanel, Input, Select } from './ui';
+import { Badge, Button, Cargando, ConfirmarPeligroso, Dialogo, EstadoVacio, ErrorPanel, Input, Select } from './ui';
+import { seguridadPropuesta } from '../propuestaSeguridad';
 import { t } from '../i18n';
 import { RespuestasDiscord } from './RespuestasDiscord';
 import { ContextoPersonalidad } from './ContextoPersonalidad';
@@ -84,6 +85,8 @@ const argTexto = (args: unknown, claves: string[]): string => {
 const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
   const moderacion = tipo === 'moderacion';
   const guildId = useActiveGuildId();
+  const guild = useStore((s) => s.guildPanel.guild);
+  const nombreServidor = guild?.id === guildId ? guild.name : '';
   const showNotification = useShowNotification();
 
   const [miembros, setMiembros] = useState<Member[]>([]);
@@ -127,6 +130,8 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
   const [sinSesion, setSinSesion] = useState(false);
 
   const [propuesta, setPropuesta] = useState<EventoPropuesta | null>(null);
+  const [confirmacionAplicar, setConfirmacionAplicar] = useState<{ propuesta: EventoPropuesta; guildId: string; nombre: string } | null>(null);
+  useEffect(() => { setConfirmacionAplicar(null); }, [propuesta, guildId, nombreServidor]);
   const [aplicando, setAplicando] = useState(false);
   const [deteniendo, setDeteniendo] = useState(false);
   const [avances, setAvances] = useState<Record<number, AvanceAccion>>({});
@@ -463,8 +468,16 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
     if (guildId && mensajes.length > 0) void reiniciar(guildId);
   };
 
-  const aplicar = async () => {
+  const aplicar = async (confirmada = false) => {
     if (!propuesta || aplicando) return;
+    if (seguridadPropuesta(propuesta.propuesta.acciones).requiereNombre && !confirmada) {
+      if (!guildId || !nombreServidor) {
+        setErrorAplicar(t('The server name is not available. Reload the server before applying this proposal.'));
+        return;
+      }
+      setConfirmacionAplicar({ propuesta, guildId, nombre: nombreServidor });
+      return;
+    }
     setAplicando(true);
     setDeteniendo(false);
     const anteriores = resumen?.resultados.filter((r) => r.estado === 'ok') ?? [];
@@ -528,6 +541,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
   };
 
   const accionesOrdenadas = useMemo(() => (propuesta ? ordenar(propuesta.propuesta.acciones) : []), [propuesta]);
+  const seguridad = useMemo(() => seguridadPropuesta(propuesta?.propuesta.acciones ?? []), [propuesta]);
 
   if (!guildId) {
     return <EstadoVacio titulo={t('No server selected')} descripcion={t('Pick a server in the left column to write its plan and talk to the assistant.')} />;
@@ -767,7 +781,20 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
 
             {propuesta && (
               <section className="asistente__propuesta" aria-label={t('Proposal')}>
+                {seguridad.irreversibles.length > 0 && (
+                  <div className="asistente__irreversibles" role="note">
+                    <strong><TriangleAlert size={16} aria-hidden="true" /> {t('Irreversible actions — review before applying')}</strong>
+                    <ul>
+                      {seguridad.irreversibles.map(({ accion, indice }) => (
+                        <li key={indice}>{indice + 1}. {accion.descripcion || accion.herramienta} <code>{accion.herramienta}</code> <small>{JSON.stringify(accion.args)}</small></li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <h4>{t('Proposal')}</h4>
+                {seguridad.segundosEstimados !== null && (
+                  <p role="note">{t('Estimated duration: ≈{seconds} s (≈2 s per Discord request). Permission checks and rate limits may take longer.', { seconds: seguridad.segundosEstimados })}</p>
+                )}
                 {propuesta.propuesta.resumen && <p>{propuesta.propuesta.resumen}</p>}
                 {construccion && construccion.ev === propuesta && (
                   <>
@@ -854,6 +881,19 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
                     </>
                   )}
                 </div>
+                <ConfirmarPeligroso
+                  abierto={confirmacionAplicar?.propuesta === propuesta && confirmacionAplicar?.guildId === guildId && confirmacionAplicar?.nombre === nombreServidor}
+                  titulo={t('Confirm destructive proposal')}
+                  descripcion={t('This proposal deletes more than 5 channels/roles or bans more than 3 members. Type the server name to apply it.')}
+                  nombre={nombreServidor}
+                  textoConfirmar={t('Apply')}
+                  onCerrar={() => setConfirmacionAplicar(null)}
+                  onConfirmar={() => {
+                    if (confirmacionAplicar?.propuesta !== propuesta || confirmacionAplicar?.guildId !== useStore.getState().activeGuildId || confirmacionAplicar?.nombre !== nombreServidor) return;
+                    setConfirmacionAplicar(null);
+                    return aplicar(true);
+                  }}
+                />
               </section>
             )}
             <div ref={finMensajes} />

@@ -52,6 +52,13 @@
   background: var(--surface-2); border: var(--border-w) solid var(--border-strong); border-radius: var(--radius);
 }
 .asistente__propuesta h4, .asistente__propuesta h5, .asistente__propuesta p { margin: 0; }
+.asistente__irreversibles {
+  color: var(--danger); border: var(--border-w) solid var(--danger);
+  border-radius: var(--radius-sm); padding: var(--sp-3); overflow-wrap: anywhere;
+}
+.asistente__irreversibles strong { display: flex; align-items: center; gap: var(--sp-2); }
+.asistente__irreversibles ul { margin: var(--sp-2) 0 0; padding-left: var(--sp-4); }
+.asistente__irreversibles small { display: block; }
 .asistente__grupo h5 { font-size: var(--fs-sm); color: var(--text-2); }
 .asistente__grupo h5 span { color: var(--text-3); font-weight: normal; }
 .asistente__grupo ul { list-style: none; margin: var(--sp-1) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
