@@ -185,8 +185,11 @@ pub async fn aplicar_propuesta(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     propuesta: Propuesta,
+    anteriores: Option<Vec<ResultadoAccion>>,
 ) -> Result<ResumenPropuesta, String> {
     use tauri::Emitter;
+    // Se reinicia antes de cualquier await: Stop durante la preparación cuenta.
+    CANCELAR.store(false, Ordering::SeqCst);
     // El servidor es el elegido en la app, no el «servidor activo» del MCP
     // (que la app nunca fija): sin esto, aplicar fallaba con «No active server».
     let guild_id = state
@@ -195,7 +198,6 @@ pub async fn aplicar_propuesta(
     let propuesta = con_servidor(&propuesta, &guild_id);
     let pool = crate::db::get_pool(&app).await.map_err(|e| e.to_string())?;
     let mcp = crate::mcp::ArgusMcp::nuevo(pool, None).await?;
-    CANCELAR.store(false, Ordering::SeqCst);
     let emisor = app.clone();
     let mut avance = move |total: usize, r: &ResultadoAccion| {
         if let Err(e) = emisor.emit(EVENTO_ACCION, AvanceAccion::de(total, r)) {
@@ -203,7 +205,12 @@ pub async fn aplicar_propuesta(
         }
     };
     let resumen = mcp
-        .ejecutar_propuesta_con(&propuesta, &CANCELAR, &mut avance)
+        .ejecutar_propuesta_reanudable(
+            &propuesta,
+            &CANCELAR,
+            &mut avance,
+            &anteriores.unwrap_or_default(),
+        )
         .await?;
     if let Err(e) = app.emit(EVENTO_RESUMEN, resumen.clone()) {
         tracing::warn!("no se pudo emitir {EVENTO_RESUMEN}: {e}");

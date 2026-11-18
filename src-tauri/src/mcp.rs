@@ -2059,6 +2059,18 @@ impl ArgusMcp {
         cancelar: &AtomicBool,
         avance: &mut (dyn FnMut(usize, &ResultadoAccion) + Send),
     ) -> Result<ResumenPropuesta, String> {
+        self.ejecutar_propuesta_reanudable(propuesta, cancelar, avance, &[])
+            .await
+    }
+
+    /// Reanuda la misma propuesta conservando únicamente las acciones exitosas.
+    pub async fn ejecutar_propuesta_reanudable(
+        &self,
+        propuesta: &Propuesta,
+        cancelar: &AtomicBool,
+        avance: &mut (dyn FnMut(usize, &ResultadoAccion) + Send),
+        anteriores: &[ResultadoAccion],
+    ) -> Result<ResumenPropuesta, String> {
         // El servidor de la propuesta (la app pone su `guild_id` en cada
         // acción); si no lo trae, el servidor activo del MCP.
         let de_la_propuesta = propuesta
@@ -2084,10 +2096,25 @@ impl ArgusMcp {
         }
         let total = propuesta.acciones.len();
         let mut resultados = Vec::new();
+        for r in anteriores.iter().filter(|r| r.estado == EstadoAccion::Ok) {
+            if let Some(a) = propuesta.acciones.get(r.indice) {
+                if a.herramienta == r.herramienta
+                    && !resultados
+                        .iter()
+                        .any(|x: &ResultadoAccion| x.indice == r.indice)
+                {
+                    nombres.registrar_creado(&a.herramienta, &a.args, &r.mensaje);
+                    resultados.push(r.clone());
+                }
+            }
+        }
         // `indice` es la posición original de la acción: la app empareja así
         // cada resultado con su fila aunque el orden de ejecución sea otro.
         for indice in orden_de_ejecucion(propuesta) {
             let a = &propuesta.acciones[indice];
+            if resultados.iter().any(|r| r.indice == indice) {
+                continue;
+            }
             if cancelar.load(Ordering::SeqCst) {
                 break;
             }
@@ -5431,6 +5458,78 @@ mod tests {
             .await
             .unwrap();
         assert_eq!((r.resultados.len(), r.canceladas, r.total), (1, 4, 5));
+    }
+
+    #[tokio::test]
+    async fn parar_en_peticion_termina_la_actual_y_reanudar_no_repite_hechas() {
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_CANALES, true).await;
+        let cancelar = std::sync::Arc::new(AtomicBool::new(false));
+        for (i, nombre) in ["primero", "segundo", "tercero"].iter().enumerate() {
+            let parada = cancelar.clone();
+            let nombre = nombre.to_string();
+            Mock::given(method("POST"))
+                .and(path("/api/v10/guilds/555/channels"))
+                .and(wiremock::matchers::body_partial_json(
+                    json!({"name": nombre}),
+                ))
+                .respond_with(move |_: &wiremock::Request| {
+                    // Stop llega con la petición ya en vuelo, antes de responder.
+                    if i == 0 {
+                        parada.store(true, Ordering::SeqCst);
+                    }
+                    ResponseTemplate::new(200)
+                        .set_delay(std::time::Duration::from_millis(20))
+                        .set_body_json(json!({"id": (80 + i).to_string(), "type": 0,
+                            "guild_id": "555", "name": nombre, "position": i}))
+                })
+                .expect(1)
+                .mount(&s)
+                .await;
+        }
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: ["primero", "segundo", "tercero"]
+                .iter()
+                .map(|nombre| accion("crear_canal", json!({"nombre": nombre})))
+                .collect(),
+        };
+        let mut avances = Vec::new();
+        let r = mcp
+            .ejecutar_propuesta_con(&p, &cancelar, &mut |_, r| avances.push(r.indice))
+            .await
+            .unwrap();
+        assert_eq!(
+            (r.hechas, r.fallidas, r.omitidas, r.canceladas),
+            (1, 0, 0, 2)
+        );
+        assert_eq!(avances, [0]);
+        assert_eq!(r.resultados[0].indice, 0);
+        assert_eq!(r.resultados[0].estado, EstadoAccion::Ok);
+        let peticiones = s.received_requests().await.unwrap();
+        let escrituras: Vec<_> = peticiones
+            .iter()
+            .filter(|r| r.method.as_str() == "POST")
+            .collect();
+        assert_eq!(escrituras.len(), 1, "Las restantes no se intentaron");
+        assert_eq!(
+            escrituras[0].body_json::<serde_json::Value>().unwrap()["name"],
+            "primero"
+        );
+
+        cancelar.store(false, Ordering::SeqCst);
+        avances.clear();
+        let finalizado = mcp
+            .ejecutar_propuesta_reanudable(
+                &p,
+                &cancelar,
+                &mut |_, r| avances.push(r.indice),
+                &r.resultados,
+            )
+            .await
+            .unwrap();
+        assert_eq!(avances, [1, 2]);
+        assert_eq!((finalizado.hechas, finalizado.canceladas), (3, 0));
+        s.verify().await; // Una sola petición por acción, incluso al reanudar.
     }
 
     #[tokio::test]

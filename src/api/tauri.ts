@@ -172,7 +172,8 @@ export const guardarConversacion = (guildId: string, agente: string, modelo: str
   invoke<void>('guardar_conversacion', { guildId, agente, modelo, mensajes, tipo });
 export const nuevaConversacion = (guildId: string, tipo?: TipoAsistente) =>
   invoke<void>('nueva_conversacion', { guildId, tipo });
-export const aplicarPropuesta = (propuesta: Propuesta) => invoke<ResumenPropuesta>('aplicar_propuesta', { propuesta });
+export const aplicarPropuesta = (propuesta: Propuesta, anteriores: ResumenPropuesta['resultados'] = []) =>
+  invoke<ResumenPropuesta>('aplicar_propuesta', { propuesta, anteriores });
 export const resumirPlan = (plan: string) => invoke<ResumenPlan>('resumir_plan', { plan });
 export const construirDesdePlan = (agente: string, modelo: string, plan?: string) =>
   invoke<ResultadoConstruccion>('construir_desde_plan', { agente, modelo, plan });

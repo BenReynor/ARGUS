@@ -7,7 +7,7 @@ import {
   prepararLecturaModeracion, type EstimacionLectura, listarAgentesIa, enviarAlAsistente, leerPlanServidor, guardarPlanServidor, leerConversacion,
   guardarConversacion, nuevaConversacion, aplicarPropuesta, listarAvisosRecientes, listMembers,
   type TipoAsistente, cancelarAsistente, resumirPlan, construirDesdePlan, compararPlan, onAsistentePlan,
-  onAsistenteEvento, onAsistentePropuesta, onAsistenteAccion, onAsistenteResumen,
+  onAsistenteEvento, onAsistentePropuesta, onAsistenteAccion,
 } from '../api/tauri';
 import type { AccionPropuesta, AgenteIa, AvanceAccion, AvisoReciente, Member, CambiosPlan, EstadoAccion, EventoPropuesta, ResultadoConstruccion, ResumenPlan, ResumenPropuesta } from '../types';
 import { Badge, Button, Cargando, Dialogo, EstadoVacio, ErrorPanel, Input, Select } from './ui';
@@ -54,7 +54,7 @@ const grupoDe = (a: AccionPropuesta): number => {
   }
 };
 const ordenar = (acciones: AccionPropuesta[]) =>
-  acciones.map((a, i) => ({ a, g: grupoDe(a), i })).sort((x, y) => x.g - y.g || x.i - y.i).map((x) => x.a);
+  acciones.map((a, i) => ({ a, g: grupoDe(a), i })).sort((x, y) => x.g - y.g || x.i - y.i);
 
 const esErrorSinSesion = (m: string) => m.startsWith(t('The AI agent is not signed in. Sign in with its command line and try again'));
 
@@ -128,6 +128,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
 
   const [propuesta, setPropuesta] = useState<EventoPropuesta | null>(null);
   const [aplicando, setAplicando] = useState(false);
+  const [deteniendo, setDeteniendo] = useState(false);
   const [avances, setAvances] = useState<Record<number, AvanceAccion>>({});
   const [resumen, setResumen] = useState<ResumenPropuesta | null>(null);
   const [errorAplicar, setErrorAplicar] = useState<string | null>(null);
@@ -271,7 +272,6 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
           .catch((err) => showNotification(mensajeError(err, t('Could not compare the plans')), 'error'));
       }),
       onAsistenteAccion((a) => setAvances((v) => ({ ...v, [a.indice]: a }))),
-      onAsistenteResumen((r) => { setResumen(r); setAplicando(false); }),
     ];
     return () => { bajas.forEach((b) => b.then((fn) => fn()).catch(() => {})); };
   }, []);
@@ -433,7 +433,13 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
     setPlanPrevio(null);
   };
 
-  const detener = () => { void cancelarAsistente().catch(() => {}); };
+  const detener = () => {
+    if (aplicando) setDeteniendo(true);
+    void cancelarAsistente().catch((e) => {
+      setDeteniendo(false);
+      showNotification(mensajeError(e, t('Could not stop the assistant')), 'error');
+    });
+  };
 
   const reiniciar = async (id: string) => {
     try {
@@ -460,12 +466,19 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
   const aplicar = async () => {
     if (!propuesta || aplicando) return;
     setAplicando(true);
-    setAvances({});
-    setResumen(null);
+    setDeteniendo(false);
+    const anteriores = resumen?.resultados.filter((r) => r.estado === 'ok') ?? [];
+    setAvances(Object.fromEntries(anteriores.map((r) => [r.indice, { ...r, total: propuesta.propuesta.acciones.length }])));
     setErrorAplicar(null);
     try {
-      const r = await aplicarPropuesta(propuesta.propuesta);
+      const r = await aplicarPropuesta(propuesta.propuesta, anteriores);
       setResumen(r);
+      const detalle = propuesta.propuesta.acciones.map((a, i) => {
+        const resultado = r.resultados.find((x) => x.indice === i);
+        const estado = resultado ? { ok: t('Done'), error: t('Error'), omitida: t('Skipped') }[resultado.estado] : t('Cancelled');
+        return `${i + 1}. ${a.descripcion || a.herramienta}: ${estado}${resultado && resultado.estado !== 'ok' ? ` — ${resultado.mensaje}` : ''}`;
+      });
+      useStore.getState().addLog(`${t('Done: {done}, failed: {failed}, skipped: {skipped}, cancelled: {cancelled}', { done: r.hechas, failed: r.fallidas, skipped: r.omitidas, cancelled: r.canceladas })}\n${detalle.join('\n')}`);
       setAvances(Object.fromEntries(r.resultados.map((x) => [x.indice, { ...x, total: r.total }])));
     } catch (e) {
       setErrorAplicar(mensajeError(e, t('Could not apply the proposal')));
@@ -788,7 +801,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
                 )}
                 {moderacion && (
                   <ul>
-                    {accionesOrdenadas.map((a, i) => {
+                    {accionesOrdenadas.map(({ a, i }) => {
                       const quien = argTexto(a.args, ['user_id', 'usuario', 'miembro', 'user']);
                       const motivo = argTexto(a.args, ['motivo', 'reason', 'razon']);
                       return (
@@ -800,37 +813,40 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
                             motivo ? t('Reason: {reason}', { reason: motivo }) : '',
                           ].filter(Boolean).join(' · ')}
                           avance={avances[i]}
-                          activa={aplicando && i === hechas}
+                          activa={aplicando && !avances[i] && i === accionesOrdenadas.find((x) => !avances[x.i])?.i}
                         />
                       );
                     })}
                   </ul>
                 )}
                 {!moderacion && GRUPOS().map((nombre, g) => {
-                  const del = accionesOrdenadas.map((a, i) => ({ a, i })).filter(({ a }) => grupoDe(a) === g);
+                  const del = accionesOrdenadas.filter(({ a }) => grupoDe(a) === g);
                   if (del.length === 0) return null;
                   return (
                     <div key={nombre} className="asistente__grupo">
                       <h5>{nombre} <span>{del.length}</span></h5>
                       <ul>
                         {del.map(({ a, i }) => (
-                          <FilaAccion key={i} texto={a.descripcion || a.herramienta} avance={avances[i]} activa={aplicando && i === hechas} />
+                          <FilaAccion key={i} texto={a.descripcion || a.herramienta} avance={avances[i]} activa={aplicando && !avances[i] && i === accionesOrdenadas.find((x) => !avances[x.i])?.i} />
                         ))}
                       </ul>
                     </div>
                   );
                 })}
-                {resumen && (
+                {resumen && !aplicando && (
                   <p className="asistente__resumen" role="status">
-                    {t('Done: {done}, failed: {failed}, skipped: {skipped}', { done: resumen.hechas, failed: resumen.fallidas, skipped: resumen.omitidas + resumen.canceladas })}
+                    {t('Done: {done}, failed: {failed}, skipped: {skipped}, cancelled: {cancelled}', { done: resumen.hechas, failed: resumen.fallidas, skipped: resumen.omitidas, cancelled: resumen.canceladas })}
                   </p>
                 )}
                 {errorAplicar && <p className="asistente__error" role="alert">{errorAplicar}</p>}
                 <div className="asistente__acciones">
                   {aplicando ? (
-                    <Button variante="peligro" onClick={detener}><Square size={14} /> {t('Stop')}</Button>
+                    <Button variante="peligro" onClick={detener} disabled={deteniendo}><Square size={14} /> {deteniendo ? t('Stopping after the current action…') : t('Stop')}</Button>
                   ) : resumen ? (
-                    <Button variante="secundario" onClick={() => { setPropuesta(null); setResumen(null); setAvances({}); }}>{t('Close')}</Button>
+                    <>
+                      <Button onClick={() => { void aplicar(); }} disabled={resumen.hechas === total}>{t('Apply')}</Button>
+                      <Button variante="secundario" onClick={() => { setPropuesta(null); setResumen(null); setAvances({}); }}>{t('Close')}</Button>
+                    </>
                   ) : (
                     <>
                       <Button onClick={() => { void aplicar(); }} disabled={total === 0}>{t('Apply')}</Button>
