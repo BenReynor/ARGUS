@@ -449,7 +449,7 @@ Hoy cada canal se crea (heredando los permisos de su categoría) y después se l
 - [x] El asistente IA y las órdenes de Discord usan los permisos en la creación
   criterio: el prompt de Execute (construcción) indica que, para un canal o categoría nuevos, los permisos van en `permisos` de `crear_canal` y `permiso_canal` solo para lo que ya existe; el ejemplo de propuesta (`EJEMPLO_PROPUESTA`) lo muestra; `orden_de_ejecucion` y la validación siguen funcionando con propuestas antiguas que aún usan `permiso_canal` tras crear; tests del prompt y de una propuesta mixta
 
-- [ ] Medir y documentar
+- [x] Medir y documentar
   criterio: test que cuenta las peticiones al Discord falso al aplicar el plan «Archivo de Sitio-19» (antes 25, ahora 7) y falla si sube; docs/PLAN_SERVIDOR.md / .es.md y docs/ASISTENTE.md explican que los permisos de los canales nuevos se aplican al crearlos (y el aviso «no sincronizado con la categoría» de Discord cuando un canal tiene permisos propios)
 
 Verificación manual (en tu servidor de pruebas):
