@@ -726,6 +726,9 @@ pub struct GuildSettings {
     /// Pedir confirmación antes de ejecutar una orden.
     #[serde(default = "ordenes_confirmar_defecto")]
     pub chat_ordenes_confirmar: bool,
+    /// Máximo de acciones por orden de Discord (1–500).
+    #[serde(default = "ordenes_max_acciones_defecto")]
+    pub ordenes_max_acciones: u32,
     /// Agente que ejecuta las órdenes.
     #[serde(default = "ordenes_agente_defecto")]
     pub ordenes_agente: String,
@@ -735,6 +738,10 @@ pub struct GuildSettings {
 }
 
 pub const CHAT_CONTEXTO_MAX: u32 = 30;
+
+fn ordenes_max_acciones_defecto() -> u32 {
+    50
+}
 
 fn ordenes_confirmar_defecto() -> bool {
     true
@@ -780,6 +787,7 @@ impl Default for GuildSettings {
             chat_ordenes: false,
             chat_ordenes_usuarios: Vec::new(),
             chat_ordenes_confirmar: ordenes_confirmar_defecto(),
+            ordenes_max_acciones: ordenes_max_acciones_defecto(),
             ordenes_agente: ordenes_agente_defecto(),
             ordenes_modelo: ordenes_modelo_defecto(),
         }
@@ -793,6 +801,7 @@ impl GuildSettings {
             self.chat_agente = chat_agente_defecto();
         }
         self.chat_contexto = self.chat_contexto.min(CHAT_CONTEXTO_MAX);
+        self.ordenes_max_acciones = self.ordenes_max_acciones.clamp(1, 500);
         self
     }
 }
@@ -1329,6 +1338,18 @@ mod guild_settings_tests {
     }
 
     #[test]
+    fn limite_de_ordenes_se_normaliza() {
+        for (entrada, esperado) in [(0, 1), (1, 1), (50, 50), (500, 500), (501, 500)] {
+            let s = GuildSettings {
+                ordenes_max_acciones: entrada,
+                ..Default::default()
+            }
+            .normalizado();
+            assert_eq!(s.ordenes_max_acciones, esperado);
+        }
+    }
+
+    #[test]
     fn los_ajustes_de_chat_tienen_valores_por_defecto() {
         let s = GuildSettings::default();
         assert_eq!(s.chat_agente, "claude");
@@ -1357,6 +1378,7 @@ mod guild_settings_tests {
         assert!(!s.chat_ordenes);
         assert!(s.chat_ordenes_usuarios.is_empty());
         assert!(s.chat_ordenes_confirmar);
+        assert_eq!(s.ordenes_max_acciones, 50);
         assert_eq!(s.ordenes_agente, "claude");
         assert_eq!(s.ordenes_modelo, "sonnet");
     }
@@ -1369,6 +1391,7 @@ mod guild_settings_tests {
         assert_eq!(s.chat_contexto, 5);
         assert!(s.chat_usuarios.is_empty());
         assert!(!s.chat_ordenes && s.chat_ordenes_confirmar);
+        assert_eq!(s.ordenes_max_acciones, 50);
         assert!(s.chat_ordenes_usuarios.is_empty());
         assert_eq!(
             (s.ordenes_agente.as_str(), s.ordenes_modelo.as_str()),

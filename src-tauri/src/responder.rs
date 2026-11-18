@@ -723,6 +723,19 @@ impl Conversador {
         idioma: &str,
         inicio: Instant,
     ) {
+        let n = ev.propuesta.acciones.len();
+        let max = ajustes.ordenes_max_acciones.clamp(1, 500);
+        if n > max as usize {
+            self.fallo_orden(
+                e,
+                idioma,
+                &format!(
+                    "The proposal has {n} actions, exceeding the Discord order limit of {max}"
+                ),
+            )
+            .await;
+            return;
+        }
         let destructivas = ev.propuesta.acciones_destructivas();
         let confirmar = ajustes.chat_ordenes_confirmar || !destructivas.is_empty();
         let mut texto = texto_propuesta(&ev, false, idioma, MAX_PROPUESTA);
@@ -1388,6 +1401,85 @@ EOF"#;
             .iter()
             .map(|b| b["content"].as_str().unwrap_or("").to_string())
             .collect()
+    }
+
+    #[tokio::test]
+    async fn limite_acciones_en_orden_de_texto() {
+        for max in [1, 2] {
+            let server = MockServer::start().await;
+            mock_discord(&server).await;
+            let propuesta = serde_json::json!({
+                "resumen": "Two roles",
+                "acciones": [
+                    {"herramienta": "crear_rol", "args": {"nombre": "Alpha"}, "descripcion": "Alpha"},
+                    {"herramienta": "crear_rol", "args": {"nombre": "Beta"}, "descripcion": "Beta"}
+                ]
+            });
+            let evento = serde_json::json!({"type": "assistant", "message": {"content": [
+                {"type": "text", "text": format!("```json\n{propuesta}\n```")}
+            ]}});
+            let script = format!("cat <<'EOF'\n{evento}\nEOF");
+            let (mut c, _) = conversador(
+                &server,
+                agente_con_orden(&format!("limite-texto-{max}"), &script),
+                LIMITE_AGENTE,
+            );
+            let aplicadas = aplicador_falso(&mut c);
+            let mut ajustes = ajustes_ordenes(false);
+            ajustes.ordenes_max_acciones = max;
+            c.atender(entrada(1, true), &ajustes).await;
+            let t = textos(&envios(&server).await);
+            if max == 1 {
+                assert!(
+                    t.iter()
+                        .any(|x| x.contains("2 actions, exceeding the Discord order limit of 1")),
+                    "{t:?}"
+                );
+                assert!(!t.iter().any(|x| x.contains("Two roles")));
+                c.atender(confirmar(1, "yes"), &ajustes).await;
+                assert!(aplicadas.lock().unwrap().is_empty());
+            } else {
+                assert_eq!(aplicadas.lock().unwrap().len(), 1, "{t:?}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn limite_acciones_en_archivo_md() {
+        for max in [3, 4] {
+            let server = MockServer::start().await;
+            mock_discord(&server).await;
+            let (mut c, _) = conversador(
+                &server,
+                agente_falso(&format!("limite-md-{max}"), "exit 1"),
+                LIMITE_AGENTE,
+            );
+            let aplicadas = aplicador_falso(&mut c);
+            let mut ajustes = ajustes_ordenes(false);
+            ajustes.ordenes_max_acciones = max;
+            let e = con_archivo(
+                &server,
+                1,
+                "plan.md",
+                PLAN_VALIDO.as_bytes().to_vec(),
+                PLAN_VALIDO.len() as u64,
+            )
+            .await;
+            c.atender(e, &ajustes).await;
+            let t = textos(&envios(&server).await);
+            if max == 3 {
+                assert_eq!(t.len(), 1, "{t:?}");
+                assert!(
+                    t[0].contains("4 actions, exceeding the Discord order limit of 3"),
+                    "{t:?}"
+                );
+                assert!(!t[0].contains("Roles to create"));
+                c.atender(confirmar(1, "yes"), &ajustes).await;
+                assert!(aplicadas.lock().unwrap().is_empty());
+            } else {
+                assert_eq!(aplicadas.lock().unwrap().len(), 1, "{t:?}");
+            }
+        }
     }
 
     #[tokio::test]

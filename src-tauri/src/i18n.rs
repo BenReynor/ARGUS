@@ -35,6 +35,7 @@ const CATALOGO_ES: &[(&str, &str)] = &[
     ("[ORDER] Applying the proposal of {autor} in {servidor} #{canal}: {n} actions", "[ORDEN] Aplicando la propuesta de {autor} en {servidor} #{canal}: {n} acciones"),
     ("[ORDER] Applied the proposal of {autor} in {servidor} #{canal}: {hechas} done, {fallos} with errors in {ms} ms", "[ORDEN] Propuesta de {autor} aplicada en {servidor} #{canal}: {hechas} hechas, {fallos} con error en {ms} ms"),
     ("[WARN] Could not apply the proposal in {servidor} #{canal} for {autor}: {motivo}", "[WARN] No se pudo aplicar la propuesta en {servidor} #{canal} para {autor}: {motivo}"),
+    ("The proposal has {n} actions, exceeding the Discord order limit of {max}", "La propuesta tiene {n} acciones y supera el límite de {max} por orden de Discord"),
     ("Proposal discarded", "Propuesta descartada"),
     ("A proposal is being applied in this server", "Se está aplicando una propuesta en este servidor"),
     ("I could not apply the proposal: {motivo}", "No pude aplicar la propuesta: {motivo}"),

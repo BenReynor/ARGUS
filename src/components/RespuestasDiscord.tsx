@@ -210,6 +210,12 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
             <input type="checkbox" role="switch" checked={ajustes.chat_ordenes_confirmar} onChange={(e) => cambiar({ chat_ordenes_confirmar: e.target.checked })} />
             <span>{t('Ask for confirmation before applying')}</span>
           </label>
+          <Input
+            etiqueta={t('Maximum actions per Discord order')}
+            ayuda={t('From 1 to 500. Build and Moderation in the app have no limit.')}
+            type="number" min={1} max={500} value={ajustes.ordenes_max_acciones}
+            onChange={(e) => cambiar({ ordenes_max_acciones: numero(e.target.value, 1, 500, 50) })}
+          />
           <div className="asistente__acciones">
             <Select etiqueta={t('Builder agent')} value={ajustes.ordenes_agente} onChange={(e) => cambiarAgenteOrdenes(e.target.value)}>
               {agentes.map((a) => <option key={a.agente} value={a.agente}>{a.agente}</option>)}

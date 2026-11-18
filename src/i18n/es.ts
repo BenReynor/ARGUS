@@ -539,6 +539,8 @@ export const es: Record<string, string> = {
 
   // Respuestas en Discord (RespuestasDiscord.tsx)
   'Assistant sections': 'Secciones del asistente',
+  'Maximum actions per Discord order': 'Máximo de acciones por orden de Discord',
+  'From 1 to 500. Build and Moderation in the app have no limit.': 'De 1 a 500. Construcción y Moderación en la app no tienen límite.',
   'Discord replies': 'Respuestas en Discord',
   'Could not load the Discord reply settings': 'No se pudieron cargar los ajustes de respuestas en Discord',
   'Pick a server in the left column to set up its Discord replies.': 'Elige un servidor en la columna de la izquierda para configurar sus respuestas en Discord.',
