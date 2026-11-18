@@ -519,7 +519,7 @@ Verificación manual:
 ## FASE 18 — Mantenimiento: actualizaciones automáticas, avisos de dependencias y copia de la configuración
 Quien instaló un `.deb`, `.AppImage` o `.exe` no se entera de las versiones nuevas, así que los arreglos (también de seguridad) no le llegan. Objetivo: que ARGUS avise y se actualice con una descarga **firmada**, que GitHub avise de dependencias con fallos y que el usuario pueda guardar y recuperar su configuración. Toda la UI con `t()`.
 
-- [ ] Avisos de dependencias
+- [x] Avisos de dependencias
   criterio: `.github/dependabot.yml` con actualizaciones semanales para `cargo` (src-tauri), `npm` (raíz) y `github-actions`, agrupadas por ecosistema y con un máximo de 5 PR abiertas; CONTRIBUTING o README (Development) explica que las PR de Dependabot pasan el mismo CI antes de fusionarse
 
 - [ ] Actualizaciones automáticas firmadas
