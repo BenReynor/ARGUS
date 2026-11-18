@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useStore, useConfig, useUiSettings, useSetActiveTab, useShowNotification, useActiveGuildId, useGuildSettings } from '../store/useStore';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { getConfig, keyringAvailable, saveConfig, saveGuildSettings, addBot, deleteBot, startBot, getBotStatus, inviteUrl, rutaMcp } from '../api/tauri';
+import { backupWindowPreferences, getConfig, keyringAvailable, saveConfig, saveGuildSettings, addBot, deleteBot, startBot, getBotStatus, inviteUrl, rutaMcp } from '../api/tauri';
 import { t, IDIOMAS } from '../i18n';
 import { Button, Input, Select, Card, Cargando, EstadoVacio } from './ui';
 import './Vistas.css';
+import { BackupSettings } from './BackupSettings';
 import { Save, Trash2, Plus, Server, CheckCircle, AlertCircle, Eye, EyeOff, Copy } from 'lucide-react';
 import { TEMAS, aplicarTema } from '../temas';
 
@@ -143,6 +144,7 @@ export const SettingsView: React.FC = () => {
     }
     // El backend es la fuente de verdad (ids de bots, token ya cifrado)
     setConfig(await getConfig());
+    await backupWindowPreferences({ auto_start: formData.auto_start, minimize_to_tray: formData.minimize_to_tray });
     setUiSettings({
       auto_start: formData.auto_start,
       minimize_to_tray: formData.minimize_to_tray,
@@ -498,6 +500,8 @@ export const SettingsView: React.FC = () => {
           onChange={(e) => handleChange('ai_order_time_limit_minutes', Number(e.target.value))} />
         <Button onClick={handleSave} cargando={saving}>{t('Save settings')}</Button>
       </Seccion>
+      <BackupSettings />
+
       <Seccion ancha titulo={t('General')} descripcion={t('Application behavior and the server it starts with.')}>
         <Input
           etiqueta={t('Active server ID')}

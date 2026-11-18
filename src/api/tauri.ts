@@ -201,3 +201,20 @@ export interface EstimacionLectura {
 }
 export const prepararLecturaModeracion = (guildId: string, agente: string, modelo: string, limite: number, confirmar = false, noPreguntar = false) =>
   invoke<EstimacionLectura>('preparar_lectura_moderacion', { guildId, agente, modelo, limite, confirmar, noPreguntar });
+
+export interface BackupPreview {
+  id: string; created_at: string; conversations: boolean;
+  counts: Record<string, number>; bots: string[];
+}
+export interface BackupSchedule { enabled: boolean; conversations: boolean; folder: string }
+export const exportConfiguration = (path: string, password: string, conversations: boolean) =>
+  invoke<void>('export_configuration', { path, password, conversations });
+export const previewConfiguration = (path: string, password: string) =>
+  invoke<BackupPreview>('preview_configuration', { path, password });
+export const importConfiguration = (id: string, replace: boolean) =>
+  invoke<void>('import_configuration', { id, replace, confirmed: true });
+export const backupSchedule = (enabled?: boolean, password?: string, conversations?: boolean) =>
+  invoke<BackupSchedule>('backup_schedule', { enabled: enabled ?? null, password: password ?? null, conversations: conversations ?? null });
+
+export const backupWindowPreferences = (preferences?: { auto_start: boolean; minimize_to_tray: boolean }) =>
+  invoke<{ auto_start: boolean; minimize_to_tray: boolean } | null>('backup_window_preferences', { preferences: preferences ?? null });

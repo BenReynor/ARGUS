@@ -6,6 +6,7 @@ use tauri::{
 use tauri_plugin_log::{Target, TargetKind};
 
 pub mod asistente;
+pub mod backup;
 pub mod chat;
 pub mod commands;
 pub mod crypto;
@@ -139,6 +140,11 @@ pub fn run() {
             save_cli_agent,
             search_messages,
             cleanup_context,
+            backup::export_configuration,
+            backup::preview_configuration,
+            backup::import_configuration,
+            backup::backup_schedule,
+            backup::backup_window_preferences,
             export_all_data,
             import_data,
             uninstall_wipe,
@@ -161,6 +167,7 @@ pub fn run() {
             asistente::guardar_conversacion,
             asistente::nueva_conversacion,
         ])
+        .manage(backup::Pending::default())
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -171,6 +178,7 @@ pub fn run() {
             let pool = tauri::async_runtime::block_on(db::abrir_bd_por_ruta(&ruta))?;
             tauri::async_runtime::block_on(crypto::initialize(&pool))?;
             app.manage(pool);
+            backup::start_automatic(handle.clone());
 
             // Load the saved config; a failure is logged but must not abort startup
             let app_state = app.state::<AppState>();

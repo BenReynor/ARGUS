@@ -500,3 +500,68 @@ mod tests {
         assert_eq!(decrypt(&e2).unwrap(), plaintext);
     }
 }
+
+/// Cifrado portátil: Argon2id (19 MiB, 2 pasadas) + AES-256-GCM.
+/// La sal y el nonce son aleatorios; ninguna clave de esta máquina participa.
+pub fn encrypt_backup(text: &str, password: &str) -> Result<Vec<u8>> {
+    if password.len() < 8 {
+        anyhow::bail!("Use a backup password with at least 8 characters");
+    }
+    let mut salt = [0u8; 16];
+    getrandom::getrandom(&mut salt)?;
+    let key = backup_key(password, &salt)?;
+    let encrypted = encrypt_with(text, &key)?;
+    let mut file = b"ARGUSBAK\x01".to_vec();
+    file.extend_from_slice(&salt);
+    file.extend_from_slice(encrypted.as_bytes());
+    Ok(file)
+}
+
+pub fn decrypt_backup(file: &[u8], password: &str) -> Result<String> {
+    if file.len() < 26 || !file.starts_with(b"ARGUSBAK\x01") {
+        anyhow::bail!("Invalid or unsupported backup file");
+    }
+    let key = backup_key(password, &file[9..25])?;
+    let encoded = std::str::from_utf8(&file[25..])
+        .map_err(|_| anyhow!("Invalid or unsupported backup file"))?;
+    decrypt_with(encoded, &key).map_err(|_| anyhow!("Incorrect backup password or damaged file"))
+}
+
+fn backup_key(password: &str, salt: &[u8]) -> Result<[u8; 32]> {
+    let mut key = [0u8; 32];
+    argon2::Argon2::default()
+        .hash_password_into(password.as_bytes(), salt, &mut key)
+        .map_err(|_| anyhow!("Could not derive the backup key"))?;
+    Ok(key)
+}
+
+#[cfg(test)]
+mod portable_backup_tests {
+    use super::*;
+
+    #[test]
+    fn password_backup_restores_between_independent_machine_keys() {
+        let source = CryptoContext {
+            key: Some([11; 32]),
+        };
+        let destination = CryptoContext {
+            key: Some([29; 32]),
+        };
+        let local = source.encrypt("fake-portable-secret").unwrap();
+        assert!(destination.decrypt(&local).is_err());
+        let file = encrypt_backup(&source.decrypt(&local).unwrap(), "fixture password").unwrap();
+        let recovered = decrypt_backup(&file, "fixture password").unwrap();
+        let restored = destination.encrypt(&recovered).unwrap();
+        assert_eq!(
+            destination.decrypt(&restored).unwrap(),
+            "fake-portable-secret"
+        );
+        assert!(source.decrypt(&restored).is_err());
+        assert!(decrypt_backup(&file, "wrong password").is_err());
+        assert_ne!(
+            file,
+            encrypt_backup(&recovered, "fixture password").unwrap()
+        );
+        assert!(encrypt_backup(&recovered, "").is_err());
+    }
+}

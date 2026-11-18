@@ -13,6 +13,17 @@ pub const IDIOMA_DEFECTO: &str = "en";
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
     // <CATALOGO>
+    ("Use a backup password with at least 8 characters", "Usa una contraseña de al menos 8 caracteres para la copia"),
+    ("Automatic configuration backup failed", "Falló la copia automática de configuración"),
+    ("Invalid or unsupported backup file", "Archivo de copia no válido o incompatible"),
+    ("Incorrect backup password or damaged file", "Contraseña de copia incorrecta o archivo dañado"),
+    ("Could not derive the backup key", "No se pudo derivar la clave de la copia"),
+    ("Backup file is too large", "El archivo de copia es demasiado grande"),
+    ("Choose a .argusbak file", "Elige un archivo .argusbak"),
+    ("Confirm the backup import before continuing", "Confirma la importación de la copia antes de continuar"),
+    ("Stop the bot before importing a backup", "Detén el bot antes de importar una copia"),
+    ("Preview the backup before importing", "Revisa la copia antes de importarla"),
+
     ("AI time limits must be between 1 and 30 minutes", "Los límites de tiempo de IA deben estar entre 1 y 30 minutos"),
     ("The AI time limit was exceeded and the agent was stopped. Try a more specific request or fewer messages per channel", "Se superó el tiempo máximo de IA y se detuvo el agente. Prueba una petición más concreta o menos mensajes por canal"),
 
