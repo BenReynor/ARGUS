@@ -495,7 +495,7 @@ Hoy se puede pedir algo muy caro (leer todo el historial, cientos de descripcion
 - [x] Parar mientras se aplica una propuesta
   criterio: durante Apply (en Build, Moderation y Build from plan) hay un botón **Stop** con la barra de progreso «N de M»; al pulsarlo se termina la acción en curso (nunca se corta a medias una petición) y no se lanzan las siguientes; el resultado dice qué se hizo, qué falló y qué quedó sin hacer (`canceladas`), y ese resumen queda en Logs; la propuesta sigue visible para volver a aplicarla (las acciones ya hechas se marcan para no repetirlas); tests: cancelar a mitad deja exactamente las acciones previas hechas y el resto como no intentadas
 
-- [ ] Parar desde Discord
+- [x] Parar desde Discord
   criterio: si el autor de una orden escribe «para», «detente», «stop» o «cancela» (una respuesta corta, mismo criterio que `confirmacion_de`) mientras su propuesta se prepara o se aplica, se cancela el constructor o las acciones que faltan y el bot responde con lo hecho y lo que quedó sin hacer; otro usuario no puede parar la orden de alguien; tests: parar durante la preparación (no se publica propuesta), parar durante la aplicación, y el «para» de otro usuario se ignora
 
 - [ ] Confirmación reforzada para propuestas grandes o destructivas en la app
