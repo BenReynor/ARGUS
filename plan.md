@@ -507,7 +507,7 @@ Hoy se puede pedir algo muy caro (leer todo el historial, cientos de descripcion
 - [x] Tope diario de respuestas del bot
   criterio: ajuste por servidor `chat_max_diario` (por defecto 200 respuestas al día, 0 = sin tope) en Discord replies, con el contador del día visible; al llegar al tope el bot deja de responder hasta el día siguiente, lo anota en Logs y avisa una sola vez en el canal; las órdenes cuentan también; protege del gasto si alguien llena el canal de menciones; tests del contador, el reinicio diario y el aviso único
 
-- [ ] Tiempo máximo por petición a la IA
+- [x] Tiempo máximo por petición a la IA
   criterio: ajuste global «AI time limit» en Settings (por defecto 5 min para el asistente de la app y 3 min para el constructor de órdenes; 1–30 min) que sustituye las constantes actuales; al pasarlo se para el agente y se avisa con el motivo y una sugerencia (pedir algo más concreto, menos mensajes por canal); tests con un agente falso lento
 
 Verificación manual:
