@@ -65,6 +65,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
+            crypto::keyring_available,
             start_bot,
             stop_bot,
             get_bot_status,
@@ -166,6 +167,7 @@ pub fn run() {
             // `ARGUS_DB` tiene prioridad sobre la ruta por defecto.
             let ruta = db::ruta_bd(&handle)?;
             let pool = tauri::async_runtime::block_on(db::abrir_bd_por_ruta(&ruta))?;
+            tauri::async_runtime::block_on(crypto::initialize(&pool))?;
             app.manage(pool);
 
             // Load the saved config; a failure is logged but must not abort startup

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore, useConfig, useUiSettings, useSetActiveTab, useShowNotification, useActiveGuildId, useGuildSettings } from '../store/useStore';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { getConfig, saveConfig, saveGuildSettings, addBot, deleteBot, startBot, getBotStatus, inviteUrl, rutaMcp } from '../api/tauri';
+import { getConfig, keyringAvailable, saveConfig, saveGuildSettings, addBot, deleteBot, startBot, getBotStatus, inviteUrl, rutaMcp } from '../api/tauri';
 import { t, IDIOMAS } from '../i18n';
 import { Button, Input, Select, Card, Cargando, EstadoVacio } from './ui';
 import './Vistas.css';
@@ -55,6 +55,10 @@ const nombreModo = (modo: string): string => {
 
 export const SettingsView: React.FC = () => {
   const config = useConfig();
+  const [keyringReady, setKeyringReady] = useState<boolean | null>(null);
+  useEffect(() => {
+    keyringAvailable().then(setKeyringReady).catch(() => setKeyringReady(false));
+  }, []);
   const setActiveTab = useSetActiveTab();
   const showNotification = useShowNotification();
   const activeGuildId = useActiveGuildId();
@@ -269,6 +273,10 @@ export const SettingsView: React.FC = () => {
       <div className="vista__cabecera">
         <h2 className="vista__solo-lector">{t('Settings')}</h2>
       </div>
+
+      {keyringReady === false && (
+        <p className="ajustes__aviso" role="alert">{t('The system keyring is unavailable. New tokens use the legacy machine-id key. Unlock or enable the keyring and restart ARGUS to migrate them. Previously migrated tokens require the original keyring.')}</p>
+      )}
 
       <Seccion titulo={t('Bots')} descripcion={t('Register the bots ARGUS can use and choose which one to work with.')}>
         <div className="ajustes__fila">

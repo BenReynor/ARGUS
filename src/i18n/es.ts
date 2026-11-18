@@ -3,6 +3,8 @@
 export const NOMBRE_ES = 'Español';
 
 export const es: Record<string, string> = {
+  'The system keyring is unavailable. New tokens use the legacy machine-id key. Unlock or enable the keyring and restart ARGUS to migrate them. Previously migrated tokens require the original keyring.': 'El llavero del sistema no está disponible. Los nuevos tokens usan la clave antigua del machine-id. Desbloquea o habilita el llavero y reinicia ARGUS para migrarlos. Los tokens ya migrados necesitan el llavero original.',
+
   'The active bot has Administrator on this server.': 'El bot activo tiene Administrator en este servidor.',
   'Fewer permissions reduce the possible damage from a mistaken order or a compromised bot. ARGUS does not need Administrator. In Discord, remove it from every role assigned to the bot and grant only the permissions for the features you use:': 'Con menos permisos, el daño posible por una orden equivocada o un bot comprometido es menor. ARGUS no necesita Administrator. En Discord, quítalo de todos los roles asignados al bot y concede solo los permisos para las funciones que uses:',
   'Replies and message history: View Channels, Send Messages and Read Message History in the allowed channels.': 'Respuestas e historial: View Channels, Send Messages y Read Message History en los canales permitidos.',

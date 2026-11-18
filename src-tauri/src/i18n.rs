@@ -13,6 +13,10 @@ pub const IDIOMA_DEFECTO: &str = "en";
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
     // <CATALOGO>
+    ("Unlock the system keyring and restart ARGUS to access migrated tokens", "Desbloquea el llavero del sistema y reinicia ARGUS para acceder a los tokens migrados"),
+    ("Invalid keyring key length", "La clave del llavero tiene una longitud no válida"),
+    ("Encryption is already initialized", "El cifrado ya está inicializado"),
+    ("Encryption is not initialized", "El cifrado no está inicializado"),
     ("Action «{h}» is not allowed from Discord. Check Allow from Discord in Discord replies", "La acción «{h}» no está permitida desde Discord. Revisa Permitir desde Discord en Respuestas de Discord"),
     ("Permission target «{texto}» ({tipo}) does not exist and is not created before this action", "El objetivo de permisos «{texto}» ({tipo}) no existe y no se crea antes de esta acción"),
     ("Invalid permission overwrite: {e}", "Sobrescritura de permisos no válida: {e}"),

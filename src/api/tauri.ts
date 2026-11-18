@@ -190,3 +190,5 @@ export const onAsistenteAccion = (cb: (a: AvanceAccion) => void) =>
   listen<AvanceAccion>('asistente-accion', (event: Event<AvanceAccion>) => cb(event.payload));
 export const onAsistenteResumen = (cb: (r: ResumenPropuesta) => void) =>
   listen<ResumenPropuesta>('asistente-resumen', (event: Event<ResumenPropuesta>) => cb(event.payload));
+
+export const keyringAvailable = () => invoke<boolean>('keyring_available');

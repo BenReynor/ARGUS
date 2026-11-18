@@ -3,7 +3,7 @@
 //! stdout es solo para el protocolo; los avisos van a stderr y nunca incluyen
 //! el token del bot.
 
-use argus_lib::{db, mcp::ArgusMcp};
+use argus_lib::{crypto, db, mcp::ArgusMcp};
 use rmcp::{transport::stdio, ServiceExt};
 
 #[tokio::main]
@@ -20,10 +20,16 @@ async fn main() {
 }
 
 async fn servir() -> Result<(), String> {
+    // Solo el binario de desarrollo admite el llavero en memoria del test stdio.
+    #[cfg(debug_assertions)]
+    if std::env::args().any(|arg| arg == "--test-keyring") {
+        keyring::set_default_credential_builder(keyring::mock::default_credential_builder());
+    }
     let ruta = db::ruta_por_defecto().map_err(|e| e.to_string())?;
     let pool = db::abrir_bd_por_ruta(&ruta)
         .await
         .map_err(|e| format!("No se pudo abrir la base de datos de ARGUS: {e}"))?;
+    crypto::initialize(&pool).await.map_err(|e| e.to_string())?;
     let servidor = ArgusMcp::nuevo(pool, None).await?;
     let sesion = servidor
         .serve(stdio())
