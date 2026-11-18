@@ -5,6 +5,7 @@ import { listarAgentesIa, getGuildSettings, saveGuildSettings, listChannels, lis
 import type { AgenteIa, Channel, GuildSettings, Member } from '../types';
 import { Avatar, Button, Cargando, EstadoVacio, ErrorPanel, Input, Select } from './ui';
 import { t } from '../i18n';
+import { AvisoPermisosBot } from './AvisoPermisosBot';
 import './Asistente.css';
 
 const TIPOS_TEXTO = [0, 5];
@@ -185,6 +186,7 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
 
         <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
           <legend>{t('Orders from Discord')}</legend>
+          {ajustes.chat_ordenes && <AvisoPermisosBot />}
           <div className="asistente__aviso" role="note">
             <TriangleAlert size={16} />
             <span>{t('Orders really change your server and are recorded in Logs.')}</span>

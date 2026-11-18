@@ -3,6 +3,13 @@
 export const NOMBRE_ES = 'Español';
 
 export const es: Record<string, string> = {
+  'The active bot has Administrator on this server.': 'El bot activo tiene Administrator en este servidor.',
+  'Fewer permissions reduce the possible damage from a mistaken order or a compromised bot. ARGUS does not need Administrator. In Discord, remove it from every role assigned to the bot and grant only the permissions for the features you use:': 'Con menos permisos, el daño posible por una orden equivocada o un bot comprometido es menor. ARGUS no necesita Administrator. En Discord, quítalo de todos los roles asignados al bot y concede solo los permisos para las funciones que uses:',
+  'Replies and message history: View Channels, Send Messages and Read Message History in the allowed channels.': 'Respuestas e historial: View Channels, Send Messages y Read Message History en los canales permitidos.',
+  'Server structure and member roles: Manage Channels and Manage Roles. Keep the bot role above the roles it manages.': 'Estructura del servidor y roles de miembros: Manage Channels y Manage Roles. Mantén el rol del bot por encima de los roles que gestiona.',
+  'Moderation: Moderate Members for timeouts, Kick Members for kicks, Ban Members for bans, Manage Messages for deleting or pinning messages, and Manage Nicknames for nicknames.': 'Moderación: Moderate Members para silenciar, Kick Members para expulsar, Ban Members para banear, Manage Messages para borrar o fijar mensajes y Manage Nicknames para apodos.',
+  'Other server tools: Manage Server for settings and invites, View Audit Log for the audit log, Create Invite for creating invites, and Manage Webhooks for webhooks.': 'Otras herramientas del servidor: Manage Server para ajustes e invitaciones, View Audit Log para auditoría, Create Invite para crear invitaciones y Manage Webhooks para webhooks.',
+  'Channel permission overrides still apply. Only grant access to the channels the bot needs.': 'Los permisos específicos de cada canal siguen aplicándose. Concede acceso solo a los canales que necesite el bot.',
   'Language / Idioma': 'Language / Idioma',
   'Choose the language of the interface. It applies instantly and is saved.':
     'Elige el idioma de la interfaz. Se aplica al instante y se guarda.',

@@ -1783,6 +1783,20 @@ mod tests {
         let dueno = calcular_permisos("555", Some("2"), "2", &roles, &[]);
         assert_eq!(dueno, todos_los_permisos());
     }
+
+    #[test]
+    fn aviso_administrator_solo_si_lo_conceden_los_roles_del_bot() {
+        let roles = vec![rol("555", 1 << 10), rol("600", BIT_ADMINISTRADOR)];
+        // Un rol administrador ajeno no debe disparar el aviso.
+        let sin_admin = calcular_permisos("555", None, "2", &roles, &[]);
+        assert!(!nombres_de_permisos(sin_admin).contains(&"Administrador".to_string()));
+        let con_admin = calcular_permisos("555", None, "2", &roles, &["600".to_string()]);
+        assert!(nombres_de_permisos(con_admin).contains(&"Administrador".to_string()));
+        // También se detecta si se concede desde @everyone.
+        let everyone_admin =
+            calcular_permisos("555", None, "2", &[rol("555", BIT_ADMINISTRADOR)], &[]);
+        assert!(nombres_de_permisos(everyone_admin).contains(&"Administrador".to_string()));
+    }
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
