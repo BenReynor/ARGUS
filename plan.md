@@ -498,7 +498,7 @@ Hoy se puede pedir algo muy caro (leer todo el historial, cientos de descripcion
 - [x] Parar desde Discord
   criterio: si el autor de una orden escribe «para», «detente», «stop» o «cancela» (una respuesta corta, mismo criterio que `confirmacion_de`) mientras su propuesta se prepara o se aplica, se cancela el constructor o las acciones que faltan y el bot responde con lo hecho y lo que quedó sin hacer; otro usuario no puede parar la orden de alguien; tests: parar durante la preparación (no se publica propuesta), parar durante la aplicación, y el «para» de otro usuario se ignora
 
-- [ ] Confirmación reforzada para propuestas grandes o destructivas en la app
+- [x] Confirmación reforzada para propuestas grandes o destructivas en la app
   criterio: antes de Apply en la app, si la propuesta tiene acciones irreversibles (borrar canales o roles, banear, expulsar, borrar mensajes) se listan resaltadas en rojo arriba del todo; si borra más de 5 canales/roles o banea a más de 3 miembros, Apply pide escribir el nombre del servidor para confirmar; si tiene más de 30 acciones se muestra la duración estimada (≈2 s por petición a Discord); tests de los umbrales y de la estimación
 
 - [ ] Aviso de coste con `generar:`
