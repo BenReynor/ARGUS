@@ -534,7 +534,7 @@ Si alguien con permisos (o un bot ajeno) borra canales y roles, hoy no hay forma
 - [x] Guardar snapshots del servidor
   criterio: nueva sección **Backups** (por servidor) con «Create snapshot»: guarda en sqlite (tabla nueva, migración) los ajustes del servidor (nombre, icono, canales de sistema, verificación, notificaciones), roles (nombre, color, permisos, posición, hoist, mencionable, icono), categorías y canales (tipo, nombre, posición, tema, NSFW, slowmode, bitrate/límite de usuarios, etiquetas de foro) con sus overwrites por **nombre** de rol o miembro además del id, los roles de cada miembro (id, nombre, roles), emojis y stickers (nombre e imagen), webhooks (nombre y canal) y la lista de baneos; lista de snapshots con fecha, tamaño y resumen (N canales, M roles…), renombrar, borrar y exportar/importar a archivo; snapshots automáticos opcionales (diario, conservar los N últimos, por defecto 7); tests del contenido del snapshot contra el Discord falso
 
-- [ ] Comparar un snapshot con el servidor actual
+- [x] Comparar un snapshot con el servidor actual
   criterio: «Compare» muestra lo que falta, lo que cambió y lo que sobra respecto al snapshot (canales, roles, permisos, roles de miembros), agrupado y con contadores; reutiliza el formato de diff del modo Plan; tests con canales borrados, permisos cambiados y un rol renombrado
 
 - [ ] Restaurar manualmente
