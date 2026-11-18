@@ -501,7 +501,7 @@ Hoy se puede pedir algo muy caro (leer todo el historial, cientos de descripcion
 - [x] Confirmación reforzada para propuestas grandes o destructivas en la app
   criterio: antes de Apply en la app, si la propuesta tiene acciones irreversibles (borrar canales o roles, banear, expulsar, borrar mensajes) se listan resaltadas en rojo arriba del todo; si borra más de 5 canales/roles o banea a más de 3 miembros, Apply pide escribir el nombre del servidor para confirmar; si tiene más de 30 acciones se muestra la duración estimada (≈2 s por petición a Discord); tests de los umbrales y de la estimación
 
-- [ ] Aviso de coste con `generar:`
+- [x] Aviso de coste con `generar:`
   criterio: al compilar un plan (Build from plan, archivo .md por Discord) con más de 30 descripciones `generar:`, antes de llamar a la IA se avisa con el número de descripciones y la estimación de llamadas, y se pide confirmar (en la app un diálogo; en Discord el «sí» del autor antes de generar); con menos, sin cambios; tests del umbral en la app y en Discord
 
 - [ ] Tope diario de respuestas del bot
