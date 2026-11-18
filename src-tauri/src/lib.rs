@@ -23,6 +23,7 @@ pub mod plan_descripciones;
 pub mod plan_estructurado;
 pub mod propuesta;
 pub mod responder;
+pub mod snapshots;
 pub mod state;
 pub mod sync;
 #[cfg(test)]
@@ -140,6 +141,7 @@ pub fn run() {
             save_cli_agent,
             search_messages,
             cleanup_context,
+            snapshots::server_snapshots,
             backup::export_configuration,
             backup::preview_configuration,
             backup::import_configuration,
@@ -179,6 +181,7 @@ pub fn run() {
             tauri::async_runtime::block_on(crypto::initialize(&pool))?;
             app.manage(pool);
             backup::start_automatic(handle.clone());
+            snapshots::start_automatic(handle.clone());
 
             // Load the saved config; a failure is logged but must not abort startup
             let app_state = app.state::<AppState>();

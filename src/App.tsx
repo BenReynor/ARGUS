@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { GuildRail } from './components/GuildRail';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
+import { BackupsView } from './components/BackupsView';
 import { ChannelsView } from './components/ChannelsView';
 import { MembersView } from './components/MembersView';
 import { RolesView } from './components/RolesView';
@@ -90,6 +91,7 @@ function App() {
     { id: 'channels', label: t('Channels'), icon: 'hash' },
     { id: 'members', label: t('Members'), icon: 'users' },
     { id: 'roles', label: t('Roles'), icon: 'shield' },
+    { id: 'backups', label: t('Backups'), icon: 'archive' },
     { id: 'servidor', label: t('Server'), icon: 'server' },
     { id: 'asistente', label: t('AI Assistant'), icon: 'sparkles' },
     { id: 'logs', label: t('Logs'), icon: 'terminal' },
@@ -108,6 +110,7 @@ function App() {
       case 'channels': return <ChannelsView />;
       case 'members': return <MembersView />;
       case 'roles': return <RolesView />;
+      case 'backups': return <BackupsView />;
       case 'servidor': return <ServidorView />;
       case 'asistente': return <AsistenteView />;
       case 'logs': return <LogsView />;

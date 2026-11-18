@@ -218,3 +218,25 @@ export const backupSchedule = (enabled?: boolean, password?: string, conversatio
 
 export const backupWindowPreferences = (preferences?: { auto_start: boolean; minimize_to_tray: boolean }) =>
   invoke<{ auto_start: boolean; minimize_to_tray: boolean } | null>('backup_window_preferences', { preferences: preferences ?? null });
+
+export interface ServerSnapshotItem {
+  id: string;
+  name: string;
+  created_at: string;
+  size_bytes: number;
+  summary: { channels: number; roles: number; members: number; emojis: number; stickers: number; webhooks: number; bans: number };
+  automatic: boolean;
+}
+export interface ServerSnapshotListing {
+  snapshots: ServerSnapshotItem[];
+  schedule: { enabled: boolean; keep_last: number; last_error: string | null };
+}
+export type ServerSnapshotRequest =
+  | { op: 'list' | 'create' }
+  | { op: 'rename'; id: string; name: string }
+  | { op: 'delete'; id: string }
+  | { op: 'export'; id: string; path: string }
+  | { op: 'import'; path: string }
+  | { op: 'schedule'; enabled: boolean; keep_last: number };
+export const serverSnapshots = (botId: string, guildId: string, request: ServerSnapshotRequest): Promise<ServerSnapshotListing> =>
+  invoke('server_snapshots', { botId, guildId, request });

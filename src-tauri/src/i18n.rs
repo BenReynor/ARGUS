@@ -13,6 +13,12 @@ pub const IDIOMA_DEFECTO: &str = "en";
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
     // <CATALOGO>
+    ("Invalid snapshot file or different server", "Archivo de snapshot no válido o de otro servidor"),
+    ("Snapshot file is too large", "El archivo de snapshot es demasiado grande"),
+    ("Snapshot not found", "Snapshot no encontrado"),
+    ("Keep between 1 and 365 snapshots", "Conserva entre 1 y 365 snapshots"),
+    ("Invalid response from Discord", "Respuesta de Discord no válida"),
+
     ("Use a backup password with at least 8 characters", "Usa una contraseña de al menos 8 caracteres para la copia"),
     ("Automatic configuration backup failed", "Falló la copia automática de configuración"),
     ("Invalid or unsupported backup file", "Archivo de copia no válido o incompatible"),
