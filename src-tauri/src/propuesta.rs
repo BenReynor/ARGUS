@@ -867,6 +867,64 @@ mod tests {
     }
 
     #[test]
+    fn propuesta_mixta_conserva_permisos_antiguos_y_permisos_en_la_creacion() {
+        // Mezcla ambos formatos y un canal existente, desordenados a propósito.
+        let p = prop(vec![
+            acc(
+                "permiso_canal",
+                json!({"channel_id": "legacy-chat", "target_id": "Mods", "tipo": "rol", "permitir": ["SendMessages"]}),
+            ),
+            acc(
+                "crear_canal",
+                json!({"nombre": "new-chat", "categoria_id": "New", "permisos": [
+                    {"objetivo": "Mods", "tipo": "rol", "permitir": ["ViewChannel", "SendMessages"]}
+                ]}),
+            ),
+            acc(
+                "permiso_canal",
+                json!({"channel_id": "Legacy", "target_id": "Mods", "tipo": "rol", "permitir": ["ViewChannel"]}),
+            ),
+            acc(
+                "crear_canal",
+                json!({"nombre": "Legacy", "tipo": "categoria"}),
+            ),
+            acc("crear_rol", json!({"nombre": "Mods"})),
+            acc(
+                "crear_canal",
+                json!({"nombre": "New", "tipo": "categoria", "permisos": [
+                    {"objetivo": "Mods", "tipo": "rol", "permitir": ["ViewChannel"]}
+                ]}),
+            ),
+            acc(
+                "crear_canal",
+                json!({"nombre": "legacy-chat", "categoria_id": "Legacy"}),
+            ),
+            acc(
+                "permiso_canal",
+                json!({"channel_id": "reglas", "target_id": "Mods", "tipo": "rol", "denegar": ["SendMessages"]}),
+            ),
+        ]);
+        // El permiso antiguo de categoría sigue antes de sus canales; el del
+        // canal va después. Los permisos incluidos no añaden acciones.
+        assert_eq!(orden_de_ejecucion(&p), [4, 3, 5, 2, 1, 6, 0, 7]);
+        let v = validar_acciones(&p, &existentes());
+        assert!(v.errores.is_empty(), "{:?}", v.errores);
+        assert_eq!(
+            v.cambios,
+            [
+                "Roles to create: 1",
+                "Categories to create: 2",
+                "Channels to create: 2",
+                "Channel permissions to change: 3",
+                "Permissions included in creation: 2",
+            ]
+        );
+        let ordenada = ordenar_propuesta(&p);
+        assert_eq!(ordenada.acciones.len(), p.acciones.len());
+        assert_eq!(validar_acciones(&ordenada, &existentes()), v);
+    }
+
+    #[test]
     fn validar_detecta_errores_sin_tocar_discord() {
         let p = prop(vec![
             acc("inventada", json!({})),

@@ -860,7 +860,7 @@ impl Drop for Turno {
     }
 }
 
-/// Ejemplo de propuesta del prompt: rol + categoría + canal con tema + permiso por nombre.
+/// Ejemplo de propuesta: rol + categoría y canal con permisos incluidos al crear.
 const EJEMPLO_PROPUESTA: &str = r##"{
   "resumen": "A moderators role and a private staff category with one channel",
   "acciones": [
@@ -871,18 +871,19 @@ const EJEMPLO_PROPUESTA: &str = r##"{
     },
     {
       "herramienta": "crear_canal",
-      "args": { "nombre": "Staff", "tipo": "categoria" },
+      "args": { "nombre": "Staff", "tipo": "categoria", "permisos": [
+        { "objetivo": "@everyone", "tipo": "rol", "denegar": ["ViewChannel"] },
+        { "objetivo": "Moderators", "tipo": "rol", "permitir": ["ViewChannel", "SendMessages"] }
+      ] },
       "descripcion": "Create the Staff category"
     },
     {
       "herramienta": "crear_canal",
-      "args": { "nombre": "mod-chat", "tipo": "texto", "categoria_id": "Staff", "tema": "Private chat for the moderation team" },
+      "args": { "nombre": "mod-chat", "tipo": "texto", "categoria_id": "Staff", "tema": "Private chat for the moderation team", "permisos": [
+        { "objetivo": "@everyone", "tipo": "rol", "denegar": ["ViewChannel"] },
+        { "objetivo": "Moderators", "tipo": "rol", "permitir": ["ViewChannel", "SendMessages"] }
+      ] },
       "descripcion": "Create #mod-chat inside Staff"
-    },
-    {
-      "herramienta": "permiso_canal",
-      "args": { "channel_id": "mod-chat", "target_id": "Moderators", "tipo": "rol", "permitir": ["ViewChannel", "SendMessages"] },
-      "descripcion": "Let Moderators see and write in #mod-chat"
     }
   ]
 }"##;
@@ -1276,6 +1277,13 @@ Format: {{\"resumen\": string, \"acciones\": [{{\"herramienta\": string, \"args\
 - Where an id of a role, channel or category goes (`categoria_id`, `channel_id`, `role_id`, \
 `target_id` with tipo \"rol\"), you may write its name instead; it can be something an earlier \
 action creates.\n\
+- For a new channel or category, include its permission overwrites in `permisos` of \
+`crear_canal`: [{{\"objetivo\": \"role or member name/id\", \"tipo\": \"rol\", \
+\"permitir\": [\"ViewChannel\"], \"denegar\": [\"SendMessages\"]}}]. `objetivo` may name a role \
+created in this proposal; `tipo` is \"rol\" or \"miembro\"; `@everyone` means the server's default role. ARGUS merges the \
+parent category's overwrites with these, with the channel's own entry winning for the same \
+target. Use `permiso_canal` only for channels or categories that already exist; do not add \
+a separate `permiso_canal` action after creating one.\n\
 - Permission names are Discord's (e.g. \"ViewChannel\", \"SendMessages\", \
 \"ReadMessageHistory\", \"Connect\", \"Speak\", \"ManageMessages\", \"ModerateMembers\", \
 \"Administrator\"). Create roles in the order the plan lists them (highest first); do not use \
@@ -1286,8 +1294,8 @@ or rename anything the plan does not explicitly ask for.\n\
 channel), do NOT write a JSON block: say briefly what you found and ask the one question \
 needed, in the user's language.\n\
 - Use exactly these arguments for each tool (required ones must be present):\n{firmas}\n\n\
-Example of a valid answer block (a role, a category, a channel with topic and a permission by \
-name):\n```json\n{ejemplo}\n```\n",
+Example of a valid answer block (a role, a category and a channel with topic and permissions \
+included at creation):\n```json\n{ejemplo}\n```\n",
             escritura = crate::mcp::HERRAMIENTAS_ESCRITURA.join(", "),
             firmas = crate::mcp::firmas_escritura(),
             ejemplo = EJEMPLO_PROPUESTA,
@@ -2649,6 +2657,20 @@ mod tests_prompt {
     }
 
     #[test]
+    fn execute_pide_permisos_en_la_creacion_y_reserva_permiso_canal_para_existentes() {
+        for idioma in ["en", "es"] {
+            let p = prompt(ModoAsistente::Execute, idioma);
+            assert!(p.contains(
+                "For a new channel or category, include its permission overwrites in `permisos` of"
+            ));
+            assert!(p.contains(
+                "Use `permiso_canal` only for channels or categories that already exist"
+            ));
+            assert!(p.contains("a separate `permiso_canal` action after creating one"));
+        }
+    }
+
+    #[test]
     fn execute_recibe_el_plan_analizado_y_el_mapa_compacto() {
         let plan = "## Rol: Moderators\n## Categoría: Staff\n- texto: mod-chat\n";
         let p = prompt_asistente_con_mapa(
@@ -2790,7 +2812,24 @@ mod tests_prompt {
     #[test]
     fn el_ejemplo_del_prompt_es_una_propuesta_valida() {
         let propuesta = extraer_propuesta(&prompt(ModoAsistente::Execute, "en")).unwrap();
-        assert_eq!(propuesta.acciones.len(), 4);
+        assert_eq!(propuesta.acciones.len(), 3);
+        assert!(propuesta
+            .acciones
+            .iter()
+            .all(|a| a.herramienta != "permiso_canal"));
+        for accion in &propuesta.acciones[1..] {
+            assert_eq!(accion.herramienta, "crear_canal");
+            assert_eq!(accion.args["permisos"][0]["objetivo"], "@everyone");
+            assert_eq!(
+                accion.args["permisos"][0]["denegar"],
+                serde_json::json!(["ViewChannel"])
+            );
+            assert_eq!(accion.args["permisos"][1]["objetivo"], "Moderators");
+            assert_eq!(
+                accion.args["permisos"][1]["permitir"],
+                serde_json::json!(["ViewChannel", "SendMessages"])
+            );
+        }
         let v = validar(&propuesta);
         assert!(v.errores.is_empty(), "{:?}", v.errores);
     }

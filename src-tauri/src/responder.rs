@@ -1453,6 +1453,11 @@ EOF"#;
         let stdin = std::fs::read_to_string(dir.join("stdin.txt")).unwrap();
         assert!(stdin.contains("PLAN-DEL-SERVIDOR"), "{stdin}");
         assert!(!stdin.contains("moderation assistant"), "{stdin}");
+        assert!(stdin.contains(
+            "For a new channel or category, include its permission overwrites in `permisos` of"
+        ));
+        assert!(stdin
+            .contains("Use `permiso_canal` only for channels or categories that already exist"));
     }
 
     #[tokio::test]
