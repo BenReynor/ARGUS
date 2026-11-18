@@ -16,6 +16,22 @@ use crate::state::{AppState, Channel, Role};
 /// Tipo de canal de Discord que es una categoría.
 const TIPO_CATEGORIA: u8 = 4;
 
+/// Acciones que no se pueden deshacer restaurando el estado anterior. Incluye
+/// los envíos y avisos: el destinatario ya puede haberlos recibido.
+pub const ACCIONES_DESTRUCTIVAS: &[&str] = &[
+    "borrar_canal",
+    "borrar_rol",
+    "banear",
+    "expulsar",
+    "borrar_mensaje",
+    "borrar_mensajes",
+    "borrar_invitacion",
+    "borrar_webhook",
+    "enviar_mensaje",
+    "enviar_dm",
+    "avisar",
+];
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Accion {
     /// Nombre de una herramienta de escritura del MCP (`crear_rol`, …).
@@ -35,6 +51,17 @@ pub struct Propuesta {
     pub resumen: String,
     #[serde(default)]
     pub acciones: Vec<Accion>,
+}
+
+impl Propuesta {
+    /// Herramientas irreversibles presentes, sin duplicados y en orden estable.
+    pub fn acciones_destructivas(&self) -> Vec<&'static str> {
+        ACCIONES_DESTRUCTIVAS
+            .iter()
+            .copied()
+            .filter(|herramienta| self.acciones.iter().any(|a| a.herramienta == *herramienta))
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -574,6 +601,43 @@ mod tests {
             resumen: "r".to_string(),
             acciones,
         }
+    }
+
+    #[test]
+    fn detecta_cada_accion_irreversible_en_propuestas_mixtas() {
+        assert!(prop(vec![]).acciones_destructivas().is_empty());
+        assert!(prop(vec![acc("crear_canal", json!({}))])
+            .acciones_destructivas()
+            .is_empty());
+        for herramienta in [
+            "borrar_canal",
+            "borrar_rol",
+            "banear",
+            "expulsar",
+            "borrar_mensaje",
+            "borrar_mensajes",
+            "borrar_invitacion",
+            "borrar_webhook",
+            "enviar_mensaje",
+            "enviar_dm",
+            "avisar",
+        ] {
+            assert!(crate::mcp::HERRAMIENTAS_ESCRITURA.contains(&herramienta));
+            let p = prop(vec![
+                acc("crear_canal", json!({})),
+                acc(herramienta, json!({})),
+                acc(herramienta, json!({})),
+            ]);
+            assert_eq!(p.acciones_destructivas(), vec![herramienta]);
+        }
+        let p = prop(vec![
+            acc("borrar_rol", json!({})),
+            acc("borrar_canal", json!({})),
+        ]);
+        assert_eq!(
+            p.acciones_destructivas(),
+            vec!["borrar_canal", "borrar_rol"]
+        );
     }
 
     fn orden(p: &Propuesta) -> Vec<(String, String)> {

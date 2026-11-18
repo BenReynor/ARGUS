@@ -74,6 +74,7 @@ const CATALOGO_ES: &[(&str, &str)] = &[
     ("Another proposal is already being prepared in this server", "Ya se está preparando otra propuesta en este servidor"),
     ("…and {n} more changes", "…y {n} cambios más"),
     ("Reply **yes** within the next 5 minutes to apply it", "Responde **sí** en los próximos 5 minutos para aplicarla"),
+    ("Contains irreversible actions: {acciones}", "Contiene acciones irreversibles: {acciones}"),
     ("[CHAT] Replied in {servidor} #{canal} to {autor} with {modelo} in {ms} ms", "[CHAT] Respondido en {servidor} #{canal} a {autor} con {modelo} en {ms} ms"),
     ("[WARN] No reply in {servidor} #{canal} to {autor}: {motivo}", "[WARN] Sin respuesta en {servidor} #{canal} a {autor}: {motivo}"),
     ("The AI agent took too long to reply", "El agente de IA tardó demasiado en responder"),

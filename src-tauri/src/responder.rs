@@ -723,9 +723,18 @@ impl Conversador {
         idioma: &str,
         inicio: Instant,
     ) {
+        let destructivas = ev.propuesta.acciones_destructivas();
+        let confirmar = ajustes.chat_ordenes_confirmar || !destructivas.is_empty();
         let mut texto = texto_propuesta(&ev, false, idioma, MAX_PROPUESTA);
         texto.push_str(extra);
-        if ajustes.chat_ordenes_confirmar {
+        if !destructivas.is_empty() {
+            texto.push_str("\n\n");
+            texto.push_str(&crate::i18n::tr(
+                idioma,
+                &format!("Contains irreversible actions: {}", destructivas.join(", ")),
+            ));
+        }
+        if confirmar {
             texto.push_str("\n\n");
             texto.push_str(&crate::i18n::tr(
                 idioma,
@@ -742,7 +751,7 @@ impl Conversador {
                     ev.propuesta.acciones.len(),
                     inicio.elapsed().as_millis()
                 ));
-                if ajustes.chat_ordenes_confirmar {
+                if confirmar {
                     self.coord.guardar_pendiente(
                         (e.guild_id, e.msg.canal_id, e.msg.autor_id),
                         ev.propuesta,
@@ -1579,6 +1588,105 @@ EOF"#;
     }
 
     type Aplicadas = Arc<Mutex<Vec<Propuesta>>>;
+
+    fn propuesta_canal(herramienta: &str) -> String {
+        let propuesta = serde_json::json!({
+            "resumen": "Channel change",
+            "acciones": [{
+                "herramienta": herramienta,
+                "args": if herramienta == "crear_canal" {
+                    serde_json::json!({"nombre": "nuevo"})
+                } else {
+                    serde_json::json!({"channel_id": "10"})
+                },
+                "descripcion": "Channel change"
+            }]
+        });
+        let evento = serde_json::json!({
+            "type": "assistant",
+            "message": {"content": [{"type": "text", "text": format!("```json\n{propuesta}\n```")}]}
+        });
+        format!("cat <<'EOF'\n{evento}\nEOF")
+    }
+
+    #[tokio::test]
+    async fn crear_canal_sin_confirmacion_se_aplica_directamente() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (mut c, _) = conversador(
+            &server,
+            agente_con_orden("crear-canal-directo", &propuesta_canal("crear_canal")),
+            LIMITE_AGENTE,
+        );
+        let aplicadas = aplicador_falso(&mut c);
+        c.atender(entrada(1, true), &ajustes_ordenes(false)).await;
+        {
+            let a = aplicadas.lock().unwrap();
+            assert_eq!(a.len(), 1);
+            assert_eq!(a[0].acciones[0].herramienta, "crear_canal");
+        }
+        let t = textos(&envios(&server).await);
+        assert_eq!(t.len(), 4, "{t:?}");
+        assert!(!t[2].contains("Reply **yes**"));
+        assert!(!t[2].contains("Contains irreversible actions"));
+        assert_eq!(
+            c.atender(confirmar(1, "sí"), &ajustes_ordenes(false)).await,
+            Resultado::Ignorado
+        );
+        assert_eq!(aplicadas.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn borrar_canal_sin_confirmacion_espera_el_si_del_autor() {
+        for idioma in ["en", "es"] {
+            let server = MockServer::start().await;
+            mock_discord(&server).await;
+            let (mut c, _) = conversador(
+                &server,
+                agente_con_orden(
+                    &format!("borrar-canal-confirmar-{idioma}"),
+                    &propuesta_canal("borrar_canal"),
+                ),
+                LIMITE_AGENTE,
+            );
+            c.ordenes.idioma = Arc::new(move || idioma.to_string());
+            let aplicadas = aplicador_falso(&mut c);
+            let ajustes = ajustes_ordenes(false);
+            c.atender(entrada(1, true), &ajustes).await;
+            assert!(aplicadas.lock().unwrap().is_empty());
+            let t = textos(&envios(&server).await);
+            assert_eq!(t.len(), 3, "{t:?}");
+            let (aviso, respuesta) = if idioma == "es" {
+                (
+                    "Contiene acciones irreversibles: borrar_canal",
+                    "Responde **sí**",
+                )
+            } else {
+                (
+                    "Contains irreversible actions: borrar_canal",
+                    "Reply **yes**",
+                )
+            };
+            assert!(t[2].contains(aviso), "{t:?}");
+            assert!(t[2].contains(respuesta), "{t:?}");
+            c.atender(confirmar(2, "sí"), &ajustes).await;
+            assert!(aplicadas.lock().unwrap().is_empty());
+            assert_eq!(
+                c.atender(confirmar(1, "sí"), &ajustes).await,
+                Resultado::Respondido
+            );
+            {
+                let a = aplicadas.lock().unwrap();
+                assert_eq!(a.len(), 1);
+                assert_eq!(a[0].acciones[0].herramienta, "borrar_canal");
+            }
+            assert_eq!(
+                c.atender(confirmar(1, "sí"), &ajustes).await,
+                Resultado::Ignorado
+            );
+            assert_eq!(aplicadas.lock().unwrap().len(), 1);
+        }
+    }
 
     /// Sustituye el aplicador por uno falso que anota lo recibido y devuelve un
     /// resultado correcto por acción.
