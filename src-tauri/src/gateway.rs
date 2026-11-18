@@ -130,7 +130,11 @@ fn conversador(
             let mapas = mapas.lock().unwrap();
             mapas
                 .get(&guild.to_string())
-                .map(|m| crate::propuesta::Nombres::desde(&m.roles, &m.channels))
+                .map(|m| {
+                    let mut nombres = crate::propuesta::Nombres::desde(&m.roles, &m.channels);
+                    nombres.registrar_miembros(&m.members);
+                    nombres
+                })
                 .unwrap_or_default()
         }),
         aplicar: Arc::new(move |propuesta| {

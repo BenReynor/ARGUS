@@ -299,13 +299,14 @@ pub struct Nombres {
     roles: HashMap<String, String>,
     canales: HashMap<String, String>,
     categorias: HashMap<String, String>,
+    miembros: HashMap<String, String>,
 }
 
 impl Nombres {
     pub fn desde(roles: &[Role], canales: &[Channel]) -> Self {
         let mut n = Self::default();
         for r in roles {
-            n.roles.insert(clave(&r.name), r.id.clone());
+            n.registrar_rol(&r.name, &r.id);
         }
         for c in canales {
             n.registrar_canal(&c.name, c.channel_type == TIPO_CATEGORIA, &c.id);
@@ -313,7 +314,31 @@ impl Nombres {
         n
     }
 
+    pub fn registrar_miembros(&mut self, miembros: &[crate::state::Member]) {
+        for m in miembros {
+            self.miembros.insert(m.user_id.clone(), m.user_id.clone());
+            self.miembros.insert(clave(&m.username), m.user_id.clone());
+            if let Some(apodo) = &m.nickname {
+                self.miembros.insert(clave(apodo), m.user_id.clone());
+            }
+        }
+    }
+
+    pub fn resolver_objetivo(&self, objetivo: &str, tipo: &str) -> Result<String, String> {
+        let mapa = if tipo == "rol" {
+            &self.roles
+        } else {
+            &self.miembros
+        };
+        let texto = objetivo.trim();
+        mapa.get(&clave(texto))
+            .or_else(|| mapa.values().find(|id| id.as_str() == texto))
+            .cloned()
+            .ok_or_else(|| format!("Permission target «{texto}» ({tipo}) does not exist and is not created before this action"))
+    }
+
     pub fn registrar_rol(&mut self, nombre: &str, id: &str) {
+        self.roles.insert(id.to_string(), id.to_string());
         self.roles.insert(clave(nombre), id.to_string());
     }
 
@@ -369,6 +394,26 @@ impl Nombres {
             })?;
             let id = id.clone();
             obj.insert(campo.to_string(), Value::String(id));
+        }
+        if herramienta == "crear_canal" {
+            if let Some(permisos) = obj.get_mut("permisos").and_then(Value::as_array_mut) {
+                for permiso in permisos {
+                    let Some(objetivo) = permiso.get("objetivo").and_then(Value::as_str) else {
+                        continue;
+                    };
+                    let Some(tipo @ ("rol" | "miembro")) =
+                        permiso.get("tipo").and_then(Value::as_str)
+                    else {
+                        continue;
+                    };
+                    // @everyone se convierte al id del servidor al ejecutar.
+                    if tipo == "rol" && objetivo.trim() == "@everyone" {
+                        continue;
+                    }
+                    let id = self.resolver_objetivo(objetivo, tipo)?;
+                    permiso["objetivo"] = Value::String(id);
+                }
+            }
         }
         Ok(args)
     }
@@ -482,7 +527,13 @@ pub fn validar_en_estado(state: &AppState, propuesta: &Propuesta) -> Validacion 
         let mapas = state.server_maps.lock().unwrap();
         state
             .get_active_guild()
-            .and_then(|g| mapas.get(&g).map(|m| Nombres::desde(&m.roles, &m.channels)))
+            .and_then(|g| {
+                mapas.get(&g).map(|m| {
+                    let mut nombres = Nombres::desde(&m.roles, &m.channels);
+                    nombres.registrar_miembros(&m.members);
+                    nombres
+                })
+            })
             .unwrap_or_default()
     };
     validar_traducida(propuesta, &existentes, &crate::i18n::idioma(state))

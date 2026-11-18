@@ -13,6 +13,8 @@ pub const IDIOMA_DEFECTO: &str = "en";
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
     // <CATALOGO>
+    ("Permission target «{texto}» ({tipo}) does not exist and is not created before this action", "El objetivo de permisos «{texto}» ({tipo}) no existe y no se crea antes de esta acción"),
+    ("Invalid permission overwrite: {e}", "Sobrescritura de permisos no válida: {e}"),
     ("Undefined variable «{nombre}»", "Variable sin definir «{nombre}»"),
     ("Invalid variable: use «@var name = value»", "Variable no válida: usa «@var nombre = valor»"),
     ("Invalid variable name «{nombre}»", "Nombre de variable no válido «{nombre}»"),
