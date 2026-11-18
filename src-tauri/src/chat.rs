@@ -50,6 +50,9 @@ const AFIRMATIVAS: &[&str] = &[
 ];
 /// Palabras que la descartan.
 const NEGATIVAS: &[&str] = &[
+    "para",
+    "detente",
+    "stop",
     "no",
     "nop",
     "nope",
@@ -417,6 +420,10 @@ mod tests {
             "mejor no",
             "NOOO",
             "no, cancela",
+            "PARAAA!",
+            "<@900> detente por favor",
+            "stop please",
+            "cancela",
         ] {
             assert_eq!(confirmacion_de(t), Some(Confirmacion::Descartar), "{t}");
         }
@@ -426,6 +433,9 @@ mod tests {
             "quizá",
             "hola",
             "creo que si",
+            "para crear un canal",
+            "sí stop",
+            "por favor detente ya por favor",
             "si no",
             "si, esta bien si sidale el rol",
         ] {

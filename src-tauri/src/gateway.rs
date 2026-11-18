@@ -137,12 +137,15 @@ fn conversador(
                 })
                 .unwrap_or_default()
         }),
-        aplicar: Arc::new(move |propuesta| {
+        aplicar: Arc::new(move |propuesta, cancelar| {
             let pool = pool_aplicar.clone();
             Box::pin(async move {
                 let pool = pool.ok_or_else(|| "The database is not available".to_string())?;
                 let mcp = crate::mcp::ArgusMcp::nuevo(pool, None).await?;
-                mcp.ejecutar_propuesta(&propuesta).await
+                Ok(mcp
+                    .ejecutar_propuesta_con(&propuesta, &cancelar, &mut |_, _| {})
+                    .await?
+                    .resultados)
             })
         }),
         idioma: Arc::new(move || {

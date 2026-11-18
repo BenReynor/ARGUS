@@ -8,6 +8,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -43,6 +44,26 @@ pub struct Coordinador {
     aplicando: Mutex<HashSet<u64>>,
     /// Cuánto vive una propuesta pendiente.
     caducidad: Duration,
+    activas: Mutex<HashMap<(u64, u64, u64), Arc<Parada>>>,
+}
+
+/// Cancelación privada de una orden, compartida con su ejecutor.
+#[derive(Default)]
+struct Parada {
+    cancelar: Arc<AtomicBool>,
+    aviso: tokio::sync::Notify,
+}
+
+struct GuardiaOrden {
+    coord: Arc<Coordinador>,
+    clave: (u64, u64, u64),
+    parada: Arc<Parada>,
+}
+
+impl Drop for GuardiaOrden {
+    fn drop(&mut self) {
+        self.coord.activas.lock().unwrap().remove(&self.clave);
+    }
 }
 
 /// Tiempo que una propuesta espera el «sí».
@@ -107,6 +128,18 @@ impl Coordinador {
             pendientes: Mutex::new(HashMap::new()),
             aplicando: Mutex::new(HashSet::new()),
             caducidad,
+            activas: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn registrar(self: &Arc<Self>, e: &Entrada) -> GuardiaOrden {
+        let clave = (e.guild_id, e.msg.canal_id, e.msg.autor_id);
+        let parada = Arc::new(Parada::default());
+        self.activas.lock().unwrap().insert(clave, parada.clone());
+        GuardiaOrden {
+            coord: self.clone(),
+            clave,
+            parada,
         }
     }
 
@@ -329,7 +362,7 @@ pub struct ContextoOrdenes {
     pub existentes:
         Arc<dyn Fn(u64) -> (Vec<crate::state::Role>, Vec<crate::state::Channel>) + Send + Sync>,
     /// Aplica la propuesta (ya con el servidor puesto): `ejecutar_propuesta`.
-    pub aplicar: Arc<dyn Fn(Propuesta) -> FuturoAplicar + Send + Sync>,
+    pub aplicar: Arc<dyn Fn(Propuesta, Arc<AtomicBool>) -> FuturoAplicar + Send + Sync>,
     /// Idioma de la interfaz.
     pub idioma: Arc<dyn Fn() -> String + Send + Sync>,
 }
@@ -476,6 +509,23 @@ impl Conversador {
 
     /// Decide, encola y responde. No devuelve error: lo que falle queda en Logs.
     pub async fn atender(&self, e: Entrada, ajustes: &GuildSettings) -> Resultado {
+        // Las paradas no esperan la cola, el cooldown ni una mención al bot.
+        if !e.msg.autor_es_bot && confirmacion_de(&e.texto) == Some(Confirmacion::Descartar) {
+            let activas = self.coord.activas.lock().unwrap();
+            if let Some(p) = activas.get(&(e.guild_id, e.msg.canal_id, e.msg.autor_id)) {
+                p.cancelar.store(true, Ordering::SeqCst);
+                self.coord
+                    .sacar_pendiente((e.guild_id, e.msg.canal_id, e.msg.autor_id));
+                p.aviso.notify_one();
+                return Resultado::Respondido;
+            }
+            if activas
+                .keys()
+                .any(|k| k.0 == e.guild_id && k.1 == e.msg.canal_id)
+            {
+                return Resultado::Ignorado;
+            }
+        }
         if let Some(r) = self.confirmacion(&e, ajustes).await {
             return r;
         }
@@ -573,7 +623,9 @@ impl Conversador {
                         self.avisar(e, &aviso).await;
                         return Some(Resultado::Respondido);
                     };
-                    self.aplicar_propuesta(e, p.propuesta, &idioma).await;
+                    let orden = self.coord.registrar(e);
+                    self.aplicar_propuesta(e, p.propuesta, &idioma, &orden.parada)
+                        .await;
                     drop(guardia);
                     Some(Resultado::Respondido)
                 }
@@ -589,7 +641,13 @@ impl Conversador {
     }
 
     /// Aplica la propuesta (el llamador ya reservó el servidor) y publica el resultado.
-    async fn aplicar_propuesta(&self, e: &Entrada, propuesta: Propuesta, idioma: &str) {
+    async fn aplicar_propuesta(
+        &self,
+        e: &Entrada,
+        propuesta: Propuesta,
+        idioma: &str,
+        parada: &Parada,
+    ) {
         let propuesta = con_servidor(&propuesta, &e.guild_id.to_string());
         let total = propuesta.acciones.len();
         self.log(format!(
@@ -597,16 +655,17 @@ impl Conversador {
             e.autor_nombre, e.servidor, e.canal, total
         ));
         let inicio = Instant::now();
-        let texto = match (self.ordenes.aplicar)(propuesta).await {
+        let texto = match (self.ordenes.aplicar)(propuesta, parada.cancelar.clone()).await {
             Ok(resultados) => {
                 let r = ResumenPropuesta::de(total, resultados);
                 self.log(format!(
-                    "[ORDER] Applied the proposal of {} in {} #{}: {} done, {} with errors in {} ms",
+                    "[ORDER] Applied the proposal of {} in {} #{}: {} done, {} with errors, {} not attempted in {} ms",
                     e.autor_nombre,
                     e.servidor,
                     e.canal,
                     r.hechas,
                     r.fallidas + r.omitidas,
+                    r.canceladas,
                     inicio.elapsed().as_millis()
                 ));
                 texto_resultado(&r, idioma)
@@ -689,6 +748,7 @@ impl Conversador {
             self.fallo_orden(e, &idioma, motivo).await;
             return;
         };
+        let activa = self.coord.registrar(e);
         if let Err(err) = self
             .enviar(e, &crate::i18n::tr(&idioma, "Preparing the proposal…"))
             .await
@@ -700,9 +760,16 @@ impl Conversador {
             return;
         }
         let inicio = Instant::now();
-        match self.construir(e, ajustes, tipo, orden, &idioma).await {
+        let construido = self
+            .construir(e, ajustes, tipo, orden, &idioma, &activa.parada)
+            .await;
+        if activa.parada.cancelar.load(Ordering::SeqCst) {
+            self.preparacion_cancelada(e, &idioma).await;
+            return;
+        }
+        match construido {
             Ok(Construido::Propuesta(ev)) => {
-                self.publicar_propuesta(e, ajustes, ev, "", &idioma, inicio)
+                self.publicar_propuesta(e, ajustes, ev, "", &idioma, inicio, &activa.parada)
                     .await
             }
             // Sin propuesta pero con explicación (p. ej. una pregunta): se publica tal cual.
@@ -729,7 +796,12 @@ impl Conversador {
         extra: &str,
         idioma: &str,
         inicio: Instant,
+        parada: &Parada,
     ) {
+        if parada.cancelar.load(Ordering::SeqCst) {
+            self.preparacion_cancelada(e, idioma).await;
+            return;
+        }
         if let Err(motivo) = ev
             .propuesta
             .validar_desde_discord(&ajustes.ordenes_permitidas)
@@ -770,6 +842,30 @@ impl Conversador {
         }
         match self.enviar(e, &texto).await {
             Ok(mensaje_id) => {
+                // La parada y el guardado comparten el lock de órdenes activas:
+                // no puede entrar una cancelación entre comprobar y guardar.
+                // Nunca se retiene este lock al esperar a Discord.
+                let cancelada = {
+                    let _activas = self.coord.activas.lock().unwrap();
+                    if parada.cancelar.load(Ordering::SeqCst) {
+                        self.coord
+                            .sacar_pendiente((e.guild_id, e.msg.canal_id, e.msg.autor_id));
+                        true
+                    } else {
+                        if confirmar {
+                            self.coord.guardar_pendiente(
+                                (e.guild_id, e.msg.canal_id, e.msg.autor_id),
+                                ev.propuesta.clone(),
+                                mensaje_id,
+                            );
+                        }
+                        false
+                    }
+                };
+                if cancelada {
+                    self.preparacion_cancelada(e, idioma).await;
+                    return;
+                }
                 self.log(format!(
                     "[ORDER] Proposal for {} in {} #{}: {} actions in {} ms",
                     e.autor_nombre,
@@ -779,13 +875,10 @@ impl Conversador {
                     inicio.elapsed().as_millis()
                 ));
                 if confirmar {
-                    self.coord.guardar_pendiente(
-                        (e.guild_id, e.msg.canal_id, e.msg.autor_id),
-                        ev.propuesta,
-                        mensaje_id,
-                    );
+                    return;
                 } else if let Some(guardia) = self.coord.tomar_aplicacion(e.guild_id) {
-                    self.aplicar_propuesta(e, ev.propuesta, idioma).await;
+                    self.aplicar_propuesta(e, ev.propuesta, idioma, parada)
+                        .await;
                     drop(guardia);
                 } else {
                     self.fallo_orden(e, idioma, MOTIVO_APLICANDO).await;
@@ -826,14 +919,23 @@ impl Conversador {
             self.fallo_archivo(e, &idioma, motivo).await;
             return;
         };
+        let activa = self.coord.registrar(e);
         let inicio = Instant::now();
         self.log(format!(
             "[ORDER] File {} from {} in {} #{}",
             adjunto.nombre, e.autor_nombre, e.servidor, e.canal
         ));
-        match self.compilar_archivo(e, ajustes, adjunto, &idioma).await {
+        let compilado = tokio::select! {
+            biased;
+            _ = activa.parada.aviso.notified() => {
+                self.preparacion_cancelada(e, &idioma).await;
+                return;
+            }
+            r = self.compilar_archivo(e, ajustes, adjunto, &idioma) => r,
+        };
+        match compilado {
             Ok((ev, extra)) => {
-                self.publicar_propuesta(e, ajustes, ev, &extra, &idioma, inicio)
+                self.publicar_propuesta(e, ajustes, ev, &extra, &idioma, inicio, &activa.parada)
                     .await
             }
             Err(motivo) => self.fallo_archivo(e, &idioma, &motivo).await,
@@ -959,6 +1061,15 @@ impl Conversador {
         }
     }
 
+    async fn preparacion_cancelada(&self, e: &Entrada, idioma: &str) {
+        let texto = crate::i18n::tr(
+            idioma,
+            "Order stopped: no changes made; proposal preparation was cancelled",
+        );
+        self.log(format!("[ORDER] {texto}"));
+        self.avisar(e, &texto).await;
+    }
+
     /// Lanza el constructor (modo Execute, solo lectura) y valida su propuesta.
     async fn construir(
         &self,
@@ -967,10 +1078,11 @@ impl Conversador {
         tipo: TipoOrden,
         orden: &str,
         idioma: &str,
+        parada: &Parada,
     ) -> Result<Construido, String> {
         use crate::asistente::{
             comprobar_acciones_moderacion, orden_agente, prompt_asistente_tipo,
-            propuesta_de_respuesta, texto_del_constructor, ModoAsistente, TipoAsistente,
+            propuesta_de_respuesta, texto_del_constructor_cancelable, ModoAsistente, TipoAsistente,
             LIMITE_POR_CANAL,
         };
         let tipo_asistente = match tipo {
@@ -981,8 +1093,15 @@ impl Conversador {
         let ruta = (self.buscar_agente)(agente)
             .ok_or_else(|| format!("The AI agent «{agente}» is not installed"))?;
         let mcp = (self.ordenes.ruta_mcp)()?;
-        let plan = (self.ordenes.leer_plan)(e.guild_id).await;
-        let contexto = (self.ordenes.leer_contexto)(e.guild_id).await;
+        let (plan, contexto) = tokio::select! {
+            biased;
+            _ = parada.aviso.notified() => return Err(String::new()),
+            datos = async {
+                let plan = (self.ordenes.leer_plan)(e.guild_id).await;
+                let contexto = (self.ordenes.leer_contexto)(e.guild_id).await;
+                (plan, contexto)
+            } => datos,
+        };
         let gid = e.guild_id.to_string();
         // La marca del chat es una pista del modelo, nunca sustituye la petición
         // original ni autoriza acciones adicionales. No se pasa el historial.
@@ -1016,8 +1135,18 @@ impl Conversador {
             None,
             &prompt,
         )?;
-        let _permiso = self.coord.permiso_agente().await;
-        let texto = texto_del_constructor(&lanzar, agente, self.limite_constructor).await?;
+        let _permiso = tokio::select! {
+            biased;
+            _ = parada.aviso.notified() => return Err(String::new()),
+            p = self.coord.permiso_agente() => p,
+        };
+        let texto = texto_del_constructor_cancelable(
+            &lanzar,
+            agente,
+            self.limite_constructor,
+            &parada.aviso,
+        )
+        .await?;
         if !texto.to_ascii_lowercase().contains("```json") {
             let visible: String = texto
                 .trim()
@@ -1238,7 +1367,7 @@ mod tests {
                 }),
                 nombres: Arc::new(|_| crate::propuesta::Nombres::default()),
                 existentes: Arc::new(|_| (Vec::new(), Vec::new())),
-                aplicar: Arc::new(|_| Box::pin(async { Ok(Vec::new()) })),
+                aplicar: Arc::new(|_, _| Box::pin(async { Ok(Vec::new()) })),
                 idioma: Arc::new(|| "en".to_string()),
             },
         };
@@ -1946,7 +2075,7 @@ EOF"#;
     fn aplicador_falso(c: &mut Conversador) -> Aplicadas {
         let aplicadas: Aplicadas = Arc::new(Mutex::new(Vec::new()));
         let a = aplicadas.clone();
-        c.ordenes.aplicar = Arc::new(move |p| {
+        c.ordenes.aplicar = Arc::new(move |p, _| {
             a.lock().unwrap().push(p.clone());
             Box::pin(async move {
                 Ok(p.acciones
@@ -1982,6 +2111,339 @@ EOF"#;
         let n = envios(server).await.len();
         assert_eq!(n, 3);
         n
+    }
+
+    #[tokio::test]
+    async fn parar_durante_preparacion_no_publica_propuesta() {
+        for palabra in ["para", "detente", "stop", "cancela"] {
+            let server = MockServer::start().await;
+            mock_discord(&server).await;
+            let (mut c, logs) = conversador(
+                &server,
+                agente_con_orden(&format!("parar-preparacion-{palabra}"), PROPUESTA_OK),
+                LIMITE_AGENTE,
+            );
+            let iniciado = Arc::new(tokio::sync::Notify::new());
+            let aviso = iniciado.clone();
+            c.ordenes.leer_plan = Arc::new(move |_| {
+                let aviso = aviso.clone();
+                Box::pin(async move {
+                    aviso.notify_one();
+                    std::future::pending::<String>().await
+                })
+            });
+            let aplicadas = aplicador_falso(&mut c);
+            let trabajo = {
+                let c = c.clone();
+                tokio::spawn(
+                    async move { c.atender(entrada(1, true), &ajustes_ordenes(false)).await },
+                )
+            };
+            tokio::time::timeout(Duration::from_secs(5), iniciado.notified())
+                .await
+                .unwrap();
+            // Otro autor, incluso respondiendo al bot, no puede detenerla.
+            assert_eq!(
+                c.atender(confirmar(2, palabra), &ajustes_ordenes(false))
+                    .await,
+                Resultado::Ignorado
+            );
+            assert!(!c
+                .coord
+                .activas
+                .lock()
+                .unwrap()
+                .values()
+                .next()
+                .unwrap()
+                .cancelar
+                .load(Ordering::SeqCst));
+            assert_eq!(
+                c.atender(confirmar(1, palabra), &ajustes_ordenes(false))
+                    .await,
+                Resultado::Respondido
+            );
+            tokio::time::timeout(Duration::from_secs(5), trabajo)
+                .await
+                .unwrap()
+                .unwrap();
+            let textos = textos(&envios(&server).await);
+            assert_eq!(textos.len(), 3, "{textos:?}");
+            assert!(textos.last().unwrap().contains("no changes made"));
+            assert!(!textos.iter().any(|t| t.contains("Reply **yes**")));
+            assert!(aplicadas.lock().unwrap().is_empty());
+            assert!(matches!(
+                c.coord.sacar_pendiente((555, 10, 1)),
+                EstadoPendiente::Ninguna
+            ));
+            assert!(c.coord.activas.lock().unwrap().is_empty());
+            assert!(logs
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|l| l.contains("preparation was cancelled")));
+        }
+    }
+
+    #[tokio::test]
+    async fn parar_durante_publicacion_descarta_la_pendiente_y_no_aplica() {
+        for confirmar_primero in [true, false] {
+            let server = MockServer::start().await;
+            mock_discord(&server).await;
+            let publicando = Arc::new(tokio::sync::Notify::new());
+            let aviso = publicando.clone();
+            Mock::given(method("POST"))
+                .and(path("/api/v10/channels/10/messages"))
+                .respond_with(move |_: &wiremock::Request| {
+                    aviso.notify_one();
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({"id": "600"}))
+                        .set_delay(Duration::from_millis(500))
+                })
+                .with_priority(1)
+                .up_to_n_times(1)
+                .mount(&server)
+                .await;
+            let (mut c, _) = conversador(
+                &server,
+                agente_con_orden("parar-publicacion", PROPUESTA_OK),
+                LIMITE_AGENTE,
+            );
+            let aplicadas = aplicador_falso(&mut c);
+            let e = entrada(1, true);
+            let activa = c.coord.registrar(&e);
+            let propuesta: Propuesta = serde_json::from_value(serde_json::json!({
+                "resumen": "Create a role",
+                "acciones": [{"herramienta": "crear_rol", "args": {"nombre": "Example"},
+                    "descripcion": "Create a role"}]
+            }))
+            .unwrap();
+            // Una pendiente previa de la misma orden tampoco debe sobrevivir.
+            c.coord
+                .guardar_pendiente((555, 10, 1), propuesta.clone(), 599);
+            let trabajo = {
+                let c = c.clone();
+                tokio::spawn(async move {
+                    c.publicar_propuesta(
+                        &e,
+                        &ajustes_ordenes(confirmar_primero),
+                        crate::asistente::EventoPropuesta {
+                            propuesta,
+                            validacion: crate::propuesta::Validacion {
+                                cambios: Vec::new(),
+                                errores: Vec::new(),
+                            },
+                        },
+                        "",
+                        "en",
+                        Instant::now(),
+                        &activa.parada,
+                    )
+                    .await;
+                })
+            };
+            tokio::time::timeout(Duration::from_secs(5), publicando.notified())
+                .await
+                .unwrap();
+            assert!(!trabajo.is_finished());
+            assert_eq!(
+                c.atender(confirmar(2, "stop"), &ajustes_ordenes(true))
+                    .await,
+                Resultado::Ignorado
+            );
+            assert_eq!(
+                c.atender(confirmar(1, "stop"), &ajustes_ordenes(true))
+                    .await,
+                Resultado::Respondido
+            );
+            assert!(matches!(
+                c.coord.sacar_pendiente((555, 10, 1)),
+                EstadoPendiente::Ninguna
+            ));
+            tokio::time::timeout(Duration::from_secs(5), trabajo)
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(matches!(
+                c.coord.sacar_pendiente((555, 10, 1)),
+                EstadoPendiente::Ninguna
+            ));
+            assert_eq!(
+                c.atender(confirmar(1, "yes"), &ajustes_ordenes(true)).await,
+                Resultado::Ignorado
+            );
+            assert!(aplicadas.lock().unwrap().is_empty());
+            let mensajes = textos(&envios(&server).await);
+            assert!(
+                mensajes.last().unwrap().contains("no changes made"),
+                "{mensajes:?}"
+            );
+            assert!(c.coord.activas.lock().unwrap().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn parar_mata_el_constructor_en_ejecucion() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let agente = agente_con_orden(
+            "parar-proceso",
+            &format!("touch \"$(dirname \"$0\")/preparando\"\nsleep 30\n{PROPUESTA_OK}"),
+        );
+        let marca = agente.parent().unwrap().join("preparando");
+        let _ = std::fs::remove_file(&marca);
+        let (c, _) = conversador(&server, agente, LIMITE_AGENTE);
+        let trabajo = {
+            let c = c.clone();
+            tokio::spawn(async move { c.atender(entrada(1, true), &ajustes_ordenes(true)).await })
+        };
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !marca.exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        c.atender(confirmar(1, "detente"), &ajustes_ordenes(true))
+            .await;
+        tokio::time::timeout(Duration::from_secs(5), trabajo)
+            .await
+            .unwrap()
+            .unwrap();
+        let textos = textos(&envios(&server).await);
+        assert_eq!(textos.len(), 3, "{textos:?}");
+        assert!(textos.last().unwrap().contains("preparation was cancelled"));
+        assert!(c.coord.activas.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn parar_durante_aplicacion_termina_la_actual_y_no_inicia_las_siguientes() {
+        for confirmar_primero in [true, false] {
+            let server = MockServer::start().await;
+            mock_discord(&server).await;
+            let (mut c, logs) = conversador(
+                &server,
+                agente_con_orden(
+                    &format!("parar-aplicacion-{confirmar_primero}"),
+                    PROPUESTA_OK,
+                ),
+                LIMITE_AGENTE,
+            );
+            let iniciada = Arc::new(tokio::sync::Notify::new());
+            let terminar = Arc::new(tokio::sync::Notify::new());
+            let realizadas = Arc::new(AtomicUsize::new(0));
+            let (i, t, r) = (iniciada.clone(), terminar.clone(), realizadas.clone());
+            c.ordenes.aplicar = Arc::new(move |p, cancelar| {
+                let (i, t, r) = (i.clone(), t.clone(), r.clone());
+                Box::pin(async move {
+                    let mut resultados = Vec::new();
+                    for (indice, a) in p.acciones.iter().enumerate() {
+                        if cancelar.load(Ordering::SeqCst) {
+                            break;
+                        }
+                        i.notify_one();
+                        t.notified().await;
+                        r.fetch_add(1, Ordering::SeqCst);
+                        resultados.push(ResultadoAccion {
+                            indice,
+                            herramienta: a.herramienta.clone(),
+                            descripcion: a.descripcion.clone(),
+                            estado: EstadoAccion::Ok,
+                            mensaje: "ok".into(),
+                        });
+                    }
+                    Ok(resultados)
+                })
+            });
+            // Dos acciones pendientes: mismo ejecutor tanto con «sí» como con aplicación directa.
+            let mut p: Propuesta = serde_json::from_value(serde_json::json!({
+                "resumen": "Two roles",
+                "acciones": [
+                    {"herramienta": "crear_rol", "args": {"nombre": "Alpha"}, "descripcion": "Alpha"},
+                    {"herramienta": "crear_rol", "args": {"nombre": "Beta"}, "descripcion": "Beta"}
+                ]
+            })).unwrap();
+            p = con_servidor(&p, "555");
+            let trabajo = {
+                let c = c.clone();
+                tokio::spawn(async move {
+                    let e = confirmar(1, "yes");
+                    if confirmar_primero {
+                        c.coord.guardar_pendiente((555, 10, 1), p, 600);
+                        c.atender(e, &ajustes_ordenes(true)).await;
+                    } else {
+                        let ev = crate::asistente::EventoPropuesta {
+                            propuesta: p,
+                            validacion: crate::propuesta::Validacion {
+                                cambios: Vec::new(),
+                                errores: Vec::new(),
+                            },
+                        };
+                        let activa = c.coord.registrar(&e);
+                        c.publicar_propuesta(
+                            &e,
+                            &ajustes_ordenes(false),
+                            ev,
+                            "",
+                            "en",
+                            Instant::now(),
+                            &activa.parada,
+                        )
+                        .await;
+                    }
+                })
+            };
+            tokio::time::timeout(Duration::from_secs(5), iniciada.notified())
+                .await
+                .unwrap();
+            assert_eq!(
+                c.atender(confirmar(2, "para"), &ajustes_ordenes(true))
+                    .await,
+                Resultado::Ignorado
+            );
+            let mut ajeno = confirmar(1, "stop");
+            ajeno.msg.canal_id += 1;
+            c.atender(ajeno, &ajustes_ordenes(true)).await;
+            assert!(!c
+                .coord
+                .activas
+                .lock()
+                .unwrap()
+                .values()
+                .next()
+                .unwrap()
+                .cancelar
+                .load(Ordering::SeqCst));
+            c.atender(confirmar(1, "stop"), &ajustes_ordenes(true))
+                .await;
+            assert_eq!(realizadas.load(Ordering::SeqCst), 0);
+            assert!(!trabajo.is_finished());
+            terminar.notify_one();
+            tokio::time::timeout(Duration::from_secs(5), trabajo)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(realizadas.load(Ordering::SeqCst), 1);
+            let textos = textos(&envios(&server).await);
+            assert!(
+                textos
+                    .last()
+                    .unwrap()
+                    .contains("Done: 1 change, 0 with errors"),
+                "{textos:?}"
+            );
+            assert!(textos
+                .last()
+                .unwrap()
+                .contains("1 actions were not attempted"));
+            assert!(logs
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|l| l.contains("1 not attempted")));
+            assert!(!c.coord.esta_aplicando(555));
+            assert!(c.coord.activas.lock().unwrap().is_empty());
+        }
     }
 
     #[tokio::test]

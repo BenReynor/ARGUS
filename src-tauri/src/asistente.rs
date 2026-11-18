@@ -798,6 +798,16 @@ pub async fn texto_del_constructor(
     limite: std::time::Duration,
 ) -> Result<String, String> {
     let cancelar = tokio::sync::Notify::new();
+    texto_del_constructor_cancelable(orden, agente, limite, &cancelar).await
+}
+
+/// Constructor con parada privada del llamador; termina también el grupo del agente.
+pub async fn texto_del_constructor_cancelable(
+    orden: &OrdenAgente,
+    agente: &str,
+    limite: std::time::Duration,
+    cancelar: &tokio::sync::Notify,
+) -> Result<String, String> {
     let mut texto = String::new();
     let mut error: Option<String> = None;
     {
