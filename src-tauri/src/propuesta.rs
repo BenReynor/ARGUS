@@ -450,6 +450,7 @@ pub fn validar_acciones(p: &Propuesta, existentes: &Nombres) -> Validacion {
     let (mut crear_roles, mut editar_roles) = (0, 0);
     let (mut categorias, mut canales, mut editar_canales) = (0, 0, 0);
     let (mut permisos, mut miembros_roles, mut otras) = (0, 0, 0);
+    let mut permisos_incluidos = 0;
     let (mut borrar_canales, mut borrar_roles) = (0, 0);
 
     for indice in orden_de_ejecucion(p) {
@@ -469,6 +470,12 @@ pub fn validar_acciones(p: &Propuesta, existentes: &Nombres) -> Validacion {
                 continue;
             }
         };
+        if h == "crear_canal" {
+            permisos_incluidos += args
+                .get("permisos")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+        }
         match h {
             "crear_rol" => crear_roles += 1,
             "editar_rol" => editar_roles += 1,
@@ -498,6 +505,7 @@ pub fn validar_acciones(p: &Propuesta, existentes: &Nombres) -> Validacion {
         ("Channels to create", canales),
         ("Channels to edit", editar_canales),
         ("Channel permissions to change", permisos),
+        ("Permissions included in creation", permisos_incluidos),
         ("Member roles to change", miembros_roles),
         ("Channels to delete", borrar_canales),
         ("Roles to delete", borrar_roles),

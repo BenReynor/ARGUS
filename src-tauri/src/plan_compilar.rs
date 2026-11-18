@@ -167,7 +167,7 @@ fn accion_rol(r: &RolPlan) -> Accion {
 }
 
 /// Convierte el plan en una propuesta ordenada (roles → categorías → canales →
-/// permisos). Lo que ya existe con el mismo nombre no se repite ni se toca.
+/// permisos de destinos existentes). Lo que ya existe no se vuelve a crear.
 pub fn compilar(plan: &PlanEstructurado, existentes: &Existentes) -> Compilacion {
     let mut acciones: Vec<Accion> = Vec::new();
     let mut permisos_acc: Vec<Accion> = Vec::new();
@@ -188,7 +188,6 @@ pub fn compilar(plan: &PlanEstructurado, existentes: &Existentes) -> Compilacion
     }
 
     // Categorías y canales.
-    let mut nombres_vistos: Vec<String> = Vec::new();
     let mut categorias_acc: Vec<Accion> = Vec::new();
     let mut canales_acc: Vec<Accion> = Vec::new();
 
@@ -201,21 +200,24 @@ pub fn compilar(plan: &PlanEstructurado, existentes: &Existentes) -> Compilacion
             .canales
             .iter()
             .find(|c| c.channel_type == TIPO_CATEGORIA && clave(&c.name) == ck);
-        if cat_existente.is_none() {
-            categorias_acc.push(Accion {
-                herramienta: "crear_canal".into(),
-                args: json!({ "nombre": cat.nombre, "tipo": "categoria" }),
-                descripcion: format!("Create category «{}»", cat.nombre),
-            });
-            let mut ow = Overwrites::default();
-            ow.aplicar(&cat.permisos, TipoCanal::Texto);
+        let mut ow = Overwrites::default();
+        ow.aplicar(&cat.permisos, TipoCanal::Texto);
+        if let Some(existente) = cat_existente {
             emitir_permisos(
                 &mut permisos_acc,
                 &mut avisos,
                 &ow,
-                &cat.nombre,
+                &existente.id,
                 &roles_conocidos,
             );
+        } else {
+            let mut args = json!({ "nombre": cat.nombre, "tipo": "categoria" });
+            incluir_permisos(&mut args, &mut avisos, &ow, &cat.nombre, &roles_conocidos);
+            categorias_acc.push(Accion {
+                herramienta: "crear_canal".into(),
+                args,
+                descripcion: format!("Create category «{}»", cat.nombre),
+            });
         }
         let mut vistos_en_cat: Vec<String> = Vec::new();
         // Discord rechaza el canal 51 de una categoría: los que no caben se
@@ -238,13 +240,23 @@ pub fn compilar(plan: &PlanEstructurado, existentes: &Existentes) -> Compilacion
                 continue;
             }
             vistos_en_cat.push(k.clone());
-            let ya_existe = cat_existente.is_some_and(|ce| {
+            let existente = cat_existente.and_then(|ce| {
                 existentes
                     .canales
                     .iter()
-                    .any(|x| x.parent_id.as_deref() == Some(ce.id.as_str()) && clave(&x.name) == k)
+                    .find(|x| x.parent_id.as_deref() == Some(ce.id.as_str()) && clave(&x.name) == k)
             });
-            if ya_existe {
+            let mut ow = Overwrites::default();
+            ow.aplicar(&cat.permisos, c.tipo);
+            ow.aplicar(&c.permisos, c.tipo);
+            if let Some(existente) = existente {
+                emitir_permisos(
+                    &mut permisos_acc,
+                    &mut avisos,
+                    &ow,
+                    &existente.id,
+                    &roles_conocidos,
+                );
                 continue;
             }
             if ocupados >= MAX_CANALES_POR_CATEGORIA {
@@ -252,19 +264,6 @@ pub fn compilar(plan: &PlanEstructurado, existentes: &Existentes) -> Compilacion
                 continue;
             }
             ocupados += 1;
-            // Los permisos se resuelven por nombre de canal: avisa si es ambiguo.
-            let en_otro_sitio = nombres_vistos.contains(&k)
-                || existentes
-                    .canales
-                    .iter()
-                    .any(|x| clave(&x.name) == k && cat_existente.is_none_or(|ce| ce.id != x.id));
-            nombres_vistos.push(k);
-            if en_otro_sitio {
-                avisos.push(format!(
-                    "Line {}: channel «{}» has the same name as another channel; its permissions may be applied to the wrong one",
-                    c.linea, c.nombre
-                ));
-            }
             let mut args = json!({
                 "nombre": c.nombre,
                 "tipo": nombre_tipo(c.tipo),
@@ -284,21 +283,12 @@ pub fn compilar(plan: &PlanEstructurado, existentes: &Existentes) -> Compilacion
                 )),
                 None => {}
             }
+            incluir_permisos(&mut args, &mut avisos, &ow, &c.nombre, &roles_conocidos);
             canales_acc.push(Accion {
                 herramienta: "crear_canal".into(),
                 args,
                 descripcion: format!("Create channel «{}» in «{}»", c.nombre, cat.nombre),
             });
-            let mut ow = Overwrites::default();
-            ow.aplicar(&cat.permisos, c.tipo);
-            ow.aplicar(&c.permisos, c.tipo);
-            emitir_permisos(
-                &mut permisos_acc,
-                &mut avisos,
-                &ow,
-                &c.nombre,
-                &roles_conocidos,
-            );
         }
         if sobrantes > 0 {
             avisos.push(format!(
@@ -334,6 +324,36 @@ pub fn compilar(plan: &PlanEstructurado, existentes: &Existentes) -> Compilacion
         propuesta: Propuesta { resumen, acciones },
         pendientes,
         avisos,
+    }
+}
+
+/// Reutiliza la misma selección de destinos y permisos para la creación.
+fn incluir_permisos(
+    args: &mut Value,
+    avisos: &mut Vec<String>,
+    ow: &Overwrites,
+    canal: &str,
+    roles_conocidos: &[String],
+) {
+    let mut permisos = Vec::new();
+    emitir_permisos(&mut permisos, avisos, ow, canal, roles_conocidos);
+    if !permisos.is_empty() {
+        args["permisos"] = Value::Array(
+            permisos
+                .into_iter()
+                .map(|a| {
+                    let mut permiso = a.args;
+                    let objetivo = permiso
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("target_id")
+                        .unwrap();
+                    permiso.as_object_mut().unwrap().remove("channel_id");
+                    permiso["objetivo"] = objetivo;
+                    permiso
+                })
+                .collect(),
+        );
     }
 }
 
@@ -437,15 +457,13 @@ mod tests {
             .collect()
     }
 
-    fn permiso<'a>(c: &'a Compilacion, canal: &str, rol: &str) -> &'a Accion {
+    fn permiso<'a>(c: &'a Compilacion, canal: &str, rol: &str) -> &'a Value {
         c.propuesta
             .acciones
             .iter()
-            .find(|a| {
-                a.herramienta == "permiso_canal"
-                    && a.args["channel_id"] == canal
-                    && a.args["target_id"] == rol
-            })
+            .find(|a| a.herramienta == "crear_canal" && a.args["nombre"] == canal)
+            .and_then(|a| a.args["permisos"].as_array())
+            .and_then(|ps| ps.iter().find(|p| p["objetivo"] == rol))
             .unwrap_or_else(|| panic!("sin permiso {rol} en {canal}"))
     }
 
@@ -506,16 +524,13 @@ mod tests {
             },
         );
         let ev = permiso(&c, "Supervisión", "@everyone");
-        assert_eq!(lista(&ev.args["denegar"]), ["ViewChannel"]);
-        assert!(ev.args.get("permitir").is_none());
+        assert_eq!(lista(&ev["denegar"]), ["ViewChannel"]);
+        assert!(ev.get("permitir").is_none());
         let sup = permiso(&c, "Supervisión", "Supervisor");
-        assert_eq!(
-            lista(&sup.args["permitir"]),
-            ["ViewChannel", "SendMessages"]
-        );
+        assert_eq!(lista(&sup["permitir"]), ["ViewChannel", "SendMessages"]);
         let dir = permiso(&c, "Supervisión", "Director");
-        assert_eq!(lista(&dir.args["permitir"]), ["ViewChannel"]);
-        assert!(dir.args.get("denegar").is_none());
+        assert_eq!(lista(&dir["permitir"]), ["ViewChannel"]);
+        assert!(dir.get("denegar").is_none());
     }
 
     #[test]
@@ -532,25 +547,110 @@ mod tests {
         // Solo leer @everyone en un canal de categoría privada: el canal manda.
         let ev = permiso(&c, "reglas", "@everyone");
         assert_eq!(
-            lista(&ev.args["permitir"]),
+            lista(&ev["permitir"]),
             ["ViewChannel", "ReadMessageHistory"]
         );
-        assert_eq!(lista(&ev.args["denegar"]), ["SendMessages"]);
+        assert_eq!(lista(&ev["denegar"]), ["SendMessages"]);
         // Voz: escribir de la categoría = Connect y Speak.
         let v = permiso(&c, "Sala de control", "Supervisor");
-        assert_eq!(
-            lista(&v.args["permitir"]),
-            ["ViewChannel", "Connect", "Speak"]
-        );
+        assert_eq!(lista(&v["permitir"]), ["ViewChannel", "Connect", "Speak"]);
         // Ocultar a.
         let o = permiso(&c, "noticias", "Muteado");
-        assert_eq!(lista(&o.args["denegar"]), ["ViewChannel"]);
+        assert_eq!(lista(&o["denegar"]), ["ViewChannel"]);
         // Una categoría sin permisos no genera permiso_canal.
         assert!(!c
             .propuesta
             .acciones
             .iter()
             .any(|a| a.herramienta == "permiso_canal" && a.args["channel_id"] == "Plaza"));
+    }
+
+    #[test]
+    fn archivo_de_sitio_19_compila_a_siete_acciones_con_los_mismos_permisos() {
+        let plan = analizar(
+            "# Archivo de Sitio-19\n\
+            ## Rol: Archivista\n\
+            ## Categoría: Archivo | ver: Archivista | escribir: Archivista | ocultar a: Muteado\n\
+            - texto: expediente-{1..5}",
+        );
+        let (roles, canales) = servidor();
+        let c = compilar(
+            &plan,
+            &Existentes {
+                roles: &roles,
+                canales: &canales,
+            },
+        );
+        assert!(c.avisos.is_empty());
+        assert_eq!(c.propuesta.acciones.len(), 7);
+        assert_eq!(acciones(&c, "crear_rol").len(), 1);
+        assert_eq!(acciones(&c, "crear_canal").len(), 6);
+        assert!(acciones(&c, "permiso_canal").is_empty());
+        assert_eq!(
+            c.propuesta.resumen,
+            "Build from the structured plan: 7 actions"
+        );
+        for nombre in
+            std::iter::once("Archivo".to_string()).chain((1..=5).map(|i| format!("expediente-{i}")))
+        {
+            assert_eq!(
+                permiso(&c, &nombre, "@everyone"),
+                &json!({
+                    "objetivo": "@everyone", "tipo": "rol", "denegar": ["ViewChannel"]
+                })
+            );
+            assert_eq!(
+                permiso(&c, &nombre, "Muteado"),
+                &json!({
+                    "objetivo": "Muteado", "tipo": "rol", "denegar": ["ViewChannel"]
+                })
+            );
+            assert_eq!(
+                permiso(&c, &nombre, "Archivista"),
+                &json!({
+                    "objetivo": "Archivista", "tipo": "rol",
+                    "permitir": ["ViewChannel", "SendMessages"]
+                })
+            );
+        }
+        let v = crate::propuesta::validar_traducida(
+            &c.propuesta,
+            &Nombres::desde(&roles, &canales),
+            "es",
+        );
+        assert!(v.errores.is_empty(), "{:?}", v.errores);
+        assert!(v
+            .cambios
+            .contains(&"Permisos incluidos en la creación: 18".to_string()));
+        assert!(!v.cambios.iter().any(|c| c.contains("a cambiar")));
+    }
+
+    #[test]
+    fn solo_leer_un_rol_dentro_de_categoria_privada() {
+        let plan = analizar(
+            "## Rol: X\n## Categoría: Privada | escribir: X\n\
+            - texto: lectura | solo leer: X",
+        );
+        let (roles, canales) = servidor();
+        let c = compilar(
+            &plan,
+            &Existentes {
+                roles: &roles,
+                canales: &canales,
+            },
+        );
+        assert!(acciones(&c, "permiso_canal").is_empty());
+        assert_eq!(
+            lista(&permiso(&c, "lectura", "@everyone")["denegar"]),
+            ["ViewChannel"]
+        );
+        let x = permiso(&c, "lectura", "X");
+        assert_eq!(lista(&x["permitir"]), ["ViewChannel", "ReadMessageHistory"]);
+        assert_eq!(lista(&x["denegar"]), ["SendMessages"]);
+        assert_eq!(
+            lista(&permiso(&c, "Privada", "X")["permitir"]),
+            ["ViewChannel", "SendMessages"]
+        );
     }
 
     #[test]
@@ -636,14 +736,50 @@ mod tests {
         assert!(!crear.contains(&"reglas".to_string()));
         assert!(crear.contains(&"supervision-2".to_string()));
         assert!(crear.contains(&"Plaza".to_string()));
-        // La categoría existe: no se vuelve a tocar su permiso.
-        assert!(!c
-            .propuesta
-            .acciones
+        // Los destinos existentes se actualizan por ID con permiso_canal.
+        assert!(acciones(&c, "permiso_canal")
             .iter()
-            .any(|a| a.herramienta == "permiso_canal" && a.args["channel_id"] == "Supervisión"));
+            .any(|a| a.args["channel_id"] == "20"));
+        assert!(acciones(&c, "permiso_canal")
+            .iter()
+            .any(|a| a.args["channel_id"] == "21"));
+        assert!(acciones(&c, "permiso_canal")
+            .iter()
+            .all(|a| { a.args["channel_id"] == "20" || a.args["channel_id"] == "21" }));
         // Pero sus canales nuevos siguen heredando el acceso privado.
         permiso(&c, "supervision-1", "@everyone");
+    }
+
+    #[test]
+    fn canal_existente_conserva_permiso_canal_y_su_resumen() {
+        let plan = analizar("## Categoría: Privada | escribir: X\n- texto: lectura | solo leer: X");
+        let roles = vec![rol("555", "@everyone"), rol("9", "X")];
+        let canales = vec![
+            canal("20", "Privada", 4, None),
+            canal("21", "lectura", 0, Some("20")),
+        ];
+        let c = compilar(
+            &plan,
+            &Existentes {
+                roles: &roles,
+                canales: &canales,
+            },
+        );
+        assert!(acciones(&c, "crear_canal").is_empty());
+        assert_eq!(c.propuesta.acciones.len(), 4);
+        let permisos = acciones(&c, "permiso_canal");
+        let x = permisos
+            .iter()
+            .find(|a| a.args["channel_id"] == "21" && a.args["target_id"] == "X")
+            .unwrap();
+        assert_eq!(
+            lista(&x.args["permitir"]),
+            ["ViewChannel", "ReadMessageHistory"]
+        );
+        assert_eq!(lista(&x.args["denegar"]), ["SendMessages"]);
+        let v = validar_acciones(&c.propuesta, &Nombres::desde(&roles, &canales));
+        assert!(v.errores.is_empty(), "{:?}", v.errores);
+        assert_eq!(v.cambios, ["Channel permissions to change: 4"]);
     }
 
     #[test]
@@ -658,11 +794,13 @@ mod tests {
             },
         );
         assert!(c.avisos.iter().any(|a| a.contains("Fantasma")));
-        assert!(!c
-            .propuesta
-            .acciones
-            .iter()
-            .any(|a| a.args["target_id"] == "Fantasma"));
+        assert!(acciones(&c, "crear_canal").iter().all(|a| {
+            a.args["permisos"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|p| p["objetivo"] != "Fantasma")
+        }));
     }
 
     #[test]

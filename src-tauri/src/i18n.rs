@@ -54,6 +54,7 @@ const CATALOGO_ES: &[(&str, &str)] = &[
     ("The file has no structure to build from. Read the manual: {enlace}", "El archivo no tiene estructura para construir. Lee el manual: {enlace}"),
     ("The plan is not valid: {herramienta}: {motivo}", "El plan no es válido: {herramienta}: {motivo}"),
     ("The descriptions were not written: the AI agent is not installed", "No se escribieron las descripciones: el agente de IA no está instalado"),
+    ("Permissions included in creation: {n}", "Permisos incluidos en la creación: {n}"),
     ("Build from the structured plan: {n} actions", "Construir desde el plan estructurado: {n} acciones"),
     ("Create role «{r}»", "Crear el rol «{r}»"),
     ("Create category «{c}»", "Crear la categoría «{c}»"),
