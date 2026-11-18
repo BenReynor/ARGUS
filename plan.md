@@ -531,7 +531,7 @@ Quien instaló un `.deb`, `.AppImage` o `.exe` no se entera de las versiones nue
 ## FASE 19 — Copia de seguridad del servidor de Discord (snapshots) y restauración manual
 Si alguien con permisos (o un bot ajeno) borra canales y roles, hoy no hay forma de volver atrás. Objetivo: guardar dentro de ARGUS **snapshots** de la estructura del servidor y poder **restaurarlos manualmente**, viendo antes qué se recrea. La restauración reutiliza el motor de propuestas (validación, orden seguro, progreso). El snapshot es local: sigue disponible aunque el servidor sea destruido. Toda la UI con `t()`; tests con el Discord falso.
 
-- [ ] Guardar snapshots del servidor
+- [B] Guardar snapshots del servidor
   criterio: nueva sección **Backups** (por servidor) con «Create snapshot»: guarda en sqlite (tabla nueva, migración) los ajustes del servidor (nombre, icono, canales de sistema, verificación, notificaciones), roles (nombre, color, permisos, posición, hoist, mencionable, icono), categorías y canales (tipo, nombre, posición, tema, NSFW, slowmode, bitrate/límite de usuarios, etiquetas de foro) con sus overwrites por **nombre** de rol o miembro además del id, los roles de cada miembro (id, nombre, roles), emojis y stickers (nombre e imagen), webhooks (nombre y canal) y la lista de baneos; lista de snapshots con fecha, tamaño y resumen (N canales, M roles…), renombrar, borrar y exportar/importar a archivo; snapshots automáticos opcionales (diario, conservar los N últimos, por defecto 7); tests del contenido del snapshot contra el Discord falso
 
 - [ ] Comparar un snapshot con el servidor actual

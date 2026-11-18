@@ -51,3 +51,8 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - Síntoma: El agente no cumplió el criterio tras 2 intentos.
 - Causa: gate_fail en la iteración 1: [GATE] ✗ juez: criterio NO cumplido (tauri.conf.json conserva una clave pública provisional sin privada disponible; el propio CI bloquea la release.) warning: unused variable: `state` --> src/commands.rs:2369:5 | 2369 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2393:5 2393 |     state: State<'_, AppState>, --> src/commands.rs:2564:5 2564 |     state: State<'_, AppState>,
 - Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-18 18:40 — Tarea bloqueada: Guardar snapshots del servidor
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: revisor_fail en la iteración 3: La importación acepta imágenes corruptas si contienen base64 válido: `validate_image()` solo comprueba que los bytes no estén vacíos, sin validar PNG, GIF o JSON. Esto contradice la garantía documentada; los tests incluso usan `fixture-image`, que no es una imagen válida, y no detectan el problema.
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
