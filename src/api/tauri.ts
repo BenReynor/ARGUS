@@ -192,3 +192,9 @@ export const onAsistenteResumen = (cb: (r: ResumenPropuesta) => void) =>
   listen<ResumenPropuesta>('asistente-resumen', (event: Event<ResumenPropuesta>) => cb(event.payload));
 
 export const keyringAvailable = () => invoke<boolean>('keyring_available');
+
+export interface EstimacionLectura {
+  limite: number; canales: number; peticiones: number; requiere_confirmacion: boolean;
+}
+export const prepararLecturaModeracion = (guildId: string, agente: string, modelo: string, limite: number, confirmar = false, noPreguntar = false) =>
+  invoke<EstimacionLectura>('preparar_lectura_moderacion', { guildId, agente, modelo, limite, confirmar, noPreguntar });

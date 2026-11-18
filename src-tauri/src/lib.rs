@@ -147,6 +147,7 @@ pub fn run() {
             propuesta::cancelar_asistente,
             asistente::listar_agentes_ia,
             asistente::enviar_al_asistente,
+            asistente::preparar_lectura_moderacion,
             asistente::construir_desde_plan,
             asistente::resumir_plan,
             asistente::comparar_plan,

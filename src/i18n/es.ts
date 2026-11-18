@@ -3,6 +3,14 @@
 export const NOMBRE_ES = 'Español';
 
 export const es: Record<string, string> = {
+  'Continue': 'Continuar',
+  'Reading more messages takes longer, uses more tokens, and exposes more messages to the model provider.': 'Leer más mensajes tarda más, gasta más tokens y permite que el proveedor del modelo vea más mensajes.',
+  'Confirm message history reading': 'Confirmar lectura del historial',
+  'Read up to {n} messages per channel in {m} channels: ~{x} requests to Discord. Continue?': 'Leer hasta {n} mensajes por canal en {m} canales: ~{x} peticiones a Discord. ¿Continuar?',
+  'Estimate for one history scan, using pages of 100 messages. Short histories need fewer requests; other tools and retries may add requests.': 'Estimación de una lectura del historial, en páginas de 100 mensajes. Los historiales cortos necesitan menos peticiones; otras herramientas y los reintentos pueden añadir peticiones.',
+  'Do not ask again in this server': 'No volver a preguntar en este servidor',
+  'Could not prepare the message history reading': 'No se pudo preparar la lectura del historial de mensajes',
+
   'The system keyring is unavailable. New tokens use the legacy machine-id key. Unlock or enable the keyring and restart ARGUS to migrate them. Previously migrated tokens require the original keyring.': 'El llavero del sistema no está disponible. Los nuevos tokens usan la clave antigua del machine-id. Desbloquea o habilita el llavero y reinicia ARGUS para migrarlos. Los tokens ya migrados necesitan el llavero original.',
 
   'The active bot has Administrator on this server.': 'El bot activo tiene Administrator en este servidor.',

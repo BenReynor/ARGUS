@@ -1619,6 +1619,7 @@ pub async fn enviar_al_asistente(
         // Guarda el id de sesión para reanudarla en el siguiente turno.
         if let Some(id) = &nueva_sesion {
             let mut c = previa.unwrap_or_else(|| crate::db::ConversacionAsistente {
+                lectura_confirmada: 0,
                 agente: agente.clone(),
                 modelo: modelo.clone(),
                 session_id: None,
@@ -1899,6 +1900,88 @@ pub async fn guardar_contexto_servidor(
     localizar_error(&state, r)
 }
 
+/// Estimación de las páginas de historial (100 mensajes por petición).
+/// No incluye otras herramientas del agente, permisos ni reintentos.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct EstimacionLectura {
+    pub limite: u32,
+    pub canales: usize,
+    pub peticiones: usize,
+    pub requiere_confirmacion: bool,
+}
+
+fn estimar_lectura(
+    limite: u32,
+    canales: usize,
+    confirmado: u32,
+    no_preguntar: bool,
+) -> EstimacionLectura {
+    let limite = limite.clamp(1, crate::mcp::BUSQUEDA_MAX as u32);
+    EstimacionLectura {
+        limite,
+        canales,
+        peticiones: (limite as usize).div_ceil(100) * canales,
+        requiere_confirmacion: limite >= 500 && confirmado < limite && !no_preguntar,
+    }
+}
+
+/// Prepara la lectura sin leer mensajes ni iniciar el modelo. Solo recuerda
+/// la aceptación cuando el usuario pulsa Continuar en el diálogo.
+#[tauri::command]
+pub async fn preparar_lectura_moderacion(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    guild_id: String,
+    agente: String,
+    modelo: String,
+    limite: u32,
+    confirmar: bool,
+    no_preguntar: bool,
+) -> Result<EstimacionLectura, String> {
+    let r = async {
+        let (bot, pool) = bot_y_pool(&app, &state).await?;
+        let canales = crate::commands::leer_canales(&state, &guild_id, None)
+            .await?
+            .iter()
+            .filter(|c| matches!(c.channel_type, 0 | 5))
+            .count();
+        let mut ajustes = crate::db::get_guild_settings(&pool, &bot, &guild_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let mut conversacion =
+            crate::db::leer_conversacion(&pool, &bot, &guild_id, "moderacion", Some(&agente))
+                .await
+                .map_err(|e| e.to_string())?
+                .unwrap_or_else(|| crate::db::ConversacionAsistente {
+                    agente,
+                    modelo,
+                    mensajes: serde_json::json!([]),
+                    ..Default::default()
+                });
+        let estimacion = estimar_lectura(
+            limite,
+            canales,
+            conversacion.lectura_confirmada,
+            ajustes.moderacion_no_preguntar,
+        );
+        if confirmar && estimacion.requiere_confirmacion {
+            conversacion.lectura_confirmada = estimacion.limite;
+            crate::db::guardar_conversacion(&pool, &bot, &guild_id, "moderacion", &conversacion)
+                .await
+                .map_err(|e| e.to_string())?;
+            if no_preguntar {
+                ajustes.moderacion_no_preguntar = true;
+                crate::db::save_guild_settings(&pool, &bot, &guild_id, &ajustes)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(estimacion)
+    }
+    .await;
+    localizar_error(&state, r)
+}
+
 /// Conversación guardada del servidor. Si `agente` es otro distinto del de la
 /// conversación, esta se descarta y devuelve `None`.
 #[tauri::command]
@@ -1940,6 +2023,7 @@ pub async fn guardar_conversacion(
                 .await
                 .map_err(|e| e.to_string())?;
         let c = crate::db::ConversacionAsistente {
+            lectura_confirmada: previa.as_ref().map_or(0, |p| p.lectura_confirmada),
             session_id: previa.and_then(|p| p.session_id),
             agente,
             modelo,
@@ -1977,6 +2061,33 @@ mod tests_orden {
     use super::*;
     use crate::mcp::{HERRAMIENTAS_ESCRITURA, HERRAMIENTAS_LECTURA};
     use serde_json::Value;
+
+    #[test]
+    fn estimacion_lectura_paginas_limites_y_confirmacion() {
+        for (limite, canales, peticiones) in [
+            (50, 3, 3),
+            (100, 3, 3),
+            (101, 3, 6),
+            (200, 3, 6),
+            (500, 3, 15),
+            (1000, 3, 30),
+            (5000, 3, 150),
+            (5000, 0, 0),
+            (10000, 2, 100),
+        ] {
+            let e = estimar_lectura(limite, canales, 0, false);
+            assert_eq!(e.peticiones, peticiones);
+            assert_eq!(e.limite, limite.min(5000));
+            assert_eq!(e.requiere_confirmacion, limite >= 500);
+        }
+        assert!(!estimar_lectura(500, 4, 500, false).requiere_confirmacion);
+        assert!(!estimar_lectura(500, 4, 1000, false).requiere_confirmacion);
+        assert!(estimar_lectura(1000, 4, 500, false).requiere_confirmacion);
+        for limite in [500, 1000, 5000] {
+            assert!(!estimar_lectura(limite, 4, 0, true).requiere_confirmacion);
+            assert!(estimar_lectura(limite, 4, 0, false).requiere_confirmacion);
+        }
+    }
 
     fn orden(agente: &str, sesion: Option<&str>) -> OrdenAgente {
         orden_agente(

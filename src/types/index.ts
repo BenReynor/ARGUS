@@ -113,6 +113,7 @@ export interface BotRegistrado extends BotConfig {
 
 /** Ajustes propios de un servidor (sincronizado con `GuildSettings` de db.rs). */
 export interface GuildSettings {
+  moderacion_no_preguntar: boolean;
   alias: string | null;
   notes: string;
   vigilance_enabled: boolean;
@@ -272,5 +273,5 @@ export type EventoAsistente =
   | { tipo: 'error'; mensaje: string }
   | { tipo: 'fin'; sesion: string | null; cancelado: boolean };
 export interface ConversacionAsistente {
-  agente: string; modelo: string; session_id: string | null; mensajes: unknown;
+  agente: string; modelo: string; session_id: string | null; mensajes: unknown; lectura_confirmada: number;
 }

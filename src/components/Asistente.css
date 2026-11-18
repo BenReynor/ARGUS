@@ -79,3 +79,6 @@
 .asistente__avisos small { color: var(--text-3); }
 .asistente__limite { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-2); }
 .asistente__limite input { width: 5em; }
+
+.asistente__aviso--lectura { border-color: var(--warning); margin: var(--sp-2) var(--sp-3); font-size: var(--fs-sm); }
+.asistente__aviso--lectura svg { flex-shrink: 0; }

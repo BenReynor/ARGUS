@@ -2,15 +2,15 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { BookOpen, Check, CircleDashed, FilePlus, Download, Hammer, Loader2, Square, TriangleAlert, Undo2, Upload, X } from 'lucide-react';
-import { useActiveGuildId, useShowNotification } from '../store/useStore';
+import { useActiveGuildId, useShowNotification, useStore } from '../store/useStore';
 import {
-  listarAgentesIa, enviarAlAsistente, leerPlanServidor, guardarPlanServidor, leerConversacion,
+  prepararLecturaModeracion, type EstimacionLectura, listarAgentesIa, enviarAlAsistente, leerPlanServidor, guardarPlanServidor, leerConversacion,
   guardarConversacion, nuevaConversacion, aplicarPropuesta, listarAvisosRecientes, listMembers,
   type TipoAsistente, cancelarAsistente, resumirPlan, construirDesdePlan, compararPlan, onAsistentePlan,
   onAsistenteEvento, onAsistentePropuesta, onAsistenteAccion, onAsistenteResumen,
 } from '../api/tauri';
 import type { AccionPropuesta, AgenteIa, AvanceAccion, AvisoReciente, Member, CambiosPlan, EstadoAccion, EventoPropuesta, ResultadoConstruccion, ResumenPlan, ResumenPropuesta } from '../types';
-import { Badge, Button, Cargando, EstadoVacio, ErrorPanel, Input, Select } from './ui';
+import { Badge, Button, Cargando, Dialogo, EstadoVacio, ErrorPanel, Input, Select } from './ui';
 import { t } from '../i18n';
 import { RespuestasDiscord } from './RespuestasDiscord';
 import { ContextoPersonalidad } from './ContextoPersonalidad';
@@ -89,6 +89,10 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
   const [miembros, setMiembros] = useState<Member[]>([]);
   const [avisos, setAvisos] = useState<AvisoReciente[]>([]);
   const [limite, setLimite] = useState(LIMITE_POR_DEFECTO);
+  const [confirmacionLectura, setConfirmacionLectura] = useState<EstimacionLectura | null>(null);
+  const [noPreguntar, setNoPreguntar] = useState(false);
+  const [preparandoLectura, setPreparandoLectura] = useState(false);
+  const preparandoRef = useRef(false);
 
   const cargarAvisos = useCallback(async (id: string) => {
     try { setAvisos(await listarAvisosRecientes(id)); } catch { setAvisos([]); }
@@ -144,8 +148,8 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
   const finMensajes = useRef<HTMLDivElement>(null);
 
   // Referencias al último valor para los manejadores de eventos y los guardados diferidos.
-  const refs = useRef({ guildId, plan, mensajes, agente, modelo });
-  refs.current = { guildId, plan, mensajes, agente, modelo };
+  const refs = useRef({ guildId, plan, mensajes, agente, modelo, limite });
+  refs.current = { guildId, plan, mensajes, agente, modelo, limite };
   const planCargado = useRef<{ guildId: string; contenido: string } | null>(null);
   const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -274,9 +278,37 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
 
   useEffect(() => { finMensajes.current?.scrollIntoView({ block: 'end' }); }, [mensajes, propuesta, avances]);
 
-  const enviar = async () => {
+  useEffect(() => {
+    setConfirmacionLectura(null);
+    setNoPreguntar(false);
+  }, [guildId, agente, limite]);
+
+  const enviar = async (confirmarLectura = false) => {
     const contenido = texto.trim();
-    if (!guildId || !contenido || enviando || !agente || !modelo) return;
+    if (!guildId || !contenido || enviando || aplicando || cargandoServidor || !agente || !modelo || preparandoRef.current) return;
+    if (confirmacionLectura && !confirmarLectura) return;
+    if (moderacion && limite >= 500) {
+      preparandoRef.current = true;
+      setPreparandoLectura(true);
+      try {
+        const estimacion = await prepararLecturaModeracion(guildId, agente, modelo, limite, confirmarLectura, noPreguntar);
+        if (refs.current.guildId !== guildId || refs.current.agente !== agente || refs.current.limite !== limite) return;
+        if (estimacion.requiere_confirmacion && !confirmarLectura) {
+          setNoPreguntar(false);
+          setConfirmacionLectura(estimacion);
+          return;
+        }
+        if (confirmarLectura && noPreguntar) await useStore.getState().loadGuildSettings(guildId);
+        if (refs.current.guildId !== guildId || refs.current.agente !== agente || refs.current.limite !== limite) return;
+        setConfirmacionLectura(null);
+      } catch (e) {
+        showNotification(mensajeError(e, t('Could not prepare the message history reading')), 'error');
+        return;
+      } finally {
+        preparandoRef.current = false;
+        setPreparandoLectura(false);
+      }
+    }
     setTexto('');
     setSinSesion(false);
     setCambios(null);
@@ -633,6 +665,27 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
             <Button variante="ghost" tamano="sm" disabled={enviando || aplicando || !hayMensajes} onClick={() => { void reiniciar(guildId); }}>{t('New conversation')}</Button>
           </header>
 
+          {moderacion && limite >= 500 && (
+            <p className="asistente__aviso asistente__aviso--lectura" role="status">
+              <TriangleAlert size={18} aria-hidden="true" />
+              {t('Reading more messages takes longer, uses more tokens, and exposes more messages to the model provider.')}
+            </p>
+          )}
+          <Dialogo
+            abierto={confirmacionLectura !== null}
+            titulo={t('Confirm message history reading')}
+            descripcion={confirmacionLectura ? t('Read up to {n} messages per channel in {m} channels: ~{x} requests to Discord. Continue?', {
+              n: confirmacionLectura.limite, m: confirmacionLectura.canales, x: confirmacionLectura.peticiones,
+            }) : undefined}
+            onCerrar={() => { if (!preparandoLectura) setConfirmacionLectura(null); }}
+            pie={<>
+              <Button variante="secundario" disabled={preparandoLectura} onClick={() => setConfirmacionLectura(null)}>{t('Cancel')}</Button>
+              <Button disabled={preparandoLectura} onClick={() => { void enviar(true); }}>{t('Continue')}</Button>
+            </>}
+          >
+            <p>{t('Estimate for one history scan, using pages of 100 messages. Short histories need fewer requests; other tools and retries may add requests.')}</p>
+            <label><input type="checkbox" checked={noPreguntar} disabled={preparandoLectura} onChange={(e) => setNoPreguntar(e.target.checked)} /> {t('Do not ask again in this server')}</label>
+          </Dialogo>
           <div className="asistente__mensajes" aria-live="polite">
             {!hayMensajes && (
               <EstadoVacio
@@ -808,7 +861,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
             {enviando ? (
               <Button variante="peligro" onClick={detener}><Square size={14} /> {t('Stop')}</Button>
             ) : (
-              <Button type="submit" disabled={!texto.trim() || !modelo || aplicando}>{t('Send')}</Button>
+              <Button type="submit" disabled={!texto.trim() || !modelo || aplicando || preparandoLectura || cargandoServidor}>{t('Send')}</Button>
             )}
           </form>
         </section>

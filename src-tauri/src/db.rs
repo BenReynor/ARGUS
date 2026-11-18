@@ -718,6 +718,9 @@ impl Default for PermisosOrdenes {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct GuildSettings {
+    /// Omite la confirmación de lecturas grandes de Moderación en este servidor.
+    #[serde(default)]
+    pub moderacion_no_preguntar: bool,
     pub alias: Option<String>,
     pub notes: String,
     pub vigilance_enabled: bool,
@@ -800,6 +803,7 @@ fn chat_contexto_defecto() -> u32 {
 impl Default for GuildSettings {
     fn default() -> Self {
         Self {
+            moderacion_no_preguntar: false,
             alias: None,
             notes: String::new(),
             vigilance_enabled: false,
@@ -878,6 +882,8 @@ pub async fn save_guild_settings(
 // Plan del servidor y conversación del asistente IA (por bot y servidor)
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ConversacionAsistente {
+    #[serde(default)]
+    pub lectura_confirmada: u32,
     pub agente: String,
     pub modelo: String,
     pub session_id: Option<String>,
@@ -951,7 +957,7 @@ pub async fn leer_conversacion(
     agente: Option<&str>,
 ) -> Result<Option<ConversacionAsistente>> {
     let row = sqlx::query(
-        "SELECT agente, modelo, session_id, mensajes FROM conversacion_asistente
+        "SELECT agente, modelo, session_id, mensajes, lectura_confirmada FROM conversacion_asistente
          WHERE bot_id = ? AND guild_id = ? AND tipo = ?",
     )
     .bind(bot_id)
@@ -967,6 +973,7 @@ pub async fn leer_conversacion(
     }
     let mensajes: String = r.get("mensajes");
     Ok(Some(ConversacionAsistente {
+        lectura_confirmada: r.get("lectura_confirmada"),
         agente: guardado,
         modelo: r.get("modelo"),
         session_id: r.get("session_id"),
@@ -983,11 +990,12 @@ pub async fn guardar_conversacion(
 ) -> Result<()> {
     sqlx::query(
         "INSERT INTO conversacion_asistente
-            (bot_id, guild_id, tipo, agente, modelo, session_id, mensajes, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (bot_id, guild_id, tipo, agente, modelo, session_id, mensajes, updated_at, lectura_confirmada)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(bot_id, guild_id, tipo) DO UPDATE SET agente = excluded.agente,
             modelo = excluded.modelo, session_id = excluded.session_id,
-            mensajes = excluded.mensajes, updated_at = excluded.updated_at",
+            mensajes = excluded.mensajes, updated_at = excluded.updated_at,
+            lectura_confirmada = excluded.lectura_confirmada",
     )
     .bind(bot_id)
     .bind(guild_id)
@@ -997,6 +1005,7 @@ pub async fn guardar_conversacion(
     .bind(&c.session_id)
     .bind(serde_json::to_string(&c.mensajes)?)
     .bind(chrono::Utc::now().to_rfc3339())
+    .bind(c.lectura_confirmada)
     .execute(pool)
     .await?;
     Ok(())
@@ -1149,6 +1158,7 @@ mod asistente_datos_tests {
 
     fn conv(agente: &str, sesion: Option<&str>) -> ConversacionAsistente {
         ConversacionAsistente {
+            lectura_confirmada: 0,
             agente: agente.into(),
             modelo: "m1".into(),
             session_id: sesion.map(String::from),
@@ -1306,6 +1316,78 @@ mod asistente_datos_tests {
 mod guild_settings_tests {
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
+
+    #[tokio::test]
+    async fn moderacion_no_preguntar_se_recuerda_al_reabrir_y_aisla_servidores() {
+        let (pool, ruta) = pool_temporal("moderacion_confirmacion").await;
+        let antiguo: GuildSettings = serde_json::from_str(r#"{"notes":"anterior"}"#).unwrap();
+        assert!(!antiguo.moderacion_no_preguntar);
+        let mut ajustes = get_guild_settings(&pool, "b1", "g1").await.unwrap();
+        assert!(!ajustes.moderacion_no_preguntar);
+        ajustes.moderacion_no_preguntar = true;
+        ajustes.notes = "conservar ajustes".into();
+        save_guild_settings(&pool, "b1", "g1", &ajustes)
+            .await
+            .unwrap();
+        let conversacion = ConversacionAsistente {
+            agente: "codex".into(),
+            lectura_confirmada: 1000,
+            mensajes: serde_json::json!([]),
+            ..Default::default()
+        };
+        guardar_conversacion(&pool, "b1", "g1", "moderacion", &conversacion)
+            .await
+            .unwrap();
+        pool.close().await;
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect(&format!("sqlite://{}", ruta.display()))
+            .await
+            .unwrap();
+        let guardado = get_guild_settings(&pool, "b1", "g1").await.unwrap();
+        assert!(guardado.moderacion_no_preguntar);
+        assert_eq!(guardado.notes, "conservar ajustes");
+        assert!(
+            !get_guild_settings(&pool, "b1", "g2")
+                .await
+                .unwrap()
+                .moderacion_no_preguntar
+        );
+        assert!(
+            !get_guild_settings(&pool, "b2", "g1")
+                .await
+                .unwrap()
+                .moderacion_no_preguntar
+        );
+        assert_eq!(
+            leer_conversacion(&pool, "b1", "g1", "moderacion", Some("codex"))
+                .await
+                .unwrap()
+                .unwrap()
+                .lectura_confirmada,
+            1000
+        );
+        assert!(leer_conversacion(&pool, "b1", "g1", "construccion", None)
+            .await
+            .unwrap()
+            .is_none());
+        borrar_conversacion(&pool, "b1", "g1", "moderacion")
+            .await
+            .unwrap();
+        assert!(leer_conversacion(&pool, "b1", "g1", "moderacion", None)
+            .await
+            .unwrap()
+            .is_none());
+        // Reiniciar la conversación no revoca la preferencia del servidor.
+        assert!(
+            get_guild_settings(&pool, "b1", "g1")
+                .await
+                .unwrap()
+                .moderacion_no_preguntar
+        );
+        pool.close().await;
+        let _ = std::fs::remove_file(ruta);
+    }
 
     async fn pool_temporal(nombre: &str) -> (SqlitePool, std::path::PathBuf) {
         let ruta =
