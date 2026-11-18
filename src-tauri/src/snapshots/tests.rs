@@ -516,3 +516,212 @@ async fn guild_and_roles_without_images_do_not_request_cdn_assets() {
         );
     }
 }
+
+// Contrato Compare: snapshot → REST actual, agrupado por identidad y sin escrituras.
+#[tokio::test]
+async fn compare_deleted_channels_changed_permissions_and_renamed_role() {
+    let server = fixture().await;
+    let saved = snapshot(&server).await;
+    let pool = database().await;
+    let id = store(&pool, "bot-a", "555", &saved, false).await.unwrap();
+    server.reset().await;
+    let mut roles = saved.roles.clone();
+    roles[1]["name"] = json!("Renamed role");
+    roles[1]["permissions"] = json!("16");
+    let mut channels = saved.channels.clone();
+    channels.remove(2); // Un canal borrado debe faltar, no aparecer como extra.
+    channels[0]["permission_overwrites"][0]["deny"] = json!("0");
+    channels.push(json!({"id":"44","name":"New channel","type":0,"permission_overwrites":[]}));
+    for (suffix, body) in [
+        ("roles", json!(roles)),
+        ("channels", json!(channels)),
+        (
+            "members",
+            json!([{"user":{"id":"9","username":"Fixture user"},"roles":[]}]),
+        ),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(format!("/api/v10/guilds/555/{suffix}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+    }
+    let result = compare::compare_saved(
+        &pool,
+        "bot-a",
+        "555",
+        &id,
+        "fake-token",
+        Some(&server.address().to_string()),
+    )
+    .await
+    .unwrap();
+    let result = serde_json::to_value(result).unwrap();
+    assert_eq!(result["counts"], json!({"missing":1,"changed":4,"extra":1}));
+    let groups = result["groups"].as_array().unwrap();
+    let channels = &groups[0];
+    assert_eq!(channels["kind"], "channels");
+    assert_eq!(
+        channels["counts"],
+        json!({"missing":1,"changed":0,"extra":1})
+    );
+    assert_eq!(channels["entries"][0]["id"], "12");
+    assert_eq!(channels["entries"][0]["status"], "missing");
+    assert!(channels["entries"][0]["lineas"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|l| l["tipo"] == "removed"));
+    assert!(channels["entries"][1]["lineas"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|l| l["tipo"] == "added"));
+    let role = &groups[1]["entries"][0];
+    assert_eq!(role["id"], "7");
+    assert_eq!(role["status"], "changed");
+    let lines = role["lineas"].as_array().unwrap();
+    assert!(lines
+        .iter()
+        .any(|l| l["tipo"] == "removed" && l["texto"].as_str().unwrap().contains("Fixture role")));
+    assert!(lines
+        .iter()
+        .any(|l| l["tipo"] == "added" && l["texto"].as_str().unwrap().contains("Renamed role")));
+    assert_eq!(groups[2]["counts"]["changed"], 2);
+    assert_eq!(groups[3]["entries"][0]["id"], "9");
+    assert_eq!(groups[3]["entries"][0]["status"], "changed");
+    assert_eq!(
+        listing(&pool, "bot-a", "555").await.unwrap()["snapshots"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        serde_json::to_value(load(&pool, "bot-a", "555", &id).await.unwrap()).unwrap(),
+        serde_json::to_value(saved).unwrap()
+    );
+    assert!(compare::compare_saved(
+        &pool,
+        "other-bot",
+        "555",
+        &id,
+        "fake-token",
+        Some(&server.address().to_string())
+    )
+    .await
+    .is_err());
+    assert!(server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .all(|r| r.method.as_str() == "GET"));
+}
+
+#[tokio::test]
+async fn compare_ignores_order_display_names_and_embedded_assets() {
+    let server = fixture().await;
+    let saved = snapshot(&server).await;
+    let pool = database().await;
+    let id = store(&pool, "bot-a", "555", &saved, false).await.unwrap();
+    let mut roles = saved.roles.clone();
+    roles.reverse();
+    for r in &mut roles {
+        r.as_object_mut().unwrap().remove("icon_image");
+    }
+    let mut channels = saved.channels.clone();
+    channels.reverse();
+    for c in &mut channels {
+        c["last_message_id"] = json!("888");
+        let overwrites = c["permission_overwrites"].as_array_mut().unwrap();
+        overwrites.reverse();
+        for o in overwrites {
+            o.as_object_mut().unwrap().remove("name");
+        }
+    }
+    for (suffix, body) in [("roles", json!(roles)), ("channels", json!(channels))] {
+        Mock::given(method("GET"))
+            .and(path(format!("/api/v10/guilds/555/{suffix}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+    }
+    // La captura añade nombres auxiliares e imágenes que no vienen en REST.
+    let result = compare::compare_saved(
+        &pool,
+        "bot-a",
+        "555",
+        &id,
+        "fake-token",
+        Some(&server.address().to_string()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(result).unwrap()["counts"],
+        json!({"missing":0,"changed":0,"extra":0})
+    );
+}
+
+#[tokio::test]
+async fn compare_member_roles_paginates_and_surfaces_read_failures() {
+    let server = fixture().await;
+    let saved = snapshot(&server).await;
+    let pool = database().await;
+    let id = store(&pool, "bot-a", "555", &saved, false).await.unwrap();
+    let page: Vec<Value> = (1..=1000)
+        .map(|i| json!({"user":{"id":i.to_string(),"username":"Fixture"},"roles":[]}))
+        .collect();
+    Mock::given(method("GET"))
+        .and(path("/api/v10/guilds/555/members"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(page))
+        .with_priority(2)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v10/guilds/555/members"))
+        .and(query_param("after", "1000"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(
+                json!([{"user":{"id":"1001","username":"Last member"},"roles":["7"]}]),
+            ),
+        )
+        .with_priority(1)
+        .expect(1)
+        .mount(&server)
+        .await;
+    let result = compare::compare_saved(
+        &pool,
+        "bot-a",
+        "555",
+        &id,
+        "fake-token",
+        Some(&server.address().to_string()),
+    )
+    .await
+    .unwrap();
+    let result = serde_json::to_value(result).unwrap();
+    assert_eq!(
+        result["groups"][3]["counts"],
+        json!({"missing":0,"changed":1,"extra":1000})
+    );
+    Mock::given(method("GET"))
+        .and(path("/api/v10/guilds/555/roles"))
+        .respond_with(ResponseTemplate::new(403))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    assert!(compare::compare_saved(
+        &pool,
+        "bot-a",
+        "555",
+        &id,
+        "fake-token",
+        Some(&server.address().to_string())
+    )
+    .await
+    .is_err());
+}

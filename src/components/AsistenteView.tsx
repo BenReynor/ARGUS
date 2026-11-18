@@ -17,6 +17,7 @@ import { t } from '../i18n';
 import { RespuestasDiscord } from './RespuestasDiscord';
 import { ContextoPersonalidad } from './ContextoPersonalidad';
 import './Asistente.css';
+import { DiffView } from './DiffView';
 
 type Modo = 'read' | 'plan' | 'execute';
 interface Herramienta { id: string; nombre: string; ok: boolean | null }
@@ -763,13 +764,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
                 {cambios.vista.anadidas + cambios.vista.quitadas === 0 ? (
                   <p>{t('The proposed plan is identical to the editor.')}</p>
                 ) : (
-                  <div className="asistente__diff" role="group" aria-label={t('Plan changes')}>
-                    {cambios.vista.lineas.map((l, i) => (
-                      <div key={i} className={l.tipo === 'added' ? 'anadida' : l.tipo === 'removed' ? 'quitada' : ''}>
-                        {l.tipo === 'added' ? '+ ' : l.tipo === 'removed' ? '− ' : '  '}{l.texto}
-                      </div>
-                    ))}
-                  </div>
+                  <DiffView lineas={cambios.vista.lineas} label={t('Plan changes')} />
                 )}
                 {cambios.vista.avisos.length > 0 && (
                   <div className="asistente__aviso" role="note">

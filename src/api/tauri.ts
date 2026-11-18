@@ -227,14 +227,24 @@ export interface ServerSnapshotItem {
   summary: { channels: number; roles: number; members: number; emojis: number; stickers: number; webhooks: number; bans: number };
   automatic: boolean;
 }
+export interface SnapshotCounts { missing: number; changed: number; extra: number }
+export interface SnapshotComparison {
+  counts: SnapshotCounts;
+  groups: {
+    kind: 'channels' | 'roles' | 'permissions' | 'member_roles';
+    counts: SnapshotCounts;
+    entries: { id: string; label: string; status: 'missing' | 'changed' | 'extra'; lineas: import('../types').LineaDiff[] }[];
+  }[];
+}
 export interface ServerSnapshotListing {
+  comparison?: SnapshotComparison;
   snapshots: ServerSnapshotItem[];
   schedule: { enabled: boolean; keep_last: number; last_error: string | null };
 }
 export type ServerSnapshotRequest =
   | { op: 'list' | 'create' }
   | { op: 'rename'; id: string; name: string }
-  | { op: 'delete'; id: string }
+  | { op: 'delete' | 'compare'; id: string }
   | { op: 'export'; id: string; path: string }
   | { op: 'import'; path: string }
   | { op: 'schedule'; enabled: boolean; keep_last: number };

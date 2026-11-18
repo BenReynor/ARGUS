@@ -3,6 +3,15 @@
 export const NOMBRE_ES = 'Español';
 
 export const es: Record<string, string> = {
+  "Compare": "Comparar",
+  "Snapshot comparison: {name}": "Comparación del snapshot: {name}",
+  "Snapshot → current server. Removed lines belong to the snapshot; added lines belong to the current server.": "Snapshot → servidor actual. Las líneas eliminadas pertenecen al snapshot; las añadidas, al servidor actual.",
+  "Missing: {missing} · Changed: {changed} · Extra: {extra}": "Faltan: {missing} · Cambiaron: {changed} · Sobran: {extra}",
+  "No differences in channels, roles, permissions or member roles.": "Sin diferencias en canales, roles, permisos ni roles de miembros.",
+  "Missing from current server": "Falta en el servidor actual",
+  "Changed since snapshot": "Cambió desde el snapshot",
+  "Extra in current server": "Sobra en el servidor actual",
+
   "Backups": "Copias de seguridad",
   "Create snapshot": "Crear snapshot",
   "Choose a server to manage its snapshots.": "Elige un servidor para gestionar sus snapshots.",

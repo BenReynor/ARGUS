@@ -9,6 +9,8 @@ use sqlx::{Row, SqliteConnection, SqlitePool};
 use tauri::{AppHandle, Emitter, Manager, State};
 use twilight_http::routing::Route;
 
+mod compare;
+
 const MAX_FILE: usize = 128 * 1024 * 1024;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -411,6 +413,7 @@ async fn listing(pool: &SqlitePool, bot: &str, guild: &str) -> Result<Value> {
 pub enum SnapshotRequest {
     List,
     Create,
+    Compare { id: String },
     Rename { id: String, name: String },
     Delete { id: String },
     Export { id: String, path: String },
@@ -425,6 +428,18 @@ async fn manage(
 ) -> Result<Value> {
     match request {
         SnapshotRequest::List => {}
+        SnapshotRequest::Compare { id } => {
+            let config = db::list_bots(pool)
+                .await?
+                .into_iter()
+                .find(|b| b.id == bot)
+                .context("No bot selected")?;
+            let token = crypto::decrypt(&config.token_ciphertext)?;
+            let comparison = compare::compare_saved(pool, bot, guild, &id, &token, None).await?;
+            let mut result = listing(pool, bot, guild).await?;
+            result["comparison"] = serde_json::to_value(comparison)?;
+            return Ok(result);
+        }
         SnapshotRequest::Create => {
             let bot_config = db::list_bots(pool)
                 .await?
