@@ -474,7 +474,7 @@ ARGUS ya exige estar en la lista de órdenes, el «sí» del autor y un agente c
 - [x] Aviso de permisos del bot
   criterio: si el bot activo tiene Administrator en el servidor, la sección Discord replies (con órdenes activadas) y Server muestran un aviso no bloqueante explicando que con menos permisos el daño posible es menor y qué permisos bastan para lo que usa ARGUS; tests del cálculo (con y sin Administrator)
 
-- [ ] Clave de cifrado en el llavero del sistema
+- [x] Clave de cifrado en el llavero del sistema
   criterio: la clave maestra es aleatoria (32 bytes) y se guarda en el llavero del sistema (crate `keyring`: Secret Service en Linux, Credential Manager en Windows); al arrancar, si los tokens están cifrados con la clave antigua derivada del machine-id, se descifran y se vuelven a cifrar con la nueva (migración única, sin perder bots); si no hay llavero disponible se sigue con la clave antigua y se muestra un aviso en Settings; `argus-mcp` usa la misma clave; tests con un llavero falso inyectado (migración, sin llavero, clave ya existente) y sin tocar el llavero real; docs (README «Privacy and security» en los dos idiomas) actualizados
 
 - [ ] Documentación de seguridad
