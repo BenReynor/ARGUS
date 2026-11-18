@@ -492,7 +492,7 @@ Hoy se puede pedir algo muy caro (leer todo el historial, cientos de descripcion
 - [x] Aviso al elegir muchos mensajes en Moderación
   criterio: al elegir 500, 1000 o «All» en «Messages to read per channel» aparece una advertencia en línea (no bloqueante) con lo que implica: tarda más, gasta más tokens y el proveedor del modelo ve más mensajes; al enviar el primer mensaje con ese límite se pide confirmación una vez por conversación («Leer hasta N mensajes por canal en M canales: ~X peticiones a Discord. ¿Continuar?»), con «No volver a preguntar en este servidor» persistido; tests del cálculo de la estimación y de que «no volver a preguntar» se recuerda
 
-- [ ] Parar mientras se aplica una propuesta
+- [x] Parar mientras se aplica una propuesta
   criterio: durante Apply (en Build, Moderation y Build from plan) hay un botón **Stop** con la barra de progreso «N de M»; al pulsarlo se termina la acción en curso (nunca se corta a medias una petición) y no se lanzan las siguientes; el resultado dice qué se hizo, qué falló y qué quedó sin hacer (`canceladas`), y ese resumen queda en Logs; la propuesta sigue visible para volver a aplicarla (las acciones ya hechas se marcan para no repetirlas); tests: cancelar a mitad deja exactamente las acciones previas hechas y el resto como no intentadas
 
 - [ ] Parar desde Discord
