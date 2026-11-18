@@ -237,17 +237,6 @@ impl Coordinador {
             .expect("el semáforo nunca se cierra");
         (guardia, permiso)
     }
-
-    fn ultima(&self, guild: u64, usuario: u64) -> Option<u64> {
-        self.ultimas.lock().unwrap().get(&(guild, usuario)).copied()
-    }
-
-    fn anotar(&self, guild: u64, usuario: u64, ahora_s: u64) {
-        self.ultimas
-            .lock()
-            .unwrap()
-            .insert((guild, usuario), ahora_s);
-    }
 }
 
 fn ahora_s() -> u64 {
@@ -321,6 +310,7 @@ pub async fn descargar_archivo(url: &str, max: usize) -> Result<Vec<u8>, String>
 /// Un mensaje de servidor ya traducido a lo que necesita el conversador.
 #[derive(Debug, Clone, Default)]
 pub struct Entrada {
+    pub cupo: Option<Arc<CupoRespuesta>>,
     pub adjuntos: Vec<Adjunto>,
     pub msg: MensajeEntrante,
     pub mensaje_id: u64,
@@ -329,6 +319,13 @@ pub struct Entrada {
     pub autor_nombre: String,
     pub servidor: String,
     pub canal: String,
+}
+
+#[derive(Debug)]
+pub struct CupoRespuesta {
+    dia: Mutex<String>,
+    max: u32,
+    reservada: AtomicBool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -373,6 +370,7 @@ pub struct ContextoOrdenes {
 /// Todo lo necesario para responder con un bot concreto.
 #[derive(Clone)]
 pub struct Conversador {
+    pub pool: Option<sqlx::SqlitePool>,
     pub token: String,
     pub base_url: Option<String>,
     pub bot_id: u64,
@@ -511,7 +509,7 @@ impl Conversador {
     }
 
     /// Decide, encola y responde. No devuelve error: lo que falle queda en Logs.
-    pub async fn atender(&self, e: Entrada, ajustes: &GuildSettings) -> Resultado {
+    pub async fn atender(&self, mut e: Entrada, ajustes: &GuildSettings) -> Resultado {
         // Las paradas no esperan la cola, el cooldown ni una mención al bot.
         if !e.msg.autor_es_bot && confirmacion_de(&e.texto) == Some(Confirmacion::Descartar) {
             let activas = self.coord.activas.lock().unwrap();
@@ -529,17 +527,57 @@ impl Conversador {
                 return Resultado::Ignorado;
             }
         }
+        let clave = (e.guild_id, e.msg.canal_id, e.msg.autor_id);
+        let confirma = !e.msg.autor_es_bot
+            && confirmacion_de(&e.texto).is_some()
+            && self.coord.pendientes.lock().unwrap().contains_key(&clave);
+        let elegible = {
+            // Comprobar y anotar juntos antes de esperar SQLite: otra mención del
+            // mismo usuario no puede consumir cupo ni entrar en la cola durante la reserva.
+            let mut ultimas = self.coord.ultimas.lock().unwrap();
+            let ahora = ahora_s();
+            let usuario = (e.guild_id, e.msg.autor_id);
+            let elegible = debe_responder(
+                &e.msg,
+                self.bot_id,
+                ajustes,
+                ultimas.get(&usuario).copied(),
+                ahora,
+            );
+            if elegible && !confirma {
+                ultimas.insert(usuario, ahora);
+            }
+            elegible
+        };
+        if confirma || elegible {
+            e.cupo = Some(Arc::new(CupoRespuesta {
+                dia: Mutex::new(crate::db::dia_chat()),
+                max: ajustes.chat_max_diario,
+                reservada: AtomicBool::new(false),
+            }));
+            match self.reservar(&e).await {
+                Ok(true) => e
+                    .cupo
+                    .as_ref()
+                    .unwrap()
+                    .reservada
+                    .store(true, Ordering::SeqCst),
+                Ok(false) => {
+                    self.aviso_tope(&e).await;
+                    return Resultado::Ignorado;
+                }
+                Err(error) => {
+                    self.log(format!("[WARN] {error}"));
+                    return Resultado::Error(error);
+                }
+            }
+        }
         if let Some(r) = self.confirmacion(&e, ajustes).await {
             return r;
         }
-        let ahora = ahora_s();
-        let ultima = self.coord.ultima(e.guild_id, e.msg.autor_id);
-        if !debe_responder(&e.msg, self.bot_id, ajustes, ultima, ahora) {
+        if !elegible {
             return Resultado::Ignorado;
         }
-        // Se anota al aceptar el mensaje para que una ráfaga no llene la cola.
-        self.coord.anotar(e.guild_id, e.msg.autor_id, ahora);
-
         // Un archivo .md/.txt adjunto es un plan para construir, sin pasar por el chat.
         if let Some(adjunto) = e.adjuntos.iter().find(|a| es_archivo_de_plan(&a.nombre)) {
             self.desde_archivo(&e, ajustes, adjunto).await;
@@ -548,7 +586,10 @@ impl Conversador {
 
         let turno = self.coord.turno(e.msg.canal_id).await;
         let inicio = Instant::now();
-        let resultado = self.responder(&e, ajustes).await;
+        let resultado = match self.asegurar_cupo(&e).await {
+            Ok(()) => self.responder(&e, ajustes).await,
+            Err(error) => Err(error),
+        };
         let ms = inicio.elapsed().as_millis();
         // El constructor puede tardar minutos: no retiene la cola del canal.
         drop(turno);
@@ -566,6 +607,7 @@ impl Conversador {
                 e.servidor, e.canal, e.autor_nombre, motivo
             )),
         }
+        self.aviso_tope(&e).await;
         match resultado {
             Ok(orden) => {
                 if let Some((tipo, orden)) = orden {
@@ -667,6 +709,10 @@ impl Conversador {
         idioma: &str,
         parada: &Parada,
     ) {
+        if let Err(error) = self.asegurar_cupo(e).await {
+            self.log(format!("[WARN] {error}"));
+            return;
+        }
         let propuesta = con_servidor(&propuesta, &e.guild_id.to_string());
         let total = propuesta.acciones.len();
         self.log(format!(
@@ -1025,6 +1071,7 @@ impl Conversador {
         {
             return Err("Description generation cancelled; no AI calls made".into());
         }
+        self.asegurar_cupo(e).await?;
         if !comp.pendientes.is_empty() {
             let agente = ajustes.ordenes_agente.as_str();
             match (self.buscar_agente)(agente) {
@@ -1127,6 +1174,7 @@ impl Conversador {
         idioma: &str,
         parada: &Parada,
     ) -> Result<Construido, String> {
+        self.asegurar_cupo(e).await?;
         use crate::asistente::{
             comprobar_acciones_moderacion, orden_agente, prompt_asistente_tipo,
             propuesta_de_respuesta, texto_del_constructor_cancelable, ModoAsistente, TipoAsistente,
@@ -1245,9 +1293,92 @@ impl Conversador {
         }
     }
 
+    /// Cada etapa que puede gastar necesita una respuesta reservada para su resultado.
+    async fn asegurar_cupo(&self, e: &Entrada) -> Result<(), String> {
+        let Some(cupo) = &e.cupo else {
+            return Ok(());
+        };
+        if cupo.reservada.load(Ordering::SeqCst)
+            && *cupo.dia.lock().unwrap() == crate::db::dia_chat()
+        {
+            return Ok(());
+        }
+        if self.reservar(e).await? {
+            *cupo.dia.lock().unwrap() = crate::db::dia_chat();
+            cupo.reservada.store(true, Ordering::SeqCst);
+            Ok(())
+        } else {
+            self.aviso_tope(e).await;
+            Err("Daily reply limit reached".into())
+        }
+    }
+
+    async fn reservar(&self, e: &Entrada) -> Result<bool, String> {
+        let cupo = e.cupo.as_ref().ok_or("Daily reply budget unavailable")?;
+        let pool = self.pool.as_ref().ok_or("Daily reply budget unavailable")?;
+        crate::db::reservar_respuesta(
+            pool,
+            &self.bot_id.to_string(),
+            &e.guild_id.to_string(),
+            &crate::db::dia_chat(),
+            cupo.max,
+        )
+        .await
+        .map_err(|_| "Daily reply budget unavailable".into())
+    }
+
+    async fn aviso_tope(&self, e: &Entrada) {
+        let (Some(pool), Some(cupo)) = (&self.pool, &e.cupo) else {
+            return;
+        };
+        if !crate::db::tomar_aviso_diario(
+            pool,
+            &self.bot_id.to_string(),
+            &e.guild_id.to_string(),
+            &crate::db::dia_chat(),
+            cupo.max,
+        )
+        .await
+        .unwrap_or(false)
+        {
+            return;
+        }
+        let idioma = (self.ordenes.idioma)();
+        let aviso = crate::i18n::tr(
+            &idioma,
+            "Daily reply limit reached. I will reply again tomorrow (00:00 UTC).",
+        );
+        self.log(crate::i18n::tr(
+            &idioma,
+            &format!(
+                "[WARN] Daily reply limit reached in {} #{}: {}",
+                e.servidor, e.canal, cupo.max
+            ),
+        ));
+        if let Err(error) = self.enviar_sin_cupo(e, &aviso).await {
+            self.log(format!("[WARN] {error}"));
+        }
+    }
+
+    // Un envío lógico consume una respuesta; sus fragmentos de 2000 caracteres
+    // forman una única respuesta. El aviso del tope queda fuera del presupuesto.
+    async fn enviar(&self, e: &Entrada, respuesta: &str) -> Result<u64, String> {
+        if let Some(cupo) = &e.cupo {
+            let reservada = cupo.reservada.swap(false, Ordering::SeqCst)
+                && *cupo.dia.lock().unwrap() == crate::db::dia_chat();
+            if !reservada && !self.reservar(e).await? {
+                self.aviso_tope(e).await;
+                return Err("Daily reply limit reached".into());
+            }
+        }
+        let resultado = self.enviar_sin_cupo(e, respuesta).await;
+        self.aviso_tope(e).await;
+        resultado
+    }
+
     /// Publica la respuesta y devuelve el id del primer mensaje publicado (0 si
     /// Discord no lo devolvió legible).
-    async fn enviar(&self, e: &Entrada, respuesta: &str) -> Result<u64, String> {
+    async fn enviar_sin_cupo(&self, e: &Entrada, respuesta: &str) -> Result<u64, String> {
         let client = build_client(&self.token, self.base_url.as_deref());
         let cid = Id::new_checked(e.msg.canal_id).ok_or("Invalid channel ID")?;
         let mid = Id::new_checked(e.mensaje_id).ok_or("Invalid message ID")?;
@@ -1390,14 +1521,21 @@ mod tests {
         ruta
     }
 
-    fn conversador(
+    async fn conversador(
         server: &MockServer,
         agente: PathBuf,
         limite: Duration,
     ) -> (Conversador, Arc<Mutex<Vec<String>>>) {
         let logs = Arc::new(Mutex::new(Vec::new()));
         let l = logs.clone();
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::db::run_migrations(&pool).await.unwrap();
         let c = Conversador {
+            pool: Some(pool),
             token: "token-falso".into(),
             base_url: Some(server.address().to_string()),
             bot_id: BOT,
@@ -1431,6 +1569,7 @@ mod tests {
 
     fn entrada(autor: u64, menciona: bool) -> Entrada {
         Entrada {
+            cupo: None,
             msg: MensajeEntrante {
                 autor_id: autor,
                 canal_id: 10,
@@ -1486,6 +1625,175 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tope_diario_corta_rafaga_antes_de_contexto_y_agente_avisa_una_vez() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (c, logs) =
+            conversador(&server, agente_falso("cupo", "echo hola"), LIMITE_AGENTE).await;
+        let c = Arc::new(c);
+        let a = GuildSettings {
+            chat_max_diario: 2,
+            chat_espera_s: 0,
+            ..ajustes()
+        };
+        let mut tareas = Vec::new();
+        for autor in 1..=30 {
+            let (c, a) = (c.clone(), a.clone());
+            tareas.push(tokio::spawn(async move {
+                c.atender(entrada(autor, true), &a).await
+            }));
+        }
+        for t in tareas {
+            t.await.unwrap();
+        }
+        let mensajes = textos(&envios(&server).await);
+        assert_eq!(mensajes.iter().filter(|s| *s == "hola").count(), 2);
+        assert_eq!(
+            mensajes.iter().filter(|s| s.contains("00:00 UTC")).count(),
+            1
+        );
+        assert_eq!(mensajes.len(), 3);
+        let peticiones = server.received_requests().await.unwrap();
+        assert_eq!(
+            peticiones
+                .iter()
+                .filter(|r| r.method.as_str() == "GET")
+                .count(),
+            2
+        );
+        assert_eq!(
+            logs.lock()
+                .unwrap()
+                .iter()
+                .filter(|s| s.contains("Daily reply limit reached"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            crate::db::get_guild_settings(c.pool.as_ref().unwrap(), &BOT.to_string(), "555")
+                .await
+                .unwrap()
+                .chat_respuestas_hoy,
+            2
+        );
+        // Otro conversador, mismo almacenamiento: no vuelve a responder ni a avisar.
+        let mut reiniciado = (*c).clone();
+        reiniciado.coord = Arc::new(Coordinador::default());
+        reiniciado.atender(entrada(31, true), &a).await;
+        assert_eq!(envios(&server).await.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn tope_cuenta_ordenes_y_bloquea_constructor_y_confirmacion() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let agente = agente_con_orden("cupo-orden", PROPUESTA_OK);
+        let marca = agente.with_file_name("stdin.txt");
+        let _ = std::fs::remove_file(&marca);
+        let (mut c, _) = conversador(&server, agente, LIMITE_AGENTE).await;
+        let aplicadas = aplicador_falso(&mut c);
+        let a = GuildSettings {
+            chat_max_diario: 1,
+            chat_espera_s: 0,
+            ..ajustes_ordenes(true)
+        };
+        c.atender(entrada(1, true), &a).await;
+        let mensajes = textos(&envios(&server).await);
+        assert_eq!(mensajes.len(), 2, "{mensajes:?}");
+        assert_eq!(
+            mensajes.iter().filter(|s| s.contains("00:00 UTC")).count(),
+            1
+        );
+        assert!(!mensajes
+            .iter()
+            .any(|s| s.contains("Preparing the proposal")));
+        assert!(!marca.exists(), "el constructor no debe arrancar sin cupo");
+        // Ni siquiera una propuesta ya pendiente puede eludir el tope al confirmar.
+        c.coord.guardar_pendiente(
+            (555, 10, 1),
+            Propuesta {
+                resumen: String::new(),
+                acciones: Vec::new(),
+            },
+            600,
+        );
+        assert_eq!(
+            c.atender(confirmar(1, "yes"), &a).await,
+            Resultado::Ignorado
+        );
+        assert!(aplicadas.lock().unwrap().is_empty());
+        assert_eq!(envios(&server).await.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn orden_completa_y_su_confirmacion_consumen_el_contador() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (mut c, _) = conversador(
+            &server,
+            agente_con_orden("cupo-orden-completa", PROPUESTA_OK),
+            LIMITE_AGENTE,
+        )
+        .await;
+        let aplicadas = aplicador_falso(&mut c);
+        let a = GuildSettings {
+            chat_max_diario: 4,
+            chat_espera_s: 0,
+            ..ajustes_ordenes(true)
+        };
+        c.atender(entrada(1, true), &a).await;
+        assert_eq!(envios(&server).await.len(), 3);
+        assert_eq!(
+            crate::db::get_guild_settings(c.pool.as_ref().unwrap(), &BOT.to_string(), "555")
+                .await
+                .unwrap()
+                .chat_respuestas_hoy,
+            3
+        );
+        c.atender(confirmar(1, "yes"), &a).await;
+        assert_eq!(aplicadas.lock().unwrap().len(), 1);
+        assert_eq!(envios(&server).await.len(), 5); // Resultado y aviso único.
+        assert_eq!(
+            crate::db::get_guild_settings(c.pool.as_ref().unwrap(), &BOT.to_string(), "555")
+                .await
+                .unwrap()
+                .chat_respuestas_hoy,
+            4
+        );
+        assert_eq!(c.atender(entrada(2, true), &a).await, Resultado::Ignorado);
+        assert_eq!(envios(&server).await.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn intentos_fallidos_tambien_tienen_tope() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (c, _) =
+            conversador(&server, agente_falso("cupo-fallo", "exit 1"), LIMITE_AGENTE).await;
+        let a = GuildSettings {
+            chat_max_diario: 1,
+            chat_espera_s: 0,
+            ..ajustes()
+        };
+        assert!(matches!(
+            c.atender(entrada(1, true), &a).await,
+            Resultado::Error(_)
+        ));
+        assert_eq!(c.atender(entrada(2, true), &a).await, Resultado::Ignorado);
+        assert_eq!(envios(&server).await.len(), 1);
+        assert_eq!(
+            server
+                .received_requests()
+                .await
+                .unwrap()
+                .iter()
+                .filter(|r| r.method.as_str() == "GET")
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
     async fn responde_a_una_mencion_como_respuesta_y_solo_menciona_al_autor() {
         let server = MockServer::start().await;
         mock_discord(&server).await;
@@ -1493,7 +1801,8 @@ mod tests {
             &server,
             agente_falso("ok", "echo 'Hola Ana @everyone'"),
             LIMITE_AGENTE,
-        );
+        )
+        .await;
         let r = c.atender(entrada(1, true), &ajustes()).await;
         assert_eq!(r, Resultado::Respondido);
 
@@ -1527,7 +1836,7 @@ mod tests {
     async fn no_responde_a_un_mensaje_normal_ni_a_un_bot() {
         let server = MockServer::start().await;
         mock_discord(&server).await;
-        let (c, logs) = conversador(&server, agente_falso("no", "echo hola"), LIMITE_AGENTE);
+        let (c, logs) = conversador(&server, agente_falso("no", "echo hola"), LIMITE_AGENTE).await;
         assert_eq!(
             c.atender(entrada(1, false), &ajustes()).await,
             Resultado::Ignorado
@@ -1543,7 +1852,7 @@ mod tests {
     async fn respeta_la_espera_por_usuario() {
         let server = MockServer::start().await;
         mock_discord(&server).await;
-        let (c, _) = conversador(&server, agente_falso("espera", "echo hola"), LIMITE_AGENTE);
+        let (c, _) = conversador(&server, agente_falso("espera", "echo hola"), LIMITE_AGENTE).await;
         let a = GuildSettings {
             chat_espera_s: 3600,
             ..ajustes()
@@ -1553,6 +1862,62 @@ mod tests {
         // Otro usuario no espera.
         assert_eq!(c.atender(entrada(3, true), &a).await, Resultado::Respondido);
         assert_eq!(envios(&server).await.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn cooldown_atomico_antes_de_reservar_cupo_en_rafaga_del_mismo_usuario() {
+        for max_diario in [200, 0] {
+            let server = MockServer::start().await;
+            mock_discord(&server).await;
+            let agente = agente_falso("espera-concurrente", "echo hola");
+            let (mut c, _) = conversador(&server, agente.clone(), LIMITE_AGENTE).await;
+            let invocaciones = Arc::new(AtomicUsize::new(0));
+            let contador = invocaciones.clone();
+            c.buscar_agente = Arc::new(move |_| {
+                contador.fetch_add(1, Ordering::SeqCst);
+                Some(agente.clone())
+            });
+            let c = Arc::new(c);
+            let a = GuildSettings {
+                chat_espera_s: 3600,
+                chat_max_diario: max_diario,
+                ..ajustes()
+            };
+            // La única conexión ocupada fuerza a la reserva a esperar. Todas las
+            // demás menciones deben ser ignoradas sin esperar la base de datos.
+            let conexion = c.pool.as_ref().unwrap().acquire().await.unwrap();
+            let mut tareas = tokio::task::JoinSet::new();
+            for _ in 0..30 {
+                let (c, a) = (c.clone(), a.clone());
+                tareas.spawn(async move { c.atender(entrada(1, true), &a).await });
+            }
+            tokio::time::timeout(Duration::from_secs(5), async {
+                for _ in 0..29 {
+                    assert_eq!(
+                        tareas.join_next().await.unwrap().unwrap(),
+                        Resultado::Ignorado
+                    );
+                }
+            })
+            .await
+            .expect("las menciones repetidas no deben esperar la reserva de cupo");
+            assert!(server.received_requests().await.unwrap().is_empty());
+            assert_eq!(invocaciones.load(Ordering::SeqCst), 0);
+            drop(conexion);
+            assert_eq!(
+                tareas.join_next().await.unwrap().unwrap(),
+                Resultado::Respondido
+            );
+            assert_eq!(envios(&server).await.len(), 1);
+            assert_eq!(invocaciones.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                crate::db::get_guild_settings(c.pool.as_ref().unwrap(), &BOT.to_string(), "555")
+                    .await
+                    .unwrap()
+                    .chat_respuestas_hoy,
+                1
+            );
+        }
     }
 
     /// Agente que sirve de chat (responde con una orden) y de constructor (imprime
@@ -1636,7 +2001,7 @@ printf 'Hola.'
 "#,
         )
         .unwrap();
-        let (mut c, logs) = conversador(&server, agente, LIMITE_AGENTE);
+        let (mut c, logs) = conversador(&server, agente, LIMITE_AGENTE).await;
         let aplicadas = aplicador_falso(&mut c);
         assert_eq!(
             c.atender(entrada(1, true), &ajustes_ordenes(false)).await,
@@ -1659,7 +2024,7 @@ printf 'Hola.'
             historial_con_orden_ajena(&server).await;
             let agente = agente_con_marca(marca, marca, PROPUESTA_OK);
             let dir = agente.parent().unwrap().to_path_buf();
-            let (c, _) = conversador(&server, agente, LIMITE_AGENTE);
+            let (c, _) = conversador(&server, agente, LIMITE_AGENTE).await;
             let mut e = entrada(1, true);
             e.texto = "Crea un canal privado para el equipo, sin borrar nada.\nConserva los roles."
                 .into();
@@ -1696,7 +2061,8 @@ printf 'Hola.'
                 &server,
                 agente_con_orden(&format!("limite-texto-{max}"), &script),
                 LIMITE_AGENTE,
-            );
+            )
+            .await;
             let aplicadas = aplicador_falso(&mut c);
             let mut ajustes = ajustes_ordenes(false);
             ajustes.ordenes_max_acciones = max;
@@ -1726,7 +2092,8 @@ printf 'Hola.'
                 &server,
                 agente_falso(&format!("limite-md-{max}"), "exit 1"),
                 LIMITE_AGENTE,
-            );
+            )
+            .await;
             let aplicadas = aplicador_falso(&mut c);
             let mut ajustes = ajustes_ordenes(false);
             ajustes.ordenes_max_acciones = max;
@@ -1761,7 +2128,7 @@ printf 'Hola.'
         mock_discord(&server).await;
         let agente = agente_con_orden("orden-ok", PROPUESTA_OK);
         let dir = agente.parent().unwrap().to_path_buf();
-        let (c, logs) = conversador(&server, agente, LIMITE_AGENTE);
+        let (c, logs) = conversador(&server, agente, LIMITE_AGENTE).await;
         let r = c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
         assert_eq!(r, Resultado::Respondido);
         let env = envios(&server).await;
@@ -1804,7 +2171,7 @@ EOF"#;
         mock_discord(&server).await;
         let agente = agente_con_marca("orden-mod", "ORDEN[moderacion]:", PROPUESTA_MODERACION);
         let dir = agente.parent().unwrap().to_path_buf();
-        let (c, _) = conversador(&server, agente, LIMITE_AGENTE);
+        let (c, _) = conversador(&server, agente, LIMITE_AGENTE).await;
         c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
         let t = textos(&envios(&server).await);
         assert_eq!(t.len(), 3, "{t:?}");
@@ -1822,7 +2189,7 @@ EOF"#;
         mock_discord(&server).await;
         let agente = agente_con_marca("orden-est", "ORDEN[estructura]:", PROPUESTA_OK);
         let dir = agente.parent().unwrap().to_path_buf();
-        let (c, _) = conversador(&server, agente, LIMITE_AGENTE);
+        let (c, _) = conversador(&server, agente, LIMITE_AGENTE).await;
         c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
         let stdin = std::fs::read_to_string(dir.join("stdin.txt")).unwrap();
         assert!(stdin.contains("PLAN-DEL-SERVIDOR"), "{stdin}");
@@ -1839,7 +2206,7 @@ EOF"#;
         let server = MockServer::start().await;
         mock_discord(&server).await;
         let agente = agente_con_marca("orden-mod-mal", "ORDEN[moderacion]:", PROPUESTA_OK);
-        let (c, _) = conversador(&server, agente, LIMITE_AGENTE);
+        let (c, _) = conversador(&server, agente, LIMITE_AGENTE).await;
         c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
         let t = textos(&envios(&server).await);
         assert!(
@@ -1858,7 +2225,8 @@ EOF"#;
             &server,
             agente_con_orden("orden-sin-conf", PROPUESTA_OK),
             LIMITE_AGENTE,
-        );
+        )
+        .await;
         c.atender(entrada(1, true), &ajustes_ordenes(false)).await;
         let t = textos(&envios(&server).await);
         // Aviso, propuesta (sin pedir el «sí») y el resultado de aplicarla.
@@ -1877,7 +2245,8 @@ EOF"#;
             &server,
             agente_con_orden("orden-invalida", invalida),
             LIMITE_AGENTE,
-        );
+        )
+        .await;
         c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
         let t = textos(&envios(&server).await);
         assert_eq!(t.len(), 3, "{t:?}");
@@ -1903,7 +2272,8 @@ EOF"#;
             &server,
             agente_con_orden("orden-falla", "echo 'Please run /login' >&2; exit 1"),
             LIMITE_AGENTE,
-        );
+        )
+        .await;
         c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
         let t = textos(&envios(&server).await);
         assert_eq!(t.len(), 3, "{t:?}");
@@ -1922,7 +2292,8 @@ EOF"#;
             &server,
             agente_con_orden("orden-pregunta", constructor),
             LIMITE_AGENTE,
-        );
+        )
+        .await;
         c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
         let t = textos(&envios(&server).await);
         assert_eq!(t.len(), 3, "{t:?}");
@@ -1939,7 +2310,7 @@ EOF"#;
         mock_discord(&server).await;
         let agente = agente_con_orden("orden-ocupado", PROPUESTA_OK);
         let dir = agente.parent().unwrap().to_path_buf();
-        let (c, _) = conversador(&server, agente, LIMITE_AGENTE);
+        let (c, _) = conversador(&server, agente, LIMITE_AGENTE).await;
         let guardia = c.coord.tomar_constructor(555).expect("libre");
         assert!(c.coord.tomar_constructor(555).is_none());
         assert!(c.coord.tomar_constructor(556).is_some());
@@ -1982,7 +2353,8 @@ EOF"#;
             &server,
             agente_con_orden("crear-canal-directo", &propuesta_canal("crear_canal")),
             LIMITE_AGENTE,
-        );
+        )
+        .await;
         let aplicadas = aplicador_falso(&mut c);
         c.atender(entrada(1, true), &ajustes_ordenes(false)).await;
         {
@@ -2009,7 +2381,8 @@ EOF"#;
             &server,
             agente_falso("archivo-permisos", "exit 1"),
             LIMITE_AGENTE,
-        );
+        )
+        .await;
         let aplicadas = aplicador_falso(&mut c);
         let mut ajustes = ajustes_ordenes(false);
         ajustes.ordenes_permitidas.estructura = false;
@@ -2044,7 +2417,8 @@ EOF"#;
                     &propuesta_canal("borrar_canal"),
                 ),
                 LIMITE_AGENTE,
-            );
+            )
+            .await;
             let aplicadas = aplicador_falso(&mut c);
             let mut ajustes = ajustes_ordenes(false);
             ajustes.ordenes_permitidas.borrar_canales_roles = confirmar_primero;
@@ -2076,7 +2450,8 @@ EOF"#;
                     &propuesta_canal("borrar_canal"),
                 ),
                 LIMITE_AGENTE,
-            );
+            )
+            .await;
             c.ordenes.idioma = Arc::new(move || idioma.to_string());
             let aplicadas = aplicador_falso(&mut c);
             let mut ajustes = ajustes_ordenes(false);
@@ -2169,7 +2544,8 @@ EOF"#;
                 &server,
                 agente_con_orden(&format!("parar-preparacion-{palabra}"), PROPUESTA_OK),
                 LIMITE_AGENTE,
-            );
+            )
+            .await;
             let iniciado = Arc::new(tokio::sync::Notify::new());
             let aviso = iniciado.clone();
             c.ordenes.leer_plan = Arc::new(move |_| {
@@ -2255,7 +2631,8 @@ EOF"#;
                 &server,
                 agente_con_orden("parar-publicacion", PROPUESTA_OK),
                 LIMITE_AGENTE,
-            );
+            )
+            .await;
             let aplicadas = aplicador_falso(&mut c);
             let e = entrada(1, true);
             let activa = c.coord.registrar(&e);
@@ -2339,7 +2716,7 @@ EOF"#;
         );
         let marca = agente.parent().unwrap().join("preparando");
         let _ = std::fs::remove_file(&marca);
-        let (c, _) = conversador(&server, agente, LIMITE_AGENTE);
+        let (c, _) = conversador(&server, agente, LIMITE_AGENTE).await;
         let trabajo = {
             let c = c.clone();
             tokio::spawn(async move { c.atender(entrada(1, true), &ajustes_ordenes(true)).await })
@@ -2375,7 +2752,8 @@ EOF"#;
                     PROPUESTA_OK,
                 ),
                 LIMITE_AGENTE,
-            );
+            )
+            .await;
             let iniciada = Arc::new(tokio::sync::Notify::new());
             let terminar = Arc::new(tokio::sync::Notify::new());
             let realizadas = Arc::new(AtomicUsize::new(0));
@@ -2501,7 +2879,8 @@ EOF"#;
             &server,
             agente_con_orden("conf-aplica", PROPUESTA_OK),
             LIMITE_AGENTE,
-        );
+        )
+        .await;
         let aplicadas = aplicador_falso(&mut c);
         let antes = con_propuesta_pendiente(&c, &server).await;
         assert!(aplicadas.lock().unwrap().is_empty());
@@ -2540,7 +2919,8 @@ EOF"#;
             &server,
             agente_con_orden("conf-otro", PROPUESTA_OK),
             LIMITE_AGENTE,
-        );
+        )
+        .await;
         let aplicadas = aplicador_falso(&mut c);
         let antes = con_propuesta_pendiente(&c, &server).await;
 
@@ -2568,7 +2948,8 @@ EOF"#;
             &server,
             agente_con_orden("conf-caduca", PROPUESTA_OK),
             LIMITE_AGENTE,
-        );
+        )
+        .await;
         c.coord = Arc::new(Coordinador::con_caducidad(3, Duration::from_millis(300)));
         let aplicadas = aplicador_falso(&mut c);
         let antes = con_propuesta_pendiente(&c, &server).await;
@@ -2592,7 +2973,8 @@ EOF"#;
             &server,
             agente_con_orden("conf-cancela", PROPUESTA_OK),
             LIMITE_AGENTE,
-        );
+        )
+        .await;
         let aplicadas = aplicador_falso(&mut c);
         let antes = con_propuesta_pendiente(&c, &server).await;
 
@@ -2617,7 +2999,8 @@ EOF"#;
             &server,
             agente_con_orden("conf-directa", PROPUESTA_OK),
             LIMITE_AGENTE,
-        );
+        )
+        .await;
         let aplicadas = aplicador_falso(&mut c);
         c.atender(entrada(1, true), &ajustes_ordenes(false)).await;
         assert_eq!(aplicadas.lock().unwrap().len(), 1);
@@ -2637,7 +3020,7 @@ EOF"#;
         mock_discord(&server).await;
         let agente = agente_con_orden("conf-ocupado", PROPUESTA_OK);
         let dir = agente.parent().unwrap().to_path_buf();
-        let (mut c, _) = conversador(&server, agente, LIMITE_AGENTE);
+        let (mut c, _) = conversador(&server, agente, LIMITE_AGENTE).await;
         let aplicadas = aplicador_falso(&mut c);
         let antes = con_propuesta_pendiente(&c, &server).await;
         let _ = std::fs::remove_file(dir.join("stdin.txt"));
@@ -2729,7 +3112,8 @@ EOF"#;
             &server,
             agente_falso("sesion", "echo 'Please run /login' >&2; exit 1"),
             LIMITE_AGENTE,
-        );
+        )
+        .await;
         let r = c.atender(entrada(1, true), &ajustes()).await;
         assert!(
             matches!(&r, Resultado::Error(m) if m.contains("not signed in")),
@@ -2748,7 +3132,8 @@ EOF"#;
             &server,
             agente_falso("lento", "sleep 30"),
             Duration::from_millis(300),
-        );
+        )
+        .await;
         let r = c.atender(entrada(1, true), &ajustes()).await;
         assert_eq!(
             r,
@@ -2766,7 +3151,8 @@ EOF"#;
             &server,
             agente_falso("largo", "head -c 4500 /dev/zero | tr '\\0' 'a'"),
             LIMITE_AGENTE,
-        );
+        )
+        .await;
         assert_eq!(
             c.atender(entrada(1, true), &ajustes()).await,
             Resultado::Respondido
@@ -2895,7 +3281,7 @@ echo '{}'"#,
             );
             let marca = ruta.with_file_name("llamadas");
             let _ = std::fs::remove_file(&marca);
-            let (c, _) = conversador(&server, ruta, LIMITE_AGENTE);
+            let (c, _) = conversador(&server, ruta, LIMITE_AGENTE).await;
             let c = Arc::new(c);
             let a = GuildSettings {
                 ordenes_max_acciones: 100,
@@ -2963,7 +3349,7 @@ echo '{}'"#,
             );
             let marca = ruta.with_file_name("llamadas");
             let _ = std::fs::remove_file(&marca);
-            let (mut c, _) = conversador(&server, ruta, LIMITE_AGENTE);
+            let (mut c, _) = conversador(&server, ruta, LIMITE_AGENTE).await;
             if respuesta == "caduca" {
                 c.coord = Arc::new(Coordinador::con_caducidad(3, Duration::from_millis(100)));
             }
@@ -3008,7 +3394,8 @@ echo '{}'"#,
             &server,
             agente_falso("archivo-ok", "echo no-debe-usarse >&2; exit 1"),
             LIMITE_AGENTE,
-        );
+        )
+        .await;
         let aplicadas = aplicador_falso(&mut c);
         let e = con_archivo(
             &server,
@@ -3052,7 +3439,8 @@ echo '{}'"#,
     async fn un_archivo_con_avisos_los_publica_con_su_linea() {
         let server = MockServer::start().await;
         mock_discord(&server).await;
-        let (c, _) = conversador(&server, agente_falso("archivo-av", "exit 1"), LIMITE_AGENTE);
+        let (c, _) =
+            conversador(&server, agente_falso("archivo-av", "exit 1"), LIMITE_AGENTE).await;
         let plan = "## Categoría: Staff | rareza: alta\n- texto: general\n";
         let e = con_archivo(&server, 1, "plan.txt", plan.as_bytes().to_vec(), 50).await;
         c.atender(e, &ajustes_ordenes(true)).await;
@@ -3070,7 +3458,8 @@ echo '{}'"#,
             &server,
             agente_falso("archivo-sin", "exit 1"),
             LIMITE_AGENTE,
-        );
+        )
+        .await;
         let libre = b"Quiero un servidor bonito con muchos canales.".to_vec();
         let e = con_archivo(&server, 1, "idea.md", libre, 45).await;
         c.atender(e, &ajustes_ordenes(true)).await;
@@ -3087,7 +3476,8 @@ echo '{}'"#,
     async fn un_archivo_demasiado_grande_no_se_descarga_o_se_corta() {
         let server = MockServer::start().await;
         mock_discord(&server).await;
-        let (c, _) = conversador(&server, agente_falso("archivo-gr", "exit 1"), LIMITE_AGENTE);
+        let (c, _) =
+            conversador(&server, agente_falso("archivo-gr", "exit 1"), LIMITE_AGENTE).await;
         let a = GuildSettings {
             chat_espera_s: 0,
             ..ajustes_ordenes(true)
@@ -3112,7 +3502,8 @@ echo '{}'"#,
     async fn un_autor_sin_ordenes_no_puede_construir_desde_un_archivo() {
         let server = MockServer::start().await;
         mock_discord(&server).await;
-        let (mut c, _) = conversador(&server, agente_falso("archivo-no", "exit 1"), LIMITE_AGENTE);
+        let (mut c, _) =
+            conversador(&server, agente_falso("archivo-no", "exit 1"), LIMITE_AGENTE).await;
         let aplicadas = aplicador_falso(&mut c);
         let e = con_archivo(&server, 2, "plan.md", PLAN_VALIDO.into(), 90).await;
         // Autor fuera de la lista, y órdenes desactivadas para el autor 1.

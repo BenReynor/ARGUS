@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
-import { useActiveGuildId, useShowNotification } from '../store/useStore';
+import { useStore, useActiveGuildId, useShowNotification } from '../store/useStore';
 import { listarAgentesIa, getGuildSettings, saveGuildSettings, listChannels, listMembers } from '../api/tauri';
 import type { AgenteIa, Channel, GuildSettings, Member } from '../types';
 import { Avatar, Button, Cargando, EstadoVacio, ErrorPanel, Input, Select } from './ui';
@@ -16,6 +16,7 @@ const esGratis = (agente: string, modelo: string) => agente === 'opencode' && (m
 
 export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> = ({ onAbrirPersonalidad }) => {
   const guildId = useActiveGuildId();
+  const botId = useStore((s) => s.config.active_bot_id);
   const showNotification = useShowNotification();
 
   const [agentes, setAgentes] = useState<AgenteIa[] | null>(null);
@@ -24,6 +25,7 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
   const [ajustes, setAjustes] = useState<GuildSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [contador, setContador] = useState(0);
   const [sucio, setSucio] = useState(false);
 
   useEffect(() => {
@@ -37,6 +39,7 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
         const [a, s, c, m] = await Promise.all([listarAgentesIa(), getGuildSettings(guildId), listChannels(guildId), listMembers(guildId).catch(() => [] as Member[])]);
         if (!vigente) return;
         setAgentes(a);
+        setContador(s.chat_respuestas_hoy);
         // Sin modelo guardado, el más barato del agente: las respuestas en
         // Discord son para conversar sin gastar (el desplegable mostraba opus).
         const agente = a.find((x) => x.agente === s.chat_agente);
@@ -48,7 +51,20 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
       }
     })();
     return () => { vigente = false; };
-  }, [guildId]);
+  }, [guildId, botId]);
+
+  useEffect(() => {
+    if (!guildId) return;
+    let vigente = true;
+    const refrescar = async () => {
+      try {
+        const s = await getGuildSettings(guildId);
+        if (vigente) setContador(s.chat_respuestas_hoy);
+      } catch { /* La carga inicial muestra los errores; el contador conserva el último valor. */ }
+    };
+    const timer = window.setInterval(refrescar, 5000);
+    return () => { vigente = false; window.clearInterval(timer); };
+  }, [guildId, botId]);
 
   if (!guildId) {
     return <EstadoVacio titulo={t('No server selected')} descripcion={t('Pick a server in the left column to set up its Discord replies.')} />;
@@ -183,6 +199,14 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
             onChange={(e) => cambiar({ chat_contexto: numero(e.target.value, 0, CONTEXTO_MAX, 10) })}
           />
         </div>
+
+        <Input
+          etiqueta={t('Daily reply limit')}
+          ayuda={t('Default: 200. 0 = unlimited. Resets at 00:00 UTC. Orders count too; failed attempts also consume budget to prevent repeated costs.')}
+          type="number" min={0} max={4294967295} value={ajustes.chat_max_diario}
+          onChange={(e) => cambiar({ chat_max_diario: numero(e.target.value, 0, 4294967295, 200) })}
+        />
+        <p role="status">{t('Replies reserved today (UTC): {count}', { count: contador })}</p>
 
         <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
           <legend>{t('Orders from Discord')}</legend>

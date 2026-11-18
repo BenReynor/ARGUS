@@ -46,6 +46,7 @@ pub fn entrada_de(
         )
     };
     Some(Entrada {
+        cupo: None,
         msg: MensajeEntrante {
             autor_id: m.author.id.get(),
             autor_es_bot: m.author.bot,
@@ -90,6 +91,7 @@ fn conversador(
 ) -> Conversador {
     let app_idioma = app.clone();
     let app = app.clone();
+    let pool_chat = pool.clone();
     let pool_aplicar = pool.clone();
     let pool_contexto = pool.clone();
     let mapas_existentes = mapas.clone();
@@ -156,6 +158,7 @@ fn conversador(
         }),
     };
     Conversador {
+        pool: pool_chat,
         limite_constructor: LIMITE_CONSTRUCTOR,
         ordenes,
         token: token.to_string(),

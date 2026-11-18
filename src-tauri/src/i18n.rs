@@ -13,6 +13,11 @@ pub const IDIOMA_DEFECTO: &str = "en";
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
     // <CATALOGO>
+    ("Daily reply budget unavailable", "El presupuesto diario de respuestas no está disponible"),
+    ("Daily reply limit reached", "Se alcanzó el tope diario de respuestas"),
+    ("Daily reply limit reached. I will reply again tomorrow (00:00 UTC).", "Se alcanzó el tope diario de respuestas. Volveré a responder mañana (00:00 UTC)."),
+    ("[WARN] Daily reply limit reached in {server} #{channel}: {max}", "[WARN] Se alcanzó el tope diario de respuestas en {server} #{channel}: {max}"),
+
     ("Confirm the description generation cost before continuing", "Confirma el coste de generar las descripciones antes de continuar"),
     ("Description generation cancelled; no AI calls made", "Generación de descripciones cancelada; no se hicieron llamadas a la IA"),
     ("Generate {n} descriptions with approximately {calls} AI calls? This may incur costs. Reply **yes** within 5 minutes to generate, or **no** to cancel", "¿Generar {n} descripciones con aproximadamente {calls} llamadas a la IA? Esto puede tener un coste. Responde **sí** en 5 minutos para generar, o **no** para cancelar"),

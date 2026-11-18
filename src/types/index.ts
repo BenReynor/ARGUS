@@ -126,6 +126,8 @@ export interface GuildSettings {
   /** IDs de canales; vacía = todos. */
   chat_canales: string[];
   chat_espera_s: number;
+  chat_max_diario: number;
+  chat_respuestas_hoy: number;
   /** Mensajes previos que se pasan al agente (máximo 30). */
   chat_contexto: number;
   /** IDs de usuarios a los que responde; vacía = todos. */

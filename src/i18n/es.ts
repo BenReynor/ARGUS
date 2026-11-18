@@ -3,6 +3,9 @@
 export const NOMBRE_ES = 'Español';
 
 export const es: Record<string, string> = {
+  'Daily reply limit': 'Tope diario de respuestas',
+  'Default: 200. 0 = unlimited. Resets at 00:00 UTC. Orders count too; failed attempts also consume budget to prevent repeated costs.': 'Por defecto: 200. 0 = sin tope. Se reinicia a las 00:00 UTC. Las órdenes también cuentan; los intentos fallidos consumen cupo para evitar costes repetidos.',
+  'Replies reserved today (UTC): {count}': 'Respuestas reservadas hoy (UTC): {count}',
   'Generate {descriptions} descriptions with approximately {calls} AI calls? This may incur costs. Continue?': '¿Generar {descriptions} descripciones con aproximadamente {calls} llamadas a la IA? Esto puede tener un coste. ¿Continuar?',
   'Continue': 'Continuar',
   'Reading more messages takes longer, uses more tokens, and exposes more messages to the model provider.': 'Leer más mensajes tarda más, gasta más tokens y permite que el proveedor del modelo vea más mensajes.',
