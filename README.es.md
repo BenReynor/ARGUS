@@ -227,6 +227,12 @@ falso local. Hay tests opcionales contra un servidor real en
 [`docs/PRUEBA_REAL.md`](docs/PRUEBA_REAL.md). El CI corre todo en Linux y
 Windows y genera el instalador de Windows.
 
+Dependabot comprueba semanalmente las dependencias de Cargo (`src-tauri/`), npm
+(raíz del repositorio) y GitHub Actions, agrupando las actualizaciones por
+ecosistema con un límite de 5 PR abiertas por ecosistema. Las PR de Dependabot
+deben pasar el mismo CI que las demás antes de fusionarse: compilación del
+frontend y tests de Rust en Linux y Windows, además del instalador de Windows.
+
 El proyecto se desarrolla con [Dédalo](https://github.com/BenReynor/dedalo):
 `plan.md` usa su formato y cada tarea pasa el mismo gate. Más documentación:
 

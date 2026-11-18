@@ -224,6 +224,12 @@ fake Discord. There are optional tests against a real server in
 [`docs/PRUEBA_REAL.md`](docs/PRUEBA_REAL.md). CI runs everything on Linux and
 Windows and builds the Windows installer.
 
+Dependabot checks Cargo (`src-tauri/`), npm (repository root) and GitHub Actions
+dependencies weekly, grouping updates by ecosystem with a limit of 5 open pull
+requests per ecosystem. Dependabot pull requests must pass the same CI as all
+other pull requests before they are merged: the frontend build and Rust tests
+on Linux and Windows, plus the Windows installer build.
+
 The project is developed with [Dédalo](https://github.com/BenReynor/dedalo):
 `plan.md` uses its format and every task passes the same gate. More
 documentation (in Spanish):
