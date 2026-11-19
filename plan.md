@@ -552,7 +552,7 @@ Si alguien con permisos (o un bot ajeno) borra canales y roles, hoy no hay forma
 - [x] Expulsar a todos los miembros
   criterio: acción solo de la app (nunca desde el MCP, las órdenes de Discord ni la IA), en Backups o Moderation; antes de empezar crea un snapshot automático; **doble confirmación**: muestra cuántos miembros se expulsarán y pide escribir el nombre del servidor; nunca expulsa al dueño, al propio bot ni a quien la lanza, y se pueden excluir roles (por defecto, los que tienen Administrator); avanza respetando los límites de Discord con progreso «N de M» y botón Stop; los que no se pueden expulsar (rol por encima del bot) se listan al final; tests con el Discord falso: exclusiones, Stop y que el MCP y las órdenes no la ofrecen
 
-- [ ] Snapshots automáticos cada 12 horas
+- [x] Snapshots automáticos cada 12 horas
   criterio: los snapshots automáticos pasan a ser **cada 12 horas** por defecto, con el intervalo elegible (6, 12 o 24 h) y conservando los últimos 14 (una semana); «Create snapshot» sigue disponible en cualquier momento; los ajustes ya guardados se migran sin perder lo elegido; tests del intervalo y de la retención
 
 Verificación manual (en tu servidor de pruebas):
