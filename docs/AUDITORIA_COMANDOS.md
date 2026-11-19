@@ -1,5 +1,15 @@
 # Auditoría de comandos Tauri (`src-tauri/src/commands.rs`)
 
+> Actualización 2026-11-19: este documento conserva la auditoría histórica de la
+> FASE 0. Los comandos antiguos `apply_template`, `export_all_data`, `import_data`
+> y `uninstall_wipe` se retiraron del código y del registro IPC: no tenían
+> llamadas desde la interfaz y devolvían éxitos sin ejecutar la operación.
+> Las copias portátiles actuales usan `export_configuration`,
+> `preview_configuration` e `import_configuration` (`backup.rs`), con contraseña,
+> vista previa y confirmación. La construcción desde un plan y la restauración
+> de snapshots usan sus propios motores de propuestas; las plantillas generales
+> siguen en el apartado de trabajo futuro de `plan.md`.
+
 > **Documento histórico.** Es la auditoría de la FASE 0, antes de conectar
 > Discord de verdad. Las FASES 1–8 sustituyeron los comandos mock por llamadas
 > reales con twilight y añadieron muchos más (78 hoy). El estado actual está en

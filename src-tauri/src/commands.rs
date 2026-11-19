@@ -2376,38 +2376,6 @@ async fn delete_template_en(
     Ok("Template deleted".to_string())
 }
 
-#[tauri::command]
-pub async fn apply_template(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    guild_id: String,
-    template_id: String,
-) -> Result<String, String> {
-    let st = state.clone();
-    let resultado = apply_template_en(app, state, guild_id, template_id).await;
-    crate::i18n::localizar_texto(&st, resultado)
-}
-
-async fn apply_template_en(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    guild_id: String,
-    template_id: String,
-) -> Result<String, String> {
-    let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
-    let template = db::get_template(&pool, &template_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or("Template not found")?;
-
-    // TODO: Implement actual template application via Discord API
-    // For now, just return success
-    Ok(format!(
-        "Template '{}' applied to server {}",
-        template.name, guild_id
-    ))
-}
-
 // Vigilance config
 #[tauri::command]
 pub async fn get_vigilance_config(state: State<'_, AppState>) -> Result<VigilanceConfig, String> {
@@ -2604,43 +2572,6 @@ async fn cleanup_context_en(
         .await
         .map_err(|e| e.to_string())?;
     Ok("Context cleared".to_string())
-}
-
-// Backup
-#[tauri::command]
-pub async fn export_all_data(state: State<'_, AppState>) -> Result<Vec<u8>, String> {
-    let st = state.clone();
-    let resultado = export_all_data_en(state).await;
-    crate::i18n::localizar_error(&st, resultado)
-}
-
-async fn export_all_data_en(state: State<'_, AppState>) -> Result<Vec<u8>, String> {
-    // TODO: Implement export to ZIP
-    Ok(vec![])
-}
-
-#[tauri::command]
-pub async fn import_data(state: State<'_, AppState>, _data: Vec<u8>) -> Result<String, String> {
-    let st = state.clone();
-    let resultado = import_data_en(state, _data).await;
-    crate::i18n::localizar_texto(&st, resultado)
-}
-
-async fn import_data_en(state: State<'_, AppState>, _data: Vec<u8>) -> Result<String, String> {
-    // TODO: Implement import from ZIP
-    Ok("Imported".to_string())
-}
-
-#[tauri::command]
-pub async fn uninstall_wipe(state: State<'_, AppState>) -> Result<String, String> {
-    let st = state.clone();
-    let resultado = uninstall_wipe_en(state).await;
-    crate::i18n::localizar_texto(&st, resultado)
-}
-
-async fn uninstall_wipe_en(state: State<'_, AppState>) -> Result<String, String> {
-    // TODO: Implement full wipe (DB, config, logs, backups, shortcuts)
-    Ok("Uninstall complete".to_string())
 }
 
 #[cfg(test)]

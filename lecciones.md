@@ -89,3 +89,12 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - La primera instalación real de AppImage/Windows sigue siendo una comprobación
   manual de release; no confundir la prueba con claves efímeras con haber usado
   o inspeccionado los secretos reales del autor.
+
+## 2026-11-19 — Retirados los comandos antiguos con éxito ficticio
+- `apply_template`, `export_all_data`, `import_data` y `uninstall_wipe` seguían
+  registrados en Tauri aunque no ejecutaban la operación ni tenían llamadas
+  desde la interfaz. Se retiraron sus handlers, funciones y textos de éxito.
+- Una función pendiente no debe devolver éxito. Antes de reintroducirla,
+  implementar el comportamiento real y la confirmación que corresponda.
+- Para copias portátiles usar la API de `backup.rs`, que exige contraseña,
+  vista previa y confirmación. No reactivar los antiguos endpoints ZIP.

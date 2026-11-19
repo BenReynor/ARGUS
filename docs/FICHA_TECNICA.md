@@ -41,13 +41,22 @@ sincronizados; un `Option<T>` de Rust es `T | null` en TS.
 
 ## Comandos Tauri
 
-78 comandos en `src-tauri/src/commands.rs`, registrados en `lib.rs`. Los de
+Los comandos de `src-tauri/src/commands.rs` están registrados en `lib.rs`. Los de
 Discord llaman a la API real con twilight (`discord.rs`, `mensajes.rs`) y
 comprueban los permisos y la jerarquía del bot antes de actuar; el mapa del
 servidor lo mantienen el Gateway (`gateway.rs`, `sync.rs`, `mapa.rs`) y se
 guarda en `server_maps` (`persistencia.rs`).
 [`AUDITORIA_COMANDOS.md`](AUDITORIA_COMANDOS.md) es la auditoría inicial de la
 FASE 0 (histórica).
+
+### Comandos antiguos retirados
+
+`apply_template`, `export_all_data`, `import_data` y `uninstall_wipe` ya no
+están expuestos por Tauri ni tienen implementación ficticia. No tenían llamadas
+en la interfaz actual. Las copias cifradas `.argusbak` usan
+`export_configuration`, `preview_configuration` e `import_configuration`;
+la creación desde planes y la restauración de snapshots usan propuestas con
+confirmación. No existe una función implementada de borrado total de la app.
 
 ## MCP
 
