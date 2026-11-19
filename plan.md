@@ -590,7 +590,7 @@ El usuario debe ver **qué se intentó, qué se consiguió y qué se comprobó**
 leer logs técnicos ni depender de que la IA diga «listo». Reutilizar los eventos,
 resultados por acción y notificaciones existentes.
 
-- [ ] Inventariar las operaciones y sus avisos reales
+- [x] Inventariar las operaciones y sus avisos reales
   criterio: documento en docs con las operaciones de construcción, edición, planes, plantillas, backups, snapshots, agentes, MCP y ajustes; para cada una identifica el comando real, dónde muestra progreso/éxito/fallo, si permite comprobar el resultado y qué falta; rastrea respuestas reales del backend, no solo textos de notificación; identifica funciones que fallan en silencio o muestran éxito antes de terminar; comprobación automatizada de que los comandos literales invocados por la interfaz están registrados y los cuatro comandos ficticios retirados no reaparecen
 
 - [ ] Historial de operaciones con estados compartidos
