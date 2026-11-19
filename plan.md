@@ -660,7 +660,7 @@ Verificación manual:
 - [B] Propuestas para configurar otros bots y comprobar su resultado
   criterio: una acción destinada a otro bot identifica conector, cuenta, servidor, cambios y permisos; la IA prepara una propuesta y un adaptador controlado la ejecuta solo tras aprobación por el flujo normal, validando el destino otra vez antes de escribir; nunca pasa una llamada de escritura arbitraria directamente desde el modelo; el adaptador verifica por la API del servicio lo comprobable y el historial distingue ejecución de verificación; si el proveedor no permite comprobarlo, muestra no verificado, sin afirmar éxito; pruebas con adaptador falso, cuenta incorrecta, respuesta parcial y escritura directa rechazada
 
-- [ ] Servicios sin API o MCP de configuración disponible
+- [x] Servicios sin API o MCP de configuración disponible
   criterio: la interfaz explica la limitación y ofrece instrucciones/manual o un enlace a su panel oficial; no muestra una integración inexistente como operativa; una futura receta de navegador es una opción separada con navegador visible, login realizado por el usuario, aviso de fecha/posible desactualización y confirmación antes de guardar; no se instala ni activa por defecto como sustituto de un MCP; no accede a la contraseña ni simula la sesión de usuario de Discord; pruebas de catálogo sin conexión y herramientas no disponibles
 
 Verificación manual:
