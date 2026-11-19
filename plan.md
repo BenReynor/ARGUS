@@ -537,7 +537,7 @@ Si alguien con permisos (o un bot ajeno) borra canales y roles, hoy no hay forma
 - [x] Comparar un snapshot con el servidor actual
   criterio: «Compare» muestra lo que falta, lo que cambió y lo que sobra respecto al snapshot (canales, roles, permisos, roles de miembros), agrupado y con contadores; reutiliza el formato de diff del modo Plan; tests con canales borrados, permisos cambiados y un rol renombrado
 
-- [ ] Restaurar manualmente
+- [B] Restaurar manualmente
   criterio: «Restore» genera una propuesta (nunca se aplica sola) para volver al snapshot: recrear roles (en su orden), categorías y canales borrados con sus permisos (remapeando los ids nuevos por nombre), restaurar permisos y ajustes cambiados y volver a dar los roles a los miembros que siguen en el servidor; opciones: «solo lo que falta» (por defecto) o «también deshacer cambios», y «borrar lo que no estaba» (desactivado por defecto, con confirmación reforzada); se muestra lo que **no** se puede restaurar (mensajes, miembros expulsados o baneados que no volvieron, canales con el mismo nombre ya existentes) y la duración estimada; Apply con progreso y Stop (FASE 17); tests: servidor vaciado → restaurado igual al snapshot (mismos nombres, permisos efectivos y roles de miembros)
 
 - [ ] Detectar destrucción masiva y avisar

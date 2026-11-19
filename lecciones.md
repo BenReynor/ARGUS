@@ -56,3 +56,8 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - Síntoma: El agente no cumplió el criterio tras 2 intentos.
 - Causa: revisor_fail en la iteración 3: La importación acepta imágenes corruptas si contienen base64 válido: `validate_image()` solo comprueba que los bytes no estén vacíos, sin validar PNG, GIF o JSON. Esto contradice la garantía documentada; los tests incluso usan `fixture-image`, que no es una imagen válida, y no detectan el problema.
 - Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-18 19:14 — Tarea bloqueada: Restaurar manualmente
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: revisor_fail en la iteración 2: Los roles con nombres ambiguos se omiten sin reservar sus IDs; con `delete_extra`, todos esos candidatos se proponen para borrar aunque puedan corresponder al snapshot. Con `undo`, también se eliminan sus asignaciones de miembros porque no entraron en `role_map`. La ambigüedad debería conservarlos y señalar el conflicto.
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
