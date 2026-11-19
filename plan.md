@@ -540,7 +540,7 @@ Si alguien con permisos (o un bot ajeno) borra canales y roles, hoy no hay forma
 - [B] Restaurar manualmente
   criterio: «Restore» genera una propuesta (nunca se aplica sola) para volver al snapshot: recrear roles (en su orden), categorías y canales borrados con sus permisos (remapeando los ids nuevos por nombre), restaurar permisos y ajustes cambiados y volver a dar los roles a los miembros que siguen en el servidor; opciones: «solo lo que falta» (por defecto) o «también deshacer cambios», y «borrar lo que no estaba» (desactivado por defecto, con confirmación reforzada); se muestra lo que **no** se puede restaurar (mensajes, miembros expulsados o baneados que no volvieron, canales con el mismo nombre ya existentes) y la duración estimada; Apply con progreso y Stop (FASE 17); tests: servidor vaciado → restaurado igual al snapshot (mismos nombres, permisos efectivos y roles de miembros)
 
-- [ ] Detectar destrucción masiva y avisar
+- [B] Detectar destrucción masiva y avisar
   criterio: con el bot encendido, si en poco tiempo (p. ej. 5 canales o roles en 1 minuto) se borran canales o roles, ARGUS crea un snapshot de emergencia del estado anterior conocido (del mapa en vivo), muestra una alerta nativa y en Logs con quién lo hizo (registro de auditoría) y ofrece «Restore»; umbrales configurables y opción de quitar los roles al responsable automáticamente (desactivada por defecto); tests del detector con eventos simulados del Gateway
 
 Verificación manual (en tu servidor de pruebas):
