@@ -626,7 +626,7 @@ Verificación manual:
 - [x] Importar y exportar plantillas de la biblioteca
   criterio: formato documentado y versionado con validación de tamaño, tipos, referencias y rangos antes de guardar; vista previa de lo que se importará y confirmación si el nombre ya existe; rechaza archivos corruptos o versiones no compatibles sin cambiar la biblioteca; un exportar/importar conserva la estructura y no arrastra credenciales ni IDs de servidor, bot, canal o rol del origen como destinos de ejecución; tests del recorrido completo, referencias rotas y archivo inválido
 
-- [ ] Aplicar una plantilla mediante el motor de propuestas
+- [B] Aplicar una plantilla mediante el motor de propuestas
   criterio: elegir una plantilla y un servidor autorizado muestra árbol, diferencias, conflictos y acciones antes de Apply; compila con el motor de planes/propuestas existente y remapea @everyone, categorías y roles al servidor destino; no sobrescribe recursos solo por compartir nombre ni borra lo existente por defecto; aplica en orden con validación de permisos/jerarquía, Stop y verificación visual de la fase 20; no se reintroduce el antiguo apply_template ficticio; tests de aplicar a dos servidores distintos, roles ambiguos, recursos existentes y cancelación
 
 - [ ] Usar la biblioteca desde la IA
