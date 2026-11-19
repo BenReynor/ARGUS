@@ -66,3 +66,8 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - Síntoma: El agente no cumplió el criterio tras 2 intentos.
 - Causa: revisor_fail en la iteración 3: Restore no recupera la jerarquía cuando se elimina una categoría: recrea la categoría, pero omite reasignar los canales supervivientes, que Discord deja sin padre. La rama de canales existentes solo restaura overwrites; aplicar la propuesta deja esos canales fuera de su categoría original.
 - Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-18 20:16 — Tarea bloqueada: Restaurar manualmente
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: revisor_fail en la iteración 1: El emparejamiento por nombre no distingue roles gestionados de roles editables: un rol normal borrado puede vincularse a un rol de integración con el mismo nombre. Así no se recrea el rol perdido y Apply intenta modificar o asignar un rol gestionado, operaciones que Discord rechaza, deteniendo la restauración.
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
