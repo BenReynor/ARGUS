@@ -582,6 +582,18 @@ impl Conversador {
             .filter(|w| !w.starts_with("<@"))
             .collect::<Vec<_>>()
             .join(" ");
+        let normalized = direct.trim().trim_end_matches(['.', '!']).to_lowercase();
+        let direct = if matches!(
+            normalized.as_str(),
+            "restaura el último snapshot"
+                | "restaura el ultimo snapshot"
+                | "restore the latest snapshot"
+                | "restore the last snapshot"
+        ) {
+            "restore latest".to_string()
+        } else {
+            direct
+        };
         if direct.starts_with("restore ")
             && crate::db::ordenes_activas(ajustes, &e.msg.autor_id.to_string())
         {
@@ -1200,11 +1212,18 @@ impl Conversador {
             ));
         }
         let pool = self.pool.as_ref().ok_or("The database is not available")?;
+        let snapshot = if parts[0] == "latest" {
+            crate::snapshots::latest(pool, &self.bot_id.to_string(), &e.guild_id.to_string())
+                .await
+                .map_err(|e| format!("{e:#}"))?
+        } else {
+            parts[0].to_string()
+        };
         let preview = crate::snapshots::restore::preview(
             pool,
             &self.bot_id.to_string(),
             &e.guild_id.to_string(),
-            parts[0],
+            &snapshot,
             &self.token,
             self.base_url.as_deref(),
             parts.len() == 2,
@@ -1215,6 +1234,9 @@ impl Conversador {
         // Publicar cada paso, sin truncar argumentos, antes de pedir el sí.
         let review = serde_json::to_string_pretty(&preview).map_err(|e| e.to_string())?;
         self.enviar(e, &review).await?;
+        for warning in &preview.unavailable {
+            self.avisar(e, &crate::i18n::tr(idioma, warning)).await;
+        }
         let propuesta = Propuesta {
             resumen: crate::i18n::tr(idioma, "Restore snapshot"),
             acciones: vec![crate::propuesta::Accion {
@@ -1674,7 +1696,8 @@ mod tests {
         .await
         .unwrap();
         let mut e = entrada(1, true);
-        e.texto = format!("restore {snapshot}");
+        let _ = snapshot;
+        e.texto = "restaura el último snapshot".into();
         let mut settings = ajustes_ordenes(false);
         settings.ordenes_permitidas.borrar_canales_roles = true;
         assert_eq!(c.atender(e, &settings).await, Resultado::Respondido);
@@ -1695,6 +1718,20 @@ mod tests {
         let messages = textos(&envios(&server).await).join("\n");
         assert!(messages.contains("role_create") && messages.contains("estimated_seconds"));
         assert!(messages.contains("Reply **yes**"));
+        assert!(messages.contains("Messages cannot be restored"));
+        // Solo el autor puede aprobar; repetir el sí no repite la aplicación.
+        let applied = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = applied.clone();
+        c.ordenes.aplicar = Arc::new(move |_, _| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async { Ok(Vec::new()) })
+        });
+        c.atender(confirmar(2, "sí"), &settings).await;
+        assert_eq!(applied.load(Ordering::SeqCst), 0);
+        c.atender(confirmar(1, "sí"), &settings).await;
+        assert_eq!(applied.load(Ordering::SeqCst), 1);
+        c.atender(confirmar(1, "sí"), &settings).await;
+        assert_eq!(applied.load(Ordering::SeqCst), 1);
     }
 
     fn ajustes() -> GuildSettings {

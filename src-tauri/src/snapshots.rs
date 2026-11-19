@@ -9,7 +9,7 @@ use sqlx::{Row, SqliteConnection, SqlitePool};
 use tauri::{AppHandle, Emitter, Manager, State};
 use twilight_http::routing::Route;
 
-mod compare;
+pub(crate) mod compare;
 pub mod restore;
 
 const MAX_FILE: usize = 128 * 1024 * 1024;
@@ -386,7 +386,12 @@ async fn insert(
         .bind(&id).bind(bot).bind(guild).bind(&s.name).bind(&s.created_at).bind(data.len() as i64).bind(summary(s).to_string()).bind(data).bind(automatic).execute(connection).await?;
     Ok(id)
 }
-async fn load(pool: &SqlitePool, bot: &str, guild: &str, id: &str) -> Result<ServerSnapshot> {
+pub(crate) async fn load(
+    pool: &SqlitePool,
+    bot: &str,
+    guild: &str,
+    id: &str,
+) -> Result<ServerSnapshot> {
     let row = sqlx::query(
         "SELECT data,name FROM server_snapshots WHERE id=? AND bot_id=? AND guild_id=?",
     )
@@ -400,6 +405,11 @@ async fn load(pool: &SqlitePool, bot: &str, guild: &str, id: &str) -> Result<Ser
     s.name = row.get("name");
     Ok(s)
 }
+pub(crate) async fn latest(pool: &SqlitePool, bot: &str, guild: &str) -> Result<String> {
+    sqlx::query_scalar("SELECT id FROM server_snapshots WHERE bot_id=? AND guild_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1")
+        .bind(bot).bind(guild).fetch_optional(pool).await?.context("Snapshot not found")
+}
+
 pub(crate) async fn listing(pool: &SqlitePool, bot: &str, guild: &str) -> Result<Value> {
     let rows = sqlx::query("SELECT id,name,created_at,size_bytes,summary,automatic FROM server_snapshots WHERE bot_id=? AND guild_id=? ORDER BY created_at DESC,rowid DESC").bind(bot).bind(guild).fetch_all(pool).await?;
     let rows: Vec<Value> = rows.iter().map(|r| Ok(json!({"id":r.get::<String,_>("id"), "name":r.get::<String,_>("name"), "created_at":r.get::<String,_>("created_at"), "size_bytes":r.get::<i64,_>("size_bytes"), "summary":serde_json::from_str::<Value>(r.get("summary"))?, "automatic":r.get::<bool,_>("automatic")}))).collect::<Result<_>>()?;

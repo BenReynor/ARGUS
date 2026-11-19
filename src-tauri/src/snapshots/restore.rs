@@ -8,30 +8,35 @@ use std::sync::{
     Arc, Mutex, OnceLock,
 };
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Step {
     kind: String,
     target: String,
     data: Value,
     description: String,
 }
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Preview {
     pub(crate) id: String,
     guild_name: String,
     steps: Vec<Step>,
-    unavailable: Vec<String>,
+    pub(crate) unavailable: Vec<String>,
     estimated_seconds: usize,
     delete_extra: bool,
 }
+#[derive(Serialize, Deserialize)]
 struct Job {
+    #[serde(skip)]
+    pool: Option<SqlitePool>,
     bot: String,
     guild: String,
     preview: Preview,
     roles: HashMap<String, String>,
     channels: HashMap<String, String>,
     results: Vec<ResultadoAccion>,
+    #[serde(skip)]
     stop: Arc<AtomicBool>,
+    #[serde(skip)]
     running: Arc<AtomicBool>,
 }
 static JOBS: OnceLock<Mutex<HashMap<String, Arc<Mutex<Job>>>>> = OnceLock::new();
@@ -517,6 +522,7 @@ fn build(
     unavailable.sort();
     unavailable.dedup();
     Job {
+        pool: None,
         bot: String::new(),
         guild: saved.guild_id.clone(),
         preview: Preview {
@@ -604,7 +610,16 @@ pub(crate) async fn preview(
         delete_extra,
     );
     job.bot = bot.into();
+    job.pool = Some(pool.clone());
     let result = job.preview.clone();
+    // El MCP y la app son procesos separados: conservar exactamente lo revisado.
+    sqlx::query("INSERT INTO snapshot_restore_proposals(id,bot_id,guild_id,data) VALUES(?,?,?,?)")
+        .bind(&result.id)
+        .bind(bot)
+        .bind(guild)
+        .bind(serde_json::to_string(&job)?)
+        .execute(pool)
+        .await?;
     let mut jobs = jobs().lock().unwrap();
     // Conservar las propuestas toda la sesión: una restauración detenida o
     // fallida necesita sus resultados e IDs creados para continuar sin repetir
@@ -612,6 +627,37 @@ pub(crate) async fn preview(
     jobs.insert(result.id.clone(), Arc::new(Mutex::new(job)));
     Ok(result)
 }
+/// Solo el ejecutor de propuestas aprobadas importa el trabajo del MCP.
+pub(crate) async fn load_reviewed(pool: &SqlitePool, state: &AppState, key: &str) -> Result<()> {
+    if jobs().lock().unwrap().contains_key(key) {
+        return Ok(());
+    }
+    let bot = state.get_active_bot().context("No bot selected")?;
+    let guild = state.get_active_guild().context("No server selected")?;
+    let data: String = sqlx::query_scalar(
+        "SELECT data FROM snapshot_restore_proposals WHERE id=? AND bot_id=? AND guild_id=?",
+    )
+    .bind(key)
+    .bind(&bot.id)
+    .bind(&guild)
+    .fetch_optional(pool)
+    .await?
+    .context("Restore proposal is unavailable")?;
+    let mut job: Job = serde_json::from_str(&data)?;
+    job.pool = Some(pool.clone());
+    jobs()
+        .lock()
+        .unwrap()
+        .entry(key.into())
+        .or_insert_with(|| Arc::new(Mutex::new(job)));
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn forget_for_test(key: &str) {
+    jobs().lock().unwrap().remove(key);
+}
+
 fn resolve(
     value: &Value,
     roles: &HashMap<String, String>,
@@ -755,6 +801,10 @@ pub async fn apply_snapshot_restore(
     id: String,
     confirmation: String,
 ) -> std::result::Result<ResumenPropuesta, String> {
+    let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
+    load_reviewed(&pool, &state, &id)
+        .await
+        .map_err(|e| e.to_string())?;
     let scope = (
         state.get_active_bot().map(|b| b.id),
         state.get_active_guild(),
@@ -949,11 +999,22 @@ pub(crate) async fn apply_cancelable(
         };
         progress(AvanceAccion::de(preview.steps.len(), &result));
         results.push(result);
-        {
+        let persisted = {
             let mut j = job.lock().unwrap();
             j.roles = roles.clone();
             j.channels = channels.clone();
             j.results = results.clone();
+            j.pool
+                .clone()
+                .map(|pool| serde_json::to_string(&*j).map(|data| (pool, data)))
+                .transpose()?
+        };
+        if let Some((pool, data)) = persisted {
+            sqlx::query("UPDATE snapshot_restore_proposals SET data=? WHERE id=?")
+                .bind(data)
+                .bind(key)
+                .execute(&pool)
+                .await?;
         }
         // Detener ante error evita aplicar dependencias o borrados posteriores.
         if !ok {
