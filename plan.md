@@ -623,7 +623,7 @@ Verificación manual:
 - [B] Guardar y organizar las plantillas propias
   criterio: biblioteca local con nombre, descripción, etiquetas, fecha y esquema versionado; crear desde el editor del plan o desde una estructura/snapshot elegidos por el usuario, editar, buscar, duplicar y borrar con confirmación; representa canales, categorías, roles, descripciones y permisos por referencias portátiles; no incluye tokens, mensajes ni datos personales de miembros por defecto; mantiene separados la plantilla reusable y los snapshots de recuperación; migración compatible con la tabla templates existente y tests de persistencia, duplicado y esquema antiguo
 
-- [ ] Importar y exportar plantillas de la biblioteca
+- [x] Importar y exportar plantillas de la biblioteca
   criterio: formato documentado y versionado con validación de tamaño, tipos, referencias y rangos antes de guardar; vista previa de lo que se importará y confirmación si el nombre ya existe; rechaza archivos corruptos o versiones no compatibles sin cambiar la biblioteca; un exportar/importar conserva la estructura y no arrastra credenciales ni IDs de servidor, bot, canal o rol del origen como destinos de ejecución; tests del recorrido completo, referencias rotas y archivo inválido
 
 - [ ] Aplicar una plantilla mediante el motor de propuestas
