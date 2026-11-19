@@ -1,0 +1,7 @@
+# Plantillas portátiles, versión 1
+
+El archivo es JSON UTF-8 de hasta 1 MiB. Su objeto raíz contiene exactamente `format` ("argus-template"), `version` (1), `name`, `description`, `roles` y `channels`. No se aceptan campos adicionales ni versiones desconocidas. El nombre tiene entre 1 y 100 caracteres y la descripción hasta 1000. Se admiten hasta 250 roles y 500 canales.
+
+Cada rol tiene `key`, `name`, `color` (entero de 0 a 16777215) y `permissions` (entero de 0 a 2^53-1). Cada canal tiene `key`, `name`, `kind` (category, text, voice, announcement o forum), `parent` (null o clave de una categoría) y `overwrites`. Cada overwrite contiene `role` (clave de un rol), `allow` y `deny` (máscaras enteras de 0 a 2^53-1 sin bits comunes). Las claves son únicas por tipo, comienzan con una letra ASCII y solo contienen letras, dígitos, guion o guion bajo, con máximo 64 bytes. Los nombres de roles y canales tienen entre 1 y 100 caracteres. Las referencias deben existir y las categorías no tienen padre.
+
+Las claves son referencias locales al documento; no son IDs de Discord ni destinos de ejecución. El formato no admite credenciales, bots, servidores, miembros ni IDs de origen. Las plantillas antiguas que no cumplen este formato no se exportan. La vista previa no modifica la biblioteca; al confirmar se vuelve a validar y, si ya existe el nombre, se solicita confirmación para guardar una copia adicional.

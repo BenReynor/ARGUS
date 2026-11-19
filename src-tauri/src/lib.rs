@@ -29,6 +29,7 @@ pub mod responder;
 pub mod snapshots;
 pub mod state;
 pub mod sync;
+mod template_transfer;
 #[cfg(test)]
 mod tests_ajustes;
 #[cfg(test)]
@@ -135,6 +136,9 @@ pub fn run() {
             set_active_bot,
             invite_url,
             ruta_mcp,
+            template_transfer::preview_template_file,
+            template_transfer::import_template_file,
+            template_transfer::export_template_file,
             list_templates,
             save_template,
             delete_template,

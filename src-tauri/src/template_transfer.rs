@@ -1,0 +1,217 @@
+//! Formato portátil deliberadamente cerrado: ningún identificador Discord es un destino.
+use crate::db;
+use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
+use std::collections::HashSet;
+use tauri::AppHandle;
+
+const MAX_BYTES: usize = 1_048_576;
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Document {
+    pub format: String,
+    pub version: u32,
+    pub name: String,
+    pub description: String,
+    pub roles: Vec<Role>,
+    pub channels: Vec<Channel>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Role {
+    pub key: String,
+    pub name: String,
+    pub color: u32,
+    pub permissions: u64,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Channel {
+    pub key: String,
+    pub name: String,
+    pub kind: String,
+    pub parent: Option<String>,
+    pub overwrites: Vec<Overwrite>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Overwrite {
+    pub role: String,
+    pub allow: u64,
+    pub deny: u64,
+}
+fn invalid() -> String {
+    "Invalid or unsupported template file".into()
+}
+fn key(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 64
+        && s.as_bytes()[0].is_ascii_alphabetic()
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+fn name(s: &str, max: usize) -> bool {
+    !s.trim().is_empty() && s.chars().count() <= max && !s.chars().any(char::is_control)
+}
+pub fn parse(data: &str) -> Result<Document, String> {
+    if data.len() > MAX_BYTES {
+        return Err(invalid());
+    }
+    let d: Document = serde_json::from_str(data).map_err(|_| invalid())?;
+    if d.format != "argus-template"
+        || d.version != 1
+        || !name(&d.name, 100)
+        || d.description.chars().count() > 1000
+        || d.roles.len() > 250
+        || d.channels.len() > 500
+    {
+        return Err(invalid());
+    }
+    let mut roles = HashSet::new();
+    for r in &d.roles {
+        if !key(&r.key)
+            || !roles.insert(&r.key)
+            || !name(&r.name, 100)
+            || r.color > 0xffffff
+            || r.permissions > ((1u64 << 53) - 1)
+        {
+            return Err(invalid());
+        }
+    }
+    let mut channels = HashSet::new();
+    for c in &d.channels {
+        if !key(&c.key)
+            || !channels.insert(&c.key)
+            || !name(&c.name, 100)
+            || !["category", "text", "voice", "announcement", "forum"].contains(&c.kind.as_str())
+            || c.overwrites.len() > 250
+        {
+            return Err(invalid());
+        }
+    }
+    for c in &d.channels {
+        if let Some(p) = &c.parent {
+            if c.kind == "category"
+                || !d
+                    .channels
+                    .iter()
+                    .any(|x| &x.key == p && x.kind == "category")
+            {
+                return Err(invalid());
+            }
+        }
+        let mut seen = HashSet::new();
+        for o in &c.overwrites {
+            if !roles.contains(&o.role)
+                || !seen.insert(&o.role)
+                || o.allow > ((1u64 << 53) - 1)
+                || o.deny > ((1u64 << 53) - 1)
+                || o.allow & o.deny != 0
+            {
+                return Err(invalid());
+            }
+        }
+    }
+    Ok(d)
+}
+#[derive(Serialize)]
+pub struct Preview {
+    pub document: Document,
+    pub name_exists: bool,
+}
+pub async fn preview(pool: &SqlitePool, data: &str) -> Result<Preview, String> {
+    let document = parse(data)?;
+    let name_exists = sqlx::query_scalar::<_, i64>(
+        "SELECT EXISTS(SELECT 1 FROM templates WHERE name = ? COLLATE NOCASE)",
+    )
+    .bind(&document.name)
+    .fetch_one(pool)
+    .await
+    .map_err(|_| invalid())?
+        != 0;
+    Ok(Preview {
+        document,
+        name_exists,
+    })
+}
+pub async fn import(pool: &SqlitePool, data: &str, confirmed: bool) -> Result<(), String> {
+    let d = parse(data)?;
+    let mut tx = pool.begin().await.map_err(|_| invalid())?;
+    let exists = sqlx::query_scalar::<_, i64>(
+        "SELECT EXISTS(SELECT 1 FROM templates WHERE name = ? COLLATE NOCASE)",
+    )
+    .bind(&d.name)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|_| invalid())?
+        != 0;
+    if exists && !confirmed {
+        return Err("A template with this name already exists".into());
+    }
+    sqlx::query("INSERT INTO templates (id,name,description,data,version,created_at,updated_at) VALUES (?,?,?,?,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)")
+        .bind(uuid::Uuid::new_v4().to_string()).bind(&d.name).bind(&d.description).bind(serde_json::to_string(&d).map_err(|_| invalid())?).execute(&mut *tx).await.map_err(|_| invalid())?;
+    tx.commit().await.map_err(|_| invalid())?;
+    Ok(())
+}
+#[tauri::command]
+pub async fn preview_template_file(app: AppHandle, data: String) -> Result<Preview, String> {
+    let pool = db::get_pool(&app).await.map_err(|_| invalid())?;
+    preview(&pool, &data).await
+}
+#[tauri::command]
+pub async fn import_template_file(
+    app: AppHandle,
+    data: String,
+    confirmed: bool,
+) -> Result<(), String> {
+    let pool = db::get_pool(&app).await.map_err(|_| invalid())?;
+    import(&pool, &data, confirmed).await
+}
+#[tauri::command]
+pub async fn export_template_file(app: AppHandle, id: String) -> Result<String, String> {
+    let pool = db::get_pool(&app).await.map_err(|_| invalid())?;
+    export(&pool, &id).await
+}
+pub async fn export(pool: &SqlitePool, id: &str) -> Result<String, String> {
+    let t = db::get_template(pool, id)
+        .await
+        .map_err(|_| invalid())?
+        .ok_or_else(invalid)?;
+    let mut d = parse(&t.data)?;
+    d.name = t.name;
+    d.description = t.description;
+    let data = serde_json::to_string_pretty(&d).map_err(|_| invalid())?;
+    parse(&data)?;
+    Ok(data)
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn roundtrip_and_rejections_leave_library_unchanged() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query("CREATE TABLE templates (id TEXT PRIMARY KEY, name TEXT, description TEXT, data TEXT, version INTEGER, created_at TEXT, updated_at TEXT)").execute(&pool).await.unwrap();
+        let data = r#"{"format":"argus-template","version":1,"name":"Example","description":"","roles":[{"key":"staff","name":"Staff","color":12,"permissions":8}],"channels":[{"key":"group","name":"Group","kind":"category","parent":null,"overwrites":[]},{"key":"chat","name":"chat","kind":"text","parent":"group","overwrites":[{"role":"staff","allow":1,"deny":0}]}]}"#;
+        let original = parse(data).unwrap();
+        assert!(!preview(&pool, data).await.unwrap().name_exists);
+        import(&pool, data, false).await.unwrap();
+        let saved = db::list_templates(&pool).await.unwrap();
+        let exported = export(&pool, &saved[0].id).await.unwrap();
+        assert_eq!(parse(&exported).unwrap(), original);
+        assert!(preview(&pool, data).await.unwrap().name_exists);
+        assert!(import(&pool, data, false).await.is_err());
+        for bad in [
+            "{",
+            &data.replace("\"staff\",\"allow\"", "\"missing\",\"allow\""),
+            &data.replace("\"version\":1", "\"version\":2"),
+            &data.replace("\"parent\":\"group\"", "\"parent\":\"missing\""),
+        ] {
+            assert!(import(&pool, bad, true).await.is_err());
+        }
+        assert_eq!(db::list_templates(&pool).await.unwrap().len(), 1);
+        import(&pool, &exported, true).await.unwrap();
+        let copies = db::list_templates(&pool).await.unwrap();
+        assert_eq!(copies.len(), 2);
+        assert_eq!(parse(&copies[0].data).unwrap(), original);
+    }
+}
