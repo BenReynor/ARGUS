@@ -4,6 +4,11 @@ Reglas operativas para agentes. Qué es ARGUS y por qué: CONTEXTO.md. Qué arch
 existen: ARCHITECTURE_MAP.md. Errores ya corregidos: lecciones.md.
 
 ## Reglas
+- Prioridad del producto: construir/configurar servidores con IA e integrarla
+  con otros bots autorizados (ver CONTEXTO.md y FASES 20–25 de plan.md). No añadir
+  módulos propios de bienvenida, verificación, autoroles, tickets o niveles ni
+  un programador genérico de tareas. El servicio sin ventana es opcional y viene
+  desactivado por defecto; no se retiran las capacidades ya implementadas.
 - ARGUS es un producto general: **no escribas en el código IDs, nombres de
   servidor, canal, bot o usuario**. El servidor y el bot activos los elige el
   usuario en la app.

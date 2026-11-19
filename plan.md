@@ -564,30 +564,121 @@ Verificación manual (en tu servidor de pruebas):
 - Expulsar a todos en el servidor de pruebas: pide escribir el nombre, respeta las exclusiones y Stop funciona.
 - Exportar la configuración de ARGUS, importarla en otra carpeta de datos y comprobar que los bots y ajustes están.
 
-## Después del MVP (sin criterios todavía: se detallan al empezar cada bloque)
-- **Ecosistema de complementos** (idea acordada el 2026-11-01; se detalla al empezar):
-  - Modo servicio 24/7 primero: ARGUS sin ventana (en un PC, Raspberry o VPS) para que los módulos funcionen siempre.
-  - Programa aparte en un repo propio (nombre por decidir: «Complementos», «Taller», «ARGUS Hub»…), gratuito y opcional: un botón en ARGUS lo descarga y se conecta con la app principal por un canal local; los eventos de Discord se los pasa ARGUS (nunca una segunda conexión al Gateway con el mismo token).
-  - Solo módulos ofrecidos por el autor del proyecto: paquetes comprimidos y **firmados** en las releases de ese repo; se descargan bajo demanda, se activan/desactivan por servidor y se configuran también desde el plan (`## Módulo: Tickets | …`). Primeros: tickets, roles por botón, bienvenida/verificación.
-  - Cada módulo declara qué puede hacer (permisos) y se ejecuta aislado (p. ej. WebAssembly): nunca accede a los tokens ni a archivos del usuario.
-  - Configurar otros bots conocidos (Carl-bot, Sapphire…) desde su web: MCPs/recetas de navegador por bot; navegador visible, el login lo hace el usuario (ARGUS nunca ve su contraseña), confirmación antes de guardar cada cambio y aviso previo de riesgo (actúa con su cuenta), coste en tokens y posible fallo si la web cambia; revisar las condiciones de uso de cada web antes de soportarla.
-  - Comunidad: el repo de módulos/MCPs acepta contribuciones (pull requests) con tests automáticos, pero solo el autor revisa, firma y publica; nada llega a los usuarios sin esa revisión.
-  - Catálogo curado de MCPs para el asistente (búsqueda web, GitHub…), con lo que puede hacer cada uno antes de instalarlo.
-  - Diseño de seguridad desde el principio (decidido el 2026-11-01):
-    - Tope de peticiones por módulo: ARGUS reparte el límite de Discord y pausa al módulo que se pase, para que no frene al bot ni a la app.
-    - «Enchufe» ARGUS ↔ complementos con versión; cada módulo declara la versión mínima de ARGUS y el CI prueba los módulos con cada versión.
-    - Permisos declarados por módulo; ARGUS bloquea cualquier acción fuera de ellos.
-    - Nombres genéricos («Tickets», «Niveles»), nunca nombres, logos ni textos de otros bots.
-    - Datos personales (p. ej. tickets): borrado automático configurable (por defecto 30 días), botón de borrar y aviso al abrir un ticket.
-    - Contribuciones: tests automáticos + revisión del autor; nunca aprobar lo que no se entiende; solo el autor firma.
-    - Firma con clave Ed25519 del autor (`~/.claves-argus/firma-modulos`, con contraseña y copia fuera del PC; solo la pública va en ARGUS). Lista de claves revocadas: si la clave se compromete, se revoca, se publica una nueva y ARGUS rechaza lo firmado con la vieja.
-    - Automatización de webs de otros bots: opcional, aviso previo, navegador visible y confirmación antes de guardar.
-    - Módulos que necesiten permisos privilegiados de Discord (p. ej. Message Content) lo avisan antes de instalarse.
-    - **Recetas para configurar otros bots (webs ajenas): aviso siempre al descargarlas**: pueden no estar actualizadas con la web del bot, que cambia sin avisar, y podrían fallar; se muestra la fecha de su última actualización y el usuario confirma antes de descargarlas.
-    - **Módulos propios (tickets, niveles…): sin aviso general de desactualización**, porque dependen de la API de Discord (versionada, cambios anunciados con meses de antelación) y de ARGUS (versión comprobada). Solo avisan en casos concretos: si no son compatibles con la versión de ARGUS instalada (no se dejan activar), si llevan más de un año sin actualizarse, o si Discord anuncia el fin de una versión de API que usan. Siempre muestran, al instalarlos, la pantalla de permisos («este módulo podrá: …») y, si aplica, el aviso de datos personales y de permisos privilegiados de Discord.
-  - Monetización: **donaciones** (decidido el 2026-11-01); todo sigue gratis. `.github/FUNDING.yml` (botón «Sponsor» de GitHub), sección «Support the project» en README.md / README.es.md y un enlace discreto en Settings → About de ARGUS y en el programa de complementos; nunca bloquear funciones por no donar. Requiere que el autor cree antes su cuenta (GitHub Sponsors y/o Ko-fi).
-- Plantillas: esquema, vista de plantillas, vista previa en árbol, aplicador ordenado (roles → categorías → canales → overwrites), validación de permisos, crear servidor nuevo desde plantilla.
-- Personalidad del bot (lo básico está en la FASE 11): memoria larga por canal, modo observador, comandos slash, proveedores LLM sin CLI (Ollama / compatible OpenAI).
-- Vigilancia y logs: niveles y timestamps, eventos con filtros, vista timeline, alertas nativas, health check del Gateway, interacción opcional con otros bots con reglas anti-bucle.
-- Integraciones: Telegram, backup automático, agentes CLI (el MCP propio está en la FASE 8).
-- UX y rendimiento: listas virtualizadas, paginación de miembros en la UI, métricas, revisar CPU/RAM.
+## Dirección de la siguiente etapa — acordada el 2026-11-19
+
+ARGUS se centra en **construir/configurar servidores con IA y conectarla con otros
+bots**, con aprobación y resultados comprobables. Se priorizan resultados
+visuales, diagnóstico, biblioteca de plantillas propias, auditoría y conectores
+para otros bots. El servicio sin ventana es **opcional**, desactivado por defecto.
+No se añaden módulos propios de bienvenida, verificación, autoroles, tickets o
+niveles, ni un programador genérico de tareas. Se conservan las funciones ya
+implementadas y los backups/snapshots automáticos existentes.
+
+Estado comprobado: cerrar la ventana ya la oculta y deja ARGUS en la bandeja;
+Salir termina el proceso. Hay notificaciones temporales y progreso por acción.
+Las fases siguientes amplían esas capacidades; **todas están pendientes**.
+La idea anterior de módulos propios se sustituye por conectores autorizados para
+otros bots, sin un programa de complementos separado como requisito de esta etapa.
+Toda UI nueva usa `t()` con fuente inglesa y catálogo español. Las pruebas usan
+SQLite temporal, Discord/MCP/agentes falsos: sin tokens, claves privadas reales, modelos
+reales ni cambios en un servidor real. Solo en la verificación manual se eligen
+las cuentas y servicios del autor; nunca se codifican IDs de un servidor concreto.
+
+## FASE 20 — Resultados visuales y comprobación de las operaciones
+
+El usuario debe ver **qué se intentó, qué se consiguió y qué se comprobó**, sin
+leer logs técnicos ni depender de que la IA diga «listo». Reutilizar los eventos,
+resultados por acción y notificaciones existentes.
+
+- [ ] Inventariar las operaciones y sus avisos reales
+  criterio: documento en docs con las operaciones de construcción, edición, planes, plantillas, backups, snapshots, agentes, MCP y ajustes; para cada una identifica el comando real, dónde muestra progreso/éxito/fallo, si permite comprobar el resultado y qué falta; rastrea respuestas reales del backend, no solo textos de notificación; identifica funciones que fallan en silencio o muestran éxito antes de terminar; comprobación automatizada de que los comandos literales invocados por la interfaz están registrados y los cuatro comandos ficticios retirados no reaparecen
+
+- [ ] Historial de operaciones con estados compartidos
+  criterio: cada operación tiene un ID propio y captura bot/servidor/destino al comenzar; guarda en SQLite sus pasos, tiempos y estados de pendiente, en curso, verificando, correcto, parcial, fallo, cancelado, omitido o no verificado, con motivos legibles y sin secretos; el registro continúa siendo del servidor original si el usuario cambia de servidor; se reabre tras reiniciar y marca como interrumpida una operación que no terminó, sin repetirla automáticamente; estado común para ejecución desde la app y desde órdenes autorizadas; tests con BD temporal de aislamiento por bot/servidor y recuperación tras interrupción
+
+- [ ] Panel visual de resultados y avisos consistentes
+  criterio: panel de actividad con filtros por operación, servidor y estado, resumen de pasos realizados/fallidos/omitidos/cancelados y acceso desde el aviso; estados con icono y texto además de color, barra de progreso y detalles del fallo con sugerencia concreta; los avisos temporales no son el único lugar donde queda el resultado; los fallos y los resultados parciales nunca muestran éxito total; cada operación del inventario muestra al menos un resultado visible y coherente con el backend; estados accesibles con teclado, role status/alert y textos EN/ES; pruebas de transiciones, resultado parcial y reapertura del historial
+
+- [ ] Comprobar el resultado tras construir o modificar el servidor
+  criterio: después de que Discord acepte la acción, el motor comprueba por lectura o evento correlacionado los canales, roles, posiciones, descripciones y permisos que realmente puedan verificarse; usa los IDs devueltos y la operación original, nunca el servidor activo actual ni solo una coincidencia de nombre; distingue «aceptado por Discord» de «verificado» y marca no verificado si falta permiso, llega tarde el evento o la API no permite comprobarlo, explicando el motivo; ningún timeout ambiguo provoca reintentar una escritura a ciegas; al reintentar se reconcilian los recursos ya creados y no se repiten los pasos correctos; Stop y las confirmaciones existentes se conservan; tests con eventos tardíos, API que acepta pero no refleja, nombres repetidos, cambio de servidor y timeout tras crear un canal
+
+Verificación manual:
+- Crear categoría/canal/rol: ver avance y resultado comprobado; contrastarlo en Discord.
+- Quitar un permiso al bot: aparece fallo o comprobación incompleta con explicación, no un éxito total.
+- Interrumpir una construcción, cerrar/reabrir y revisar el historial; reintentar sin duplicar lo ya creado.
+
+## FASE 21 — Diagnóstico integrado de ARGUS
+
+- [ ] Motor de comprobaciones sin efectos sobre Discord
+  criterio: comando de diagnóstico que comprueba configuración, acceso a BD, disponibilidad del llavero, estado del Gateway y permisos necesarios para construir, y detección/configuración de Claude, Codex, OpenCode y MCP; cada comprobación devuelve correcto, advertencia, fallo o no comprobado con su explicación y fecha; separa «binario encontrado», «sesión disponible» y «servicio responde»; no lee ni devuelve tokens/archivos de autenticación, no conecta nuevos bots, no abre login ni llama a modelos de pago automáticamente; cada proceso/petición tiene timeout y cancelación; tests con agentes/MCP/Discord falsos, sin sesión, sin red, permiso ausente y proceso que se cuelga
+
+- [ ] Pantalla de diagnóstico con acciones para resolver problemas
+  criterio: botón «Run diagnostics» desde Settings y acceso desde un fallo de construcción; lista visual por componente, progreso, última comprobación y sugerencia concreta de solución, usando los estados compartidos de la fase 20; cualquier prueba que escriba datos o use IA requiere una acción explícita separada y explica su alcance; no hay un indicador global de «todo funciona» si algo no se pudo comprobar; todo con t(); pruebas de resultados parciales, cancelación y reintento de una comprobación
+
+- [ ] Informe de diagnóstico exportable sin secretos
+  criterio: exportar un informe legible con versión, sistema, componentes comprobados y resultados, sin tokens, contraseñas, conversaciones, contenido privado de canales ni valores de variables de entorno; el usuario puede revisarlo antes de compartirlo; tests con errores simulados que contienen valores sensibles y comprobación de su redacción antes de mostrar o exportar
+
+## FASE 22 — Biblioteca personal de plantillas de construcción
+
+- [ ] Guardar y organizar las plantillas propias
+  criterio: biblioteca local con nombre, descripción, etiquetas, fecha y esquema versionado; crear desde el editor del plan o desde una estructura/snapshot elegidos por el usuario, editar, buscar, duplicar y borrar con confirmación; representa canales, categorías, roles, descripciones y permisos por referencias portátiles; no incluye tokens, mensajes ni datos personales de miembros por defecto; mantiene separados la plantilla reusable y los snapshots de recuperación; migración compatible con la tabla templates existente y tests de persistencia, duplicado y esquema antiguo
+
+- [ ] Importar y exportar plantillas de la biblioteca
+  criterio: formato documentado y versionado con validación de tamaño, tipos, referencias y rangos antes de guardar; vista previa de lo que se importará y confirmación si el nombre ya existe; rechaza archivos corruptos o versiones no compatibles sin cambiar la biblioteca; un exportar/importar conserva la estructura y no arrastra credenciales ni IDs de servidor, bot, canal o rol del origen como destinos de ejecución; tests del recorrido completo, referencias rotas y archivo inválido
+
+- [ ] Aplicar una plantilla mediante el motor de propuestas
+  criterio: elegir una plantilla y un servidor autorizado muestra árbol, diferencias, conflictos y acciones antes de Apply; compila con el motor de planes/propuestas existente y remapea @everyone, categorías y roles al servidor destino; no sobrescribe recursos solo por compartir nombre ni borra lo existente por defecto; aplica en orden con validación de permisos/jerarquía, Stop y verificación visual de la fase 20; no se reintroduce el antiguo apply_template ficticio; tests de aplicar a dos servidores distintos, roles ambiguos, recursos existentes y cancelación
+
+- [ ] Usar la biblioteca desde la IA
+  criterio: el asistente puede listar y consultar las plantillas autorizadas y preparar un plan/propuesta basada en una elegida, mostrando cuál usó y sus cambios; guardar una versión sugerida por IA requiere que el usuario la acepte y nunca sustituye silenciosamente su plantilla original; no aplica la estructura directamente; tests con agente falso y aprobación/descartar
+
+Verificación manual:
+- Guardar un diseño propio, duplicarlo y aplicarlo a otro servidor de pruebas; comprobar roles, permisos y ausencia de IDs del origen.
+
+## FASE 23 — Auditoría de permisos del servidor
+
+- [ ] Calcular accesos efectivos y detectar hallazgos comprobables
+  criterio: auditoría de solo lectura que reutiliza el cálculo de permisos, jerarquía y overwrites para explicar quién puede ver, escribir o administrar y qué permisos le faltan al bot para una construcción; resalta Administrator y permisos de gestión sensibles; solo declara una discrepancia de privacidad frente a una expectativa explícita del usuario, su plan o un snapshot, sin inferirla por el nombre del canal; cada hallazgo cita sus datos y muestra cuándo se comprobaron; si no puede leer una parte, marca la auditoría como incompleta; tests de herencia, overwrites de rol/miembro, Administrator, expectativas privadas y lectura parcial
+
+- [ ] Informe visual y correcciones aprobadas
+  criterio: vista con filtros por canal/rol, gravedad, datos que sustentan el hallazgo y explicación de su impacto; «Prepare correction» genera una propuesta por el motor existente, muestra el antes/después y pide aprobación antes de modificar Discord; no arregla permisos sola ni ofrece acciones que superen la jerarquía del bot; después vuelve a comprobar los hallazgos corregidos y muestra resultado parcial si no puede hacerlo; tests de correcciones propuestas, descarte y permisos insuficientes
+
+- [ ] Explicar la auditoría a la IA sin concederle escrituras
+  criterio: herramienta MCP de lectura para consultar el informe y sus límites; la IA puede explicar un hallazgo y preparar una propuesta de corrección, pero no eludir Apply ni las confirmaciones destructivas; devuelve datos estructurados y no conclusiones de «servidor seguro» con información incompleta; tests de la clasificación de lectura y de que consultar no cambia el servidor
+
+## FASE 24 — Conectar la IA con otros bots mediante MCP e integraciones autorizadas
+
+- [ ] Catálogo de conectores y capacidades reales
+  criterio: inventario versionado de conectores por servicio/bot, con origen, método oficial disponible (MCP/API autorizada), requisitos, permisos, herramientas de lectura/escritura y limitaciones; permite habilitar varios conectores para un servidor y probar cada conexión desde diagnóstico; los conectores no implementados o no comprobados aparecen como tales; no promete que todos los bots tengan MCP ni que un bot pueda configurar a otro enviándole mensajes; sin funciones propias de bienvenida/tickets/niveles; tests con catálogo y conectores falsos
+
+- [ ] Vincular cuentas y permisos sin compartir credenciales con la IA
+  criterio: cada conector se activa por decisión del usuario, queda asociado al servicio/cuenta/servidor correctos y muestra lo que permite hacer; usa OAuth/API/MCP del servicio cuando esté disponible y cifrado local/llavero para sus credenciales; no solicita el token privado de un bot ajeno, no automatiza cuentas personales de Discord ni crea selfbots; desconectar deja de ofrecer sus herramientas; los diagnósticos, logs y prompts no contienen credenciales; tests con autorización falsa, expiración y revocación
+
+- [ ] Lectura de varios MCP con aislamiento entre servicios
+  criterio: los agentes pueden consultar las herramientas de lectura habilitadas mediante una capa controlada, con nombres sin colisiones y límites por conector; las escrituras y herramientas desconocidas no se exponen directamente al modelo; configura la misma política para Claude, Codex y OpenCode sin heredar herramientas extra del usuario; un fallo de un conector no oculta ni cambia el estado de los otros; tests con dos MCP falsos, herramientas homónimas, caída y cancelación
+
+- [ ] Propuestas para configurar otros bots y comprobar su resultado
+  criterio: una acción destinada a otro bot identifica conector, cuenta, servidor, cambios y permisos; la IA prepara una propuesta y un adaptador controlado la ejecuta solo tras aprobación por el flujo normal, validando el destino otra vez antes de escribir; nunca pasa una llamada de escritura arbitraria directamente desde el modelo; el adaptador verifica por la API del servicio lo comprobable y el historial distingue ejecución de verificación; si el proveedor no permite comprobarlo, muestra no verificado, sin afirmar éxito; pruebas con adaptador falso, cuenta incorrecta, respuesta parcial y escritura directa rechazada
+
+- [ ] Servicios sin API o MCP de configuración disponible
+  criterio: la interfaz explica la limitación y ofrece instrucciones/manual o un enlace a su panel oficial; no muestra una integración inexistente como operativa; una futura receta de navegador es una opción separada con navegador visible, login realizado por el usuario, aviso de fecha/posible desactualización y confirmación antes de guardar; no se instala ni activa por defecto como sustituto de un MCP; no accede a la contraseña ni simula la sesión de usuario de Discord; pruebas de catálogo sin conexión y herramientas no disponibles
+
+Verificación manual:
+- Autorizar dos integraciones disponibles, pedir una configuración con IA y comprobar la propuesta, la cuenta destino y el resultado de cada una.
+- Desconectar una: deja de ofrecer herramientas, sin desconectar ni falsear el resultado de la otra.
+
+## FASE 25 — Servicio sin ventana, solo como opción
+
+- [ ] Comportamiento explícito al cerrar y salir
+  criterio: conservar el uso normal de escritorio y explicar en Settings si cerrar oculta en la bandeja o termina la interfaz; respetar la preferencia minimize_to_tray, que el handler actual no consulta, y mostrar claramente si el bot sigue funcionando; «Quit» en el modo normal detiene el proceso; si el servicio opcional está activo, distinguir cerrar la interfaz de detener el servicio y ofrecer acciones claras para ambos; pruebas con eventos falsos de cierre y ambas preferencias, sin parar un bot real
+
+- [ ] Motor de servicio opcional y una sola conexión por bot
+  criterio: modo sin ventana separado de la interfaz, desactivado por defecto, que solo se inicia/instala al habilitarlo explícitamente; interfaz y servicio comparten estado mediante un canal local autenticado y con permisos del usuario, sin enviar tokens por el canal; un bloqueo/registro de propietario impide conexiones duplicadas al Gateway por el mismo bot; abrir/cerrar la interfaz no pierde ni repite operaciones ni sus avisos; el servicio mantiene los límites, confirmaciones y resultados de las fases anteriores y no añade tareas programadas genéricas ni módulos de otros bots; pruebas con servicio/Gateway falsos de doble arranque, reconexión de la interfaz y parada ordenada
+
+- [ ] Arranque opcional y diagnóstico del servicio
+  criterio: controles visibles para habilitar/deshabilitar el arranque con el sistema, iniciar, detener y consultar estado/último error; no instala un servicio del sistema ni solicita privilegios por abrir ARGUS, y el inicio automático viene desactivado; documenta qué se mantiene activo y que el equipo debe permanecer encendido y conectado; diagnóstico distingue servicio detenido, interfaz desconectada y Gateway caído; pruebas sin modificar el arranque real del equipo, más checklist manual separado para Linux y Windows
+
+## Ideas fuera de esta etapa
+
+- Donaciones: se conserva la idea anterior de apoyar el proyecto sin bloquear funciones. Requiere que el autor configure antes su cuenta; no es un requisito para construir servidores ni para usar conectores.
+- Mejoras de rendimiento y accesibilidad se atenderán al implementar las fases anteriores, sin convertir ARGUS en un sustituto de los bots especializados.
