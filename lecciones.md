@@ -108,3 +108,8 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - Síntoma: El agente no cumplió el criterio tras 2 intentos.
 - Causa: gate_fail en la iteración 1: [GATE] ✗ juez: criterio NO cumplido (Una operación cuyos pasos fallan se registra como parcial; además, se omiten destinos como message_ids.) | 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^ warning: unused import: `Manager` --> src/backup.rs:8:24 8 | use tauri::{AppHandle, Manager, State}; |                        ^^^^^^^
 - Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 14:19 — Tarea bloqueada: Historial de operaciones con estados compartidos
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 1: [GATE] ✗ juez: criterio NO cumplido (El servidor fijado no se aplica a acciones sin guild_id: pueden ejecutarse en otro servidor que el registrado.) | 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^ warning: unused import: `Manager` --> src/backup.rs:8:24 8 | use tauri::{AppHandle, Manager, State}; |                        ^^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
