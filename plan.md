@@ -599,7 +599,7 @@ resultados por acción y notificaciones existentes.
 - [B] Comprobar el resultado tras construir o modificar el servidor
   criterio: después de que Discord acepte la acción, el motor comprueba por lectura o evento correlacionado los canales, roles, posiciones, descripciones y permisos que realmente puedan verificarse; usa los IDs devueltos y la operación original, nunca el servidor activo actual ni solo una coincidencia de nombre; distingue «aceptado por Discord» de «verificado» y marca no verificado si falta permiso, llega tarde el evento o la API no permite comprobarlo, explicando el motivo; ningún timeout ambiguo provoca reintentar una escritura a ciegas; al reintentar se reconcilian los recursos ya creados y no se repiten los pasos correctos; Stop y las confirmaciones existentes se conservan; tests con eventos tardíos, API que acepta pero no refleja, nombres repetidos, cambio de servidor y timeout tras crear un canal
 
-- [ ] Panel visual de resultados y avisos consistentes
+- [B] Panel visual de resultados y avisos consistentes
   criterio: panel de actividad con filtros por operación, servidor y estado, resumen de pasos realizados/fallidos/omitidos/cancelados y acceso desde el aviso; estados con icono y texto además de color, barra de progreso y detalles del fallo con sugerencia concreta; los avisos temporales no son el único lugar donde queda el resultado; los fallos y los resultados parciales nunca muestran éxito total; cada operación del inventario muestra al menos un resultado visible y coherente con el backend; estados accesibles con teclado, role status/alert y textos EN/ES; pruebas de transiciones, resultado parcial y reapertura del historial
 
 Verificación manual:
