@@ -640,7 +640,7 @@ Verificación manual:
 - [B] Calcular accesos efectivos y detectar hallazgos comprobables
   criterio: auditoría de solo lectura que reutiliza el cálculo de permisos, jerarquía y overwrites para explicar quién puede ver, escribir o administrar y qué permisos le faltan al bot para una construcción; resalta Administrator y permisos de gestión sensibles; solo declara una discrepancia de privacidad frente a una expectativa explícita del usuario, su plan o un snapshot, sin inferirla por el nombre del canal; cada hallazgo cita sus datos y muestra cuándo se comprobaron; si no puede leer una parte, marca la auditoría como incompleta; tests de herencia, overwrites de rol/miembro, Administrator, expectativas privadas y lectura parcial
 
-- [ ] Informe visual y correcciones aprobadas
+- [B] Informe visual y correcciones aprobadas
   criterio: vista con filtros por canal/rol, gravedad, datos que sustentan el hallazgo y explicación de su impacto; «Prepare correction» genera una propuesta por el motor existente, muestra el antes/después y pide aprobación antes de modificar Discord; no arregla permisos sola ni ofrece acciones que superen la jerarquía del bot; después vuelve a comprobar los hallazgos corregidos y muestra resultado parcial si no puede hacerlo; tests de correcciones propuestas, descarte y permisos insuficientes
 
 - [ ] Explicar la auditoría a la IA sin concederle escrituras
