@@ -4,7 +4,7 @@ use wiremock::{
     Mock, MockServer, ResponseTemplate,
 };
 
-async fn database() -> SqlitePool {
+pub(super) async fn database() -> SqlitePool {
     let p = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
         .connect("sqlite::memory:")
@@ -13,7 +13,7 @@ async fn database() -> SqlitePool {
     db::run_migrations(&p).await.unwrap();
     p
 }
-async fn fixture() -> MockServer {
+pub(super) async fn fixture() -> MockServer {
     let server = MockServer::start().await;
     let entries = [
         (
@@ -94,7 +94,7 @@ fn fake_image(path: &str) -> Vec<u8> {
     [firma, b"fixture-image"].concat()
 }
 
-async fn snapshot(server: &MockServer) -> ServerSnapshot {
+pub(super) async fn snapshot(server: &MockServer) -> ServerSnapshot {
     capture(
         "fake-token",
         Some(server.address().to_string().as_str()),

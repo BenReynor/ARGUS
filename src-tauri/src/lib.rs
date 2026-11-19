@@ -142,6 +142,8 @@ pub fn run() {
             search_messages,
             cleanup_context,
             snapshots::server_snapshots,
+            snapshots::restore::apply_snapshot_restore,
+            snapshots::restore::stop_snapshot_restore,
             backup::export_configuration,
             backup::preview_configuration,
             backup::import_configuration,

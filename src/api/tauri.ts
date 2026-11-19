@@ -236,7 +236,15 @@ export interface SnapshotComparison {
     entries: { id: string; label: string; status: 'missing' | 'changed' | 'extra'; lineas: import('../types').LineaDiff[] }[];
   }[];
 }
+export interface RestorePreview {
+  id: string; guild_name: string; delete_extra: boolean; estimated_seconds: number;
+  steps: { kind: string; target: string; data: unknown; description: string }[];
+  unavailable: string[];
+}
+export const applySnapshotRestore = (id: string, confirmation: string) => invoke<ResumenPropuesta>('apply_snapshot_restore', { id, confirmation });
+export const stopSnapshotRestore = (id: string) => invoke<void>('stop_snapshot_restore', { id });
 export interface ServerSnapshotListing {
+  restore?: RestorePreview;
   comparison?: SnapshotComparison;
   snapshots: ServerSnapshotItem[];
   schedule: { enabled: boolean; keep_last: number; last_error: string | null };
@@ -245,6 +253,7 @@ export type ServerSnapshotRequest =
   | { op: 'list' | 'create' }
   | { op: 'rename'; id: string; name: string }
   | { op: 'delete' | 'compare'; id: string }
+  | { op: 'restore'; id: string; undo: boolean; delete_extra: boolean }
   | { op: 'export'; id: string; path: string }
   | { op: 'import'; path: string }
   | { op: 'schedule'; enabled: boolean; keep_last: number };

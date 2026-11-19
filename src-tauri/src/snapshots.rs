@@ -10,6 +10,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use twilight_http::routing::Route;
 
 mod compare;
+pub mod restore;
 
 const MAX_FILE: usize = 128 * 1024 * 1024;
 
@@ -399,7 +400,7 @@ async fn load(pool: &SqlitePool, bot: &str, guild: &str, id: &str) -> Result<Ser
     s.name = row.get("name");
     Ok(s)
 }
-async fn listing(pool: &SqlitePool, bot: &str, guild: &str) -> Result<Value> {
+pub(crate) async fn listing(pool: &SqlitePool, bot: &str, guild: &str) -> Result<Value> {
     let rows = sqlx::query("SELECT id,name,created_at,size_bytes,summary,automatic FROM server_snapshots WHERE bot_id=? AND guild_id=? ORDER BY created_at DESC,rowid DESC").bind(bot).bind(guild).fetch_all(pool).await?;
     let rows: Vec<Value> = rows.iter().map(|r| Ok(json!({"id":r.get::<String,_>("id"), "name":r.get::<String,_>("name"), "created_at":r.get::<String,_>("created_at"), "size_bytes":r.get::<i64,_>("size_bytes"), "summary":serde_json::from_str::<Value>(r.get("summary"))?, "automatic":r.get::<bool,_>("automatic")}))).collect::<Result<_>>()?;
     let schedule = sqlx::query("SELECT enabled,keep_last,last_error FROM server_snapshot_schedules WHERE bot_id=? AND guild_id=?").bind(bot).bind(guild).fetch_optional(pool).await?;
@@ -413,12 +414,34 @@ async fn listing(pool: &SqlitePool, bot: &str, guild: &str) -> Result<Value> {
 pub enum SnapshotRequest {
     List,
     Create,
-    Compare { id: String },
-    Rename { id: String, name: String },
-    Delete { id: String },
-    Export { id: String, path: String },
-    Import { path: String },
-    Schedule { enabled: bool, keep_last: u32 },
+    Compare {
+        id: String,
+    },
+    Restore {
+        id: String,
+        #[serde(default)]
+        undo: bool,
+        #[serde(default)]
+        delete_extra: bool,
+    },
+    Rename {
+        id: String,
+        name: String,
+    },
+    Delete {
+        id: String,
+    },
+    Export {
+        id: String,
+        path: String,
+    },
+    Import {
+        path: String,
+    },
+    Schedule {
+        enabled: bool,
+        keep_last: u32,
+    },
 }
 async fn manage(
     pool: &SqlitePool,
@@ -438,6 +461,23 @@ async fn manage(
             let comparison = compare::compare_saved(pool, bot, guild, &id, &token, None).await?;
             let mut result = listing(pool, bot, guild).await?;
             result["comparison"] = serde_json::to_value(comparison)?;
+            return Ok(result);
+        }
+        SnapshotRequest::Restore {
+            id,
+            undo,
+            delete_extra,
+        } => {
+            let config = db::list_bots(pool)
+                .await?
+                .into_iter()
+                .find(|b| b.id == bot)
+                .context("No bot selected")?;
+            let token = crypto::decrypt(&config.token_ciphertext)?;
+            let preview =
+                restore::preview(pool, bot, guild, &id, &token, None, undo, delete_extra).await?;
+            let mut result = listing(pool, bot, guild).await?;
+            result["restore"] = serde_json::to_value(preview)?;
             return Ok(result);
         }
         SnapshotRequest::Create => {
@@ -517,7 +557,21 @@ pub async fn server_snapshots(
             bail!("No server selected");
         }
         let pool = db::get_pool(&app).await?;
-        manage(&pool, &bot_id, &guild_id, request).await
+        let mut value = manage(&pool, &bot_id, &guild_id, request).await?;
+        if let Some(preview) = value.get_mut("restore") {
+            let language = state.config.lock().unwrap().ui_language.clone();
+            for step in preview["steps"].as_array_mut().into_iter().flatten() {
+                if let Some(text) = step["description"].as_str() {
+                    step["description"] = json!(i18n::tr(&language, text));
+                }
+            }
+            for warning in preview["unavailable"].as_array_mut().into_iter().flatten() {
+                if let Some(text) = warning.as_str() {
+                    *warning = json!(i18n::tr(&language, text));
+                }
+            }
+        }
+        Ok(value)
     }
     .await;
     i18n::localizar_error(&state, result.map_err(|e| format!("{e:#}")))

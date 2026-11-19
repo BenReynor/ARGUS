@@ -576,6 +576,19 @@ impl Conversador {
         if !elegible {
             return Resultado::Ignorado;
         }
+        let direct = e
+            .texto
+            .split_whitespace()
+            .filter(|w| !w.starts_with("<@"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        if direct.starts_with("restore ")
+            && crate::db::ordenes_activas(ajustes, &e.msg.autor_id.to_string())
+        {
+            self.preparar_orden(&e, ajustes, TipoOrden::Estructura, &direct)
+                .await;
+            return Resultado::Respondido;
+        }
         // Un archivo .md/.txt adjunto es un plan para construir, sin pasar por el chat.
         if let Some(adjunto) = e.adjuntos.iter().find(|a| es_archivo_de_plan(&a.nombre)) {
             self.desde_archivo(&e, ajustes, adjunto).await;
@@ -823,9 +836,12 @@ impl Conversador {
             return;
         }
         let inicio = Instant::now();
-        let construido = self
-            .construir(e, ajustes, tipo, orden, &idioma, &activa.parada)
-            .await;
+        let construido = if let Some(args) = orden.strip_prefix("restore ") {
+            self.construir_restauracion(e, args, ajustes, &idioma).await
+        } else {
+            self.construir(e, ajustes, tipo, orden, &idioma, &activa.parada)
+                .await
+        };
         if activa.parada.cancelar.load(Ordering::SeqCst) {
             self.preparacion_cancelada(e, &idioma).await;
             return;
@@ -1163,6 +1179,58 @@ impl Conversador {
     }
 
     /// Lanza el constructor (modo Execute, solo lectura) y valida su propuesta.
+    /// Sintaxis explícita sin IA: restore <snapshot-id> [undo]. Siempre pide confirmación.
+    async fn construir_restauracion(
+        &self,
+        e: &Entrada,
+        args: &str,
+        ajustes: &GuildSettings,
+        idioma: &str,
+    ) -> Result<Construido, String> {
+        let parts: Vec<_> = args.split_whitespace().collect();
+        if parts.is_empty() || parts.len() > 2 || (parts.len() == 2 && parts[1] != "undo") {
+            return Err(crate::i18n::tr(idioma, "Use restore <snapshot-id> [undo]"));
+        }
+        if !ajustes.ordenes_permitidas.estructura
+            || !ajustes.ordenes_permitidas.borrar_canales_roles
+        {
+            return Err(crate::i18n::tr(
+                idioma,
+                "Restore requires structure and role deletion permissions for Discord orders",
+            ));
+        }
+        let pool = self.pool.as_ref().ok_or("The database is not available")?;
+        let preview = crate::snapshots::restore::preview(
+            pool,
+            &self.bot_id.to_string(),
+            &e.guild_id.to_string(),
+            parts[0],
+            &self.token,
+            self.base_url.as_deref(),
+            parts.len() == 2,
+            false,
+        )
+        .await
+        .map_err(|e| format!("{e:#}"))?;
+        // Publicar cada paso, sin truncar argumentos, antes de pedir el sí.
+        let review = serde_json::to_string_pretty(&preview).map_err(|e| e.to_string())?;
+        self.enviar(e, &review).await?;
+        let propuesta = Propuesta {
+            resumen: crate::i18n::tr(idioma, "Restore snapshot"),
+            acciones: vec![crate::propuesta::Accion {
+                herramienta: "aplicar_restauracion".into(),
+                args: serde_json::json!({"id":preview.id,"guild_id":e.guild_id.to_string()}),
+                descripcion: crate::i18n::tr(idioma, "Apply the reviewed restore proposal"),
+            }],
+        };
+        let validacion =
+            crate::propuesta::validar_acciones(&propuesta, &(self.ordenes.nombres)(e.guild_id));
+        Ok(Construido::Propuesta(crate::asistente::EventoPropuesta {
+            propuesta,
+            validacion,
+        }))
+    }
+
     async fn construir(
         &self,
         e: &Entrada,
@@ -1555,6 +1623,78 @@ mod tests {
             },
         };
         (c, logs)
+    }
+
+    #[tokio::test]
+    async fn discord_restore_always_previews_and_waits_for_confirmation_without_an_agent() {
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        for (suffix, value) in [
+            ("", serde_json::json!({"id":"555","name":"Fixture guild"})),
+            (
+                "/roles",
+                serde_json::json!([{"id":"555","name":"@everyone","permissions":"1024"}]),
+            ),
+            ("/channels", serde_json::json!([])),
+            ("/members", serde_json::json!([])),
+        ] {
+            Mock::given(method("GET"))
+                .and(path(format!("/api/v10/guilds/555{suffix}")))
+                .respond_with(ResponseTemplate::new(200).set_body_json(value))
+                .mount(&server)
+                .await;
+        }
+        let (mut c, _) =
+            conversador(&server, PathBuf::from("/unused"), Duration::from_secs(1)).await;
+        c.buscar_agente = Arc::new(|_| panic!("Direct restore must not call an AI agent"));
+        let saved = crate::snapshots::ServerSnapshot {
+            version: 1,
+            guild_id: "555".into(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            name: "Fixture snapshot".into(),
+            guild: serde_json::json!({"id":"555","name":"Fixture guild"}),
+            roles: vec![
+                serde_json::json!({"id":"555","name":"@everyone","permissions":"1024"}),
+                serde_json::json!({"id":"7","name":"Recovered role","permissions":"1024","position":1}),
+            ],
+            channels: vec![],
+            members: vec![],
+            emojis: vec![],
+            stickers: vec![],
+            webhooks: vec![],
+            bans: vec![],
+        };
+        let snapshot = crate::snapshots::store(
+            c.pool.as_ref().unwrap(),
+            &BOT.to_string(),
+            "555",
+            &saved,
+            false,
+        )
+        .await
+        .unwrap();
+        let mut e = entrada(1, true);
+        e.texto = format!("restore {snapshot}");
+        let mut settings = ajustes_ordenes(false);
+        settings.ordenes_permitidas.borrar_canales_roles = true;
+        assert_eq!(c.atender(e, &settings).await, Resultado::Respondido);
+        let pending = c.coord.pendientes.lock().unwrap();
+        let p = pending
+            .get(&(555, 10, 1))
+            .expect("Even auto-confirm settings must leave Restore pending");
+        assert_eq!(p.propuesta.acciones[0].herramienta, "aplicar_restauracion");
+        assert!(!p.propuesta.acciones[0].args["id"]
+            .as_str()
+            .unwrap()
+            .is_empty());
+        drop(pending);
+        let requests = server.received_requests().await.unwrap();
+        assert!(!requests
+            .iter()
+            .any(|r| r.method.as_str() != "GET" && r.url.path().starts_with("/api/v10/guilds/")));
+        let messages = textos(&envios(&server).await).join("\n");
+        assert!(messages.contains("role_create") && messages.contains("estimated_seconds"));
+        assert!(messages.contains("Reply **yes**"));
     }
 
     fn ajustes() -> GuildSettings {

@@ -7,6 +7,7 @@ import { Button, Card, Cargando, Dialogo, ErrorPanel, EstadoVacio, Input } from 
 import { t } from '../i18n';
 import './Vistas.css';
 import { DiffView } from './DiffView';
+import { SnapshotRestore } from './SnapshotRestore';
 
 export const BackupsView: React.FC = () => {
   const guildId = useActiveGuildId();
@@ -18,6 +19,7 @@ export const BackupsView: React.FC = () => {
 
 const ServerBackups: React.FC<{ botId: string; guildId: string }> = ({ botId, guildId }) => {
   const [data, setData] = useState<ServerSnapshotListing | null>(null);
+  const [restoring, setRestoring] = useState<ServerSnapshotItem | null>(null);
   const [compared, setCompared] = useState<ServerSnapshotItem | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -84,6 +86,7 @@ const ServerBackups: React.FC<{ botId: string; guildId: string }> = ({ botId, gu
     {error && <ErrorPanel mensaje={error} onReintentar={() => run(async () => ({ op: 'list' }))} />}
     {!data && !error && <Cargando />}
     {data && data.snapshots.length === 0 && <EstadoVacio titulo={t('No snapshots yet')} descripcion={t('Create a snapshot to save this server’s current configuration.')} />}
+    {restoring && <SnapshotRestore key={restoring.id} botId={botId} guildId={guildId} snapshot={restoring} onClose={() => setRestoring(null)} />}
     {compared && data?.comparison && <Card>
       <h3>{t('Snapshot comparison: {name}', { name: compared.name })}</h3>
       <p>{t('Snapshot → current server. Removed lines belong to the snapshot; added lines belong to the current server.')}</p>
@@ -109,6 +112,7 @@ const ServerBackups: React.FC<{ botId: string; guildId: string }> = ({ botId, gu
       <p>{t('{emojis} emojis, {stickers} stickers, {webhooks} webhooks, {bans} bans', snapshot.summary)}</p>
       <div className="ajustes__fila">
         <Button variante="secundario" disabled={busy} onClick={() => { setCompared(null); void run(async () => ({ op: 'compare', id: snapshot.id })); }}>{t('Compare')}</Button>
+        <Button variante="secundario" disabled={busy || restoring !== null} onClick={() => setRestoring(snapshot)}>{t('Restore')}</Button>
         <Button variante="secundario" disabled={busy} onClick={() => { setRename(snapshot); setName(snapshot.name); }}>{t('Rename')}</Button>
         <Button variante="secundario" disabled={busy} onClick={() => exportFile(snapshot.id)}>{t('Export snapshot')}</Button>
         <Button variante="peligro" disabled={busy} onClick={() => setDeleting(snapshot)}>{t('Delete')}</Button>
