@@ -168,3 +168,8 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - Síntoma: El gate falló antes de pasar: [GATE] ✗ juez: criterio NO cumplido (No existe la herramienta MCP para consultar el informe ni sus pruebas de lectura sin cambios.); [GATE] ✗ criterio: 98_criterio.sh falló
 - Causa: [GATE] ✗ juez: criterio NO cumplido (No existe la herramienta MCP para consultar el informe ni sus pruebas de lectura sin cambios.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
 - Prevención: Evita exactamente ese fallo y compruébalo con `.dedalo/estado/gate --solo 98_criterio.sh` antes de terminar (98_criterio.sh).
+
+## 2026-11-19 16:11 — Tarea bloqueada: Catálogo de conectores y capacidades reales
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 13: [GATE] ✗ juez: criterio NO cumplido (El catálogo no está integrado: no permite habilitar varios conectores ni probarlos desde diagnóstico.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.

@@ -648,7 +648,7 @@ Verificación manual:
 
 ## FASE 24 — Conectar la IA con otros bots mediante MCP e integraciones autorizadas
 
-- [ ] Catálogo de conectores y capacidades reales
+- [B] Catálogo de conectores y capacidades reales
   criterio: inventario versionado de conectores por servicio/bot, con origen, método oficial disponible (MCP/API autorizada), requisitos, permisos, herramientas de lectura/escritura y limitaciones; permite habilitar varios conectores para un servidor y probar cada conexión desde diagnóstico; los conectores no implementados o no comprobados aparecen como tales; no promete que todos los bots tengan MCP ni que un bot pueda configurar a otro enviándole mensajes; sin funciones propias de bienvenida/tickets/niveles; tests con catálogo y conectores falsos
 
 - [ ] Vincular cuentas y permisos sin compartir credenciales con la IA
