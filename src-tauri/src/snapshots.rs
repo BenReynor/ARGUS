@@ -10,6 +10,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use twilight_http::routing::Route;
 
 pub(crate) mod compare;
+pub mod departed;
 pub mod restore;
 
 const MAX_FILE: usize = 128 * 1024 * 1024;
@@ -411,11 +412,19 @@ pub(crate) async fn latest(pool: &SqlitePool, bot: &str, guild: &str) -> Result<
 }
 
 pub(crate) async fn listing(pool: &SqlitePool, bot: &str, guild: &str) -> Result<Value> {
+    let return_roles = departed::enabled(pool, bot, guild).await?;
+    let return_roles_ready: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM snapshot_return_roles WHERE bot_id=? AND guild_id=?)",
+    )
+    .bind(bot)
+    .bind(guild)
+    .fetch_one(pool)
+    .await?;
     let rows = sqlx::query("SELECT id,name,created_at,size_bytes,summary,automatic FROM server_snapshots WHERE bot_id=? AND guild_id=? ORDER BY created_at DESC,rowid DESC").bind(bot).bind(guild).fetch_all(pool).await?;
     let rows: Vec<Value> = rows.iter().map(|r| Ok(json!({"id":r.get::<String,_>("id"), "name":r.get::<String,_>("name"), "created_at":r.get::<String,_>("created_at"), "size_bytes":r.get::<i64,_>("size_bytes"), "summary":serde_json::from_str::<Value>(r.get("summary"))?, "automatic":r.get::<bool,_>("automatic")}))).collect::<Result<_>>()?;
     let schedule = sqlx::query("SELECT enabled,keep_last,last_error FROM server_snapshot_schedules WHERE bot_id=? AND guild_id=?").bind(bot).bind(guild).fetch_optional(pool).await?;
     Ok(
-        json!({"snapshots":rows, "schedule":schedule.map(|r| json!({"enabled":r.get::<bool,_>("enabled"), "keep_last":r.get::<u32,_>("keep_last"), "last_error":r.get::<Option<String>,_>("last_error")})).unwrap_or(json!({"enabled":false,"keep_last":7,"last_error":null}))}),
+        json!({"return_roles_ready":return_roles_ready,"return_roles":return_roles,"snapshots":rows, "schedule":schedule.map(|r| json!({"enabled":r.get::<bool,_>("enabled"), "keep_last":r.get::<u32,_>("keep_last"), "last_error":r.get::<Option<String>,_>("last_error")})).unwrap_or(json!({"enabled":false,"keep_last":7,"last_error":null}))}),
     )
 }
 
@@ -423,6 +432,20 @@ pub(crate) async fn listing(pool: &SqlitePool, bot: &str, guild: &str) -> Result
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum SnapshotRequest {
     List,
+    Departed {
+        id: String,
+    },
+    InviteDeparted {
+        id: String,
+        channel_id: String,
+    },
+    ExportDeparted {
+        id: String,
+        path: String,
+    },
+    ReturnRoles {
+        enabled: bool,
+    },
     Create,
     Compare {
         id: String,
@@ -460,6 +483,49 @@ async fn manage(
     request: SnapshotRequest,
 ) -> Result<Value> {
     match request {
+        SnapshotRequest::ReturnRoles { enabled } => {
+            sqlx::query("UPDATE snapshot_return_roles SET enabled=? WHERE bot_id=? AND guild_id=?")
+                .bind(enabled)
+                .bind(bot)
+                .bind(guild)
+                .execute(pool)
+                .await?;
+        }
+        SnapshotRequest::Departed { ref id }
+        | SnapshotRequest::InviteDeparted { ref id, .. }
+        | SnapshotRequest::ExportDeparted { ref id, .. } => {
+            let saved = load(pool, bot, guild, id).await?;
+            let config = db::list_bots(pool)
+                .await?
+                .into_iter()
+                .find(|b| b.id == bot)
+                .context("No bot selected")?;
+            let token = crypto::decrypt(&config.token_ciphertext)?;
+            let members = departed::missing(&saved, &token, None).await?;
+            let mut result = listing(pool, bot, guild).await?;
+            if let SnapshotRequest::InviteDeparted { channel_id, .. } = request {
+                let channels = discord::fetch_guild_channels(&token, None, guild)
+                    .await
+                    .map_err(anyhow::Error::msg)?;
+                if !channels.iter().any(|c| c.id == channel_id) {
+                    bail!("No server selected");
+                }
+                result["invitations"] =
+                    departed::invite(&token, None, &channel_id, &members).await?;
+            } else if let SnapshotRequest::ExportDeparted { path, .. } = request {
+                let mut options = tokio::fs::OpenOptions::new();
+                options.create(true).truncate(true).write(true);
+                #[cfg(unix)]
+                options.mode(0o600);
+                use tokio::io::AsyncWriteExt;
+                let mut file = options.open(path).await?;
+                file.write_all(&serde_json::to_vec_pretty(&members)?)
+                    .await?;
+                file.sync_all().await?;
+            }
+            result["departed"] = json!(members);
+            return Ok(result);
+        }
         SnapshotRequest::List => {}
         SnapshotRequest::Compare { id } => {
             let config = db::list_bots(pool)
@@ -568,6 +634,14 @@ pub async fn server_snapshots(
         }
         let pool = db::get_pool(&app).await?;
         let mut value = manage(&pool, &bot_id, &guild_id, request).await?;
+        if let Some(invitations) = value.get_mut("invitations") {
+            let language = i18n::idioma(&state);
+            for result in invitations["results"].as_array_mut().into_iter().flatten() {
+                if let Some(error) = result["error"].as_str() {
+                    result["error"] = json!(i18n::tr(&language, error));
+                }
+            }
+        }
         if let Some(preview) = value.get_mut("restore") {
             let language = state.config.lock().unwrap().ui_language.clone();
             for step in preview["steps"].as_array_mut().into_iter().flatten() {

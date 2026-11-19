@@ -244,6 +244,10 @@ export interface RestorePreview {
 export const applySnapshotRestore = (id: string, confirmation: string) => invoke<ResumenPropuesta>('apply_snapshot_restore', { id, confirmation });
 export const stopSnapshotRestore = (id: string) => invoke<void>('stop_snapshot_restore', { id });
 export interface ServerSnapshotListing {
+  return_roles: boolean;
+  return_roles_ready: boolean;
+  departed?: { id: string; name: string; roles: { id: string; name: string }[] }[];
+  invitations?: { url: string; results: { id: string; name: string; sent: boolean; error: string | null }[] };
   restore?: RestorePreview;
   comparison?: SnapshotComparison;
   snapshots: ServerSnapshotItem[];
@@ -251,6 +255,10 @@ export interface ServerSnapshotListing {
 }
 export type ServerSnapshotRequest =
   | { op: 'list' | 'create' }
+  | { op: 'departed'; id: string }
+  | { op: 'invite_departed'; id: string; channel_id: string }
+  | { op: 'export_departed'; id: string; path: string }
+  | { op: 'return_roles'; enabled: boolean }
   | { op: 'rename'; id: string; name: string }
   | { op: 'delete' | 'compare'; id: string }
   | { op: 'restore'; id: string; undo: boolean; delete_extra: boolean }

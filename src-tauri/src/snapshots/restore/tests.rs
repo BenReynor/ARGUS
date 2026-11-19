@@ -994,3 +994,44 @@ async fn mcp_preview_and_approved_action_use_the_same_restore_job() {
         "MCP uses the same resume/idempotency state"
     );
 }
+
+#[tokio::test]
+async fn completed_restore_enables_returning_members_with_recreated_role_ids() {
+    let (_, server, _, pool, snapshot) = setup().await;
+    let base = server.address().to_string();
+    let preview = preview(
+        &pool,
+        "42",
+        "555",
+        &snapshot,
+        "fake-token",
+        Some(&base),
+        false,
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(!super::super::departed::enabled(&pool, "42", "555")
+        .await
+        .unwrap());
+    let result = apply(&state(), &preview.id, "", Some(&base), |_| {})
+        .await
+        .unwrap();
+    assert!(result
+        .resultados
+        .iter()
+        .all(|r| r.estado == EstadoAccion::Ok));
+    assert!(super::super::departed::enabled(&pool, "42", "555")
+        .await
+        .unwrap());
+    let data: String = sqlx::query_scalar(
+        "SELECT members FROM snapshot_return_roles WHERE bot_id='42' AND guild_id='555'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let members: Vec<Value> = serde_json::from_str(&data).unwrap();
+    let saved = members.iter().find(|m| m["id"] == "9").unwrap();
+    assert!(!saved["roles"].as_array().unwrap().is_empty());
+    assert!(!saved["roles"].as_array().unwrap().contains(&json!("7")));
+}

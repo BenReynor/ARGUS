@@ -34,6 +34,8 @@ struct Job {
     roles: HashMap<String, String>,
     channels: HashMap<String, String>,
     results: Vec<ResultadoAccion>,
+    #[serde(default)]
+    members: Vec<Value>,
     #[serde(skip)]
     stop: Arc<AtomicBool>,
     #[serde(skip)]
@@ -536,6 +538,7 @@ fn build(
         roles: role_map,
         channels: channel_map,
         results: Vec::new(),
+        members: saved.members.clone(),
         stop: Arc::new(AtomicBool::new(false)),
         running: Arc::new(AtomicBool::new(false)),
     }
@@ -1019,6 +1022,16 @@ pub(crate) async fn apply_cancelable(
         // Detener ante error evita aplicar dependencias o borrados posteriores.
         if !ok {
             break;
+        }
+    }
+    if results.len() == preview.steps.len() && results.iter().all(|r| r.estado == EstadoAccion::Ok)
+    {
+        let (pool, members) = {
+            let j = job.lock().unwrap();
+            (j.pool.clone(), j.members.clone())
+        };
+        if let Some(pool) = pool {
+            super::departed::enable(&pool, &bot, &guild, &members, &roles).await?;
         }
     }
     Ok(ResumenPropuesta::de(preview.steps.len(), results))

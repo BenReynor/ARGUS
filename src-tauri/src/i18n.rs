@@ -13,6 +13,23 @@ pub const IDIOMA_DEFECTO: &str = "en";
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
     // <CATALOGO>
+    ("Departed members", "Miembros que se fueron"),
+    ("Discord cannot add members back. An invitation can only be sent if the bot can DM them, normally through another shared server. Failed DMs are listed below.", "Discord no permite volver a meter miembros. Solo se envía una invitación si el bot puede escribirles por DM, normalmente mediante otro servidor compartido. Los DM fallidos aparecen abajo."),
+    ("Return their roles when they rejoin", "Devolver sus roles al volver"),
+    ("Uses the last completed restoration for this bot and server. Enabled by default after restoring. Keep ARGUS and the bot running.", "Usa la última restauración completada de este bot y servidor. Se activa por defecto tras restaurar. Mantén ARGUS y el bot encendidos."),
+    ("Departed members: {count}", "Miembros que se fueron: {count}"),
+    ("No roles", "Sin roles"),
+    ("Invitation channel", "Canal de invitación"),
+    ("Choose an invitation channel", "Elige un canal de invitación"),
+    ("Invite", "Invitar"),
+    ("Export departed members", "Exportar miembros que se fueron"),
+    ("Invitation sent", "Invitación enviada"),
+    ("Could not send invitation: {error}", "No se pudo enviar la invitación: {error}"),
+    ("Restored role {role} to returning member {user}", "Rol {role} devuelto al miembro que vuelve {user}"),
+    ("Could not restore role {role} to returning member {user}: {error}", "No se pudo devolver el rol {role} al miembro que vuelve {user}: {error}"),
+    ("Role is unavailable or above the bot", "El rol no está disponible o está por encima del bot"),
+    ("Returning member roles failed: {error}", "Falló la devolución de roles al miembro: {error}"),
+
     ("The bot lacks the Manage Roles permission", "Al bot le falta el permiso Gestionar roles"),
     ("Mass deletion protection", "Protección ante borrados masivos"),
     ("Save an emergency snapshot and alert while the bot is running.", "Guarda un snapshot de emergencia y avisa mientras el bot está encendido."),

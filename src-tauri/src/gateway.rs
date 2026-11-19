@@ -268,7 +268,7 @@ pub fn lanzar(
         )));
         let mut detector = crate::destruction::Detector::default();
         let protection_token = token.clone();
-        let mut shard = Shard::new(ShardId::ONE, token, intents());
+        let mut shard = Shard::new(ShardId::ONE, token.clone(), intents());
         loop {
             match shard.next_event().await {
                 Ok(evento) => {
@@ -355,6 +355,37 @@ pub fn lanzar(
                                 }
                             }
                             Err(e) => tracing::error!("No se pudo leer la protección: {e}"),
+                        }
+                    }
+                    if let Some(pool) = &pool {
+                        match crate::snapshots::departed::on_event(
+                            pool, &bot_id, &token, None, &evento,
+                        )
+                        .await
+                        {
+                            Ok(logs) => {
+                                let lang = app_estado
+                                    .try_state::<crate::state::AppState>()
+                                    .map(|s| crate::i18n::idioma(&s))
+                                    .unwrap_or_else(|| "en".into());
+                                for text in logs {
+                                    let _ =
+                                        app_estado.emit("bot-log", crate::i18n::tr(&lang, &text));
+                                }
+                            }
+                            Err(e) => {
+                                let lang = app_estado
+                                    .try_state::<crate::state::AppState>()
+                                    .map(|s| crate::i18n::idioma(&s))
+                                    .unwrap_or_else(|| "en".into());
+                                let _ = app_estado.emit(
+                                    "bot-log",
+                                    crate::i18n::tr(
+                                        &lang,
+                                        &format!("Returning member roles failed: {e}"),
+                                    ),
+                                );
+                            }
                         }
                     }
                     let cambios = aplicar_a_mapas(&mapas, &evento);
