@@ -3,6 +3,21 @@
 export const NOMBRE_ES = 'Español';
 
 export const es: Record<string, string> = {
+  "Version": "Versión",
+  "ARGUS diagnostic report": "Informe de diagnóstico de ARGUS",
+  "System": "Sistema",
+  "Keyring": "Llavero",
+  "Available": "Disponible",
+  "Unavailable": "No disponible",
+  "Check failed": "Falló la comprobación",
+  "Database, Gateway, permissions, agents and MCP": "Base de datos, Gateway, permisos, agentes y MCP",
+  "Not checked": "No comprobado",
+  "Raw errors and private data are excluded.": "Se excluyen los errores originales y los datos privados.",
+  "Diagnostic report": "Informe de diagnóstico",
+  "Review the report before saving and sharing it. Only the keyring is checked here.": "Revisa el informe antes de guardarlo y compartirlo. Aquí solo se comprueba el llavero.",
+  "Prepare diagnostic report": "Preparar informe de diagnóstico",
+  "Export report": "Exportar informe",
+  "Could not export the diagnostic report.": "No se pudo exportar el informe de diagnóstico.",
   "The owner, this bot and your verified Discord account are always protected. Administrator roles are excluded by default.": "El dueño, este bot y tu cuenta de Discord verificada siempre están protegidos. Los roles con Administrator se excluyen por defecto.",
   "Verify your account using the code sent by this bot to your Discord DMs. The code expires after five minutes. If DMs are unavailable, member removal is blocked.": "Verifica tu cuenta con el código que este bot envía por DM en Discord. El código caduca a los cinco minutos. Si no se pueden enviar DM, se bloquea la expulsión de miembros.",
   "Send verification code": "Enviar código de verificación",
