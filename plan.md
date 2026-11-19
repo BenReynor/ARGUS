@@ -657,7 +657,7 @@ Verificación manual:
 - [B] Lectura de varios MCP con aislamiento entre servicios
   criterio: los agentes pueden consultar las herramientas de lectura habilitadas mediante una capa controlada, con nombres sin colisiones y límites por conector; las escrituras y herramientas desconocidas no se exponen directamente al modelo; configura la misma política para Claude, Codex y OpenCode sin heredar herramientas extra del usuario; un fallo de un conector no oculta ni cambia el estado de los otros; tests con dos MCP falsos, herramientas homónimas, caída y cancelación
 
-- [ ] Propuestas para configurar otros bots y comprobar su resultado
+- [B] Propuestas para configurar otros bots y comprobar su resultado
   criterio: una acción destinada a otro bot identifica conector, cuenta, servidor, cambios y permisos; la IA prepara una propuesta y un adaptador controlado la ejecuta solo tras aprobación por el flujo normal, validando el destino otra vez antes de escribir; nunca pasa una llamada de escritura arbitraria directamente desde el modelo; el adaptador verifica por la API del servicio lo comprobable y el historial distingue ejecución de verificación; si el proveedor no permite comprobarlo, muestra no verificado, sin afirmar éxito; pruebas con adaptador falso, cuenta incorrecta, respuesta parcial y escritura directa rechazada
 
 - [ ] Servicios sin API o MCP de configuración disponible
