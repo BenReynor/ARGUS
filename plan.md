@@ -654,7 +654,7 @@ Verificación manual:
 - [B] Vincular cuentas y permisos sin compartir credenciales con la IA
   criterio: cada conector se activa por decisión del usuario, queda asociado al servicio/cuenta/servidor correctos y muestra lo que permite hacer; usa OAuth/API/MCP del servicio cuando esté disponible y cifrado local/llavero para sus credenciales; no solicita el token privado de un bot ajeno, no automatiza cuentas personales de Discord ni crea selfbots; desconectar deja de ofrecer sus herramientas; los diagnósticos, logs y prompts no contienen credenciales; tests con autorización falsa, expiración y revocación
 
-- [ ] Lectura de varios MCP con aislamiento entre servicios
+- [B] Lectura de varios MCP con aislamiento entre servicios
   criterio: los agentes pueden consultar las herramientas de lectura habilitadas mediante una capa controlada, con nombres sin colisiones y límites por conector; las escrituras y herramientas desconocidas no se exponen directamente al modelo; configura la misma política para Claude, Codex y OpenCode sin heredar herramientas extra del usuario; un fallo de un conector no oculta ni cambia el estado de los otros; tests con dos MCP falsos, herramientas homónimas, caída y cancelación
 
 - [ ] Propuestas para configurar otros bots y comprobar su resultado
