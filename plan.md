@@ -669,7 +669,7 @@ Verificación manual:
 
 ## FASE 25 — Servicio sin ventana, solo como opción
 
-- [ ] Comportamiento explícito al cerrar y salir
+- [x] Comportamiento explícito al cerrar y salir
   criterio: conservar el uso normal de escritorio y explicar en Settings si cerrar oculta en la bandeja o termina la interfaz; respetar la preferencia minimize_to_tray, que el handler actual no consulta, y mostrar claramente si el bot sigue funcionando; «Quit» en el modo normal detiene el proceso; si el servicio opcional está activo, distinguir cerrar la interfaz de detener el servicio y ofrecer acciones claras para ambos; pruebas con eventos falsos de cierre y ambas preferencias, sin parar un bot real
 
 - [ ] Motor de servicio opcional y una sola conexión por bot
