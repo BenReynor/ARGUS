@@ -11,6 +11,7 @@ pub mod chat;
 pub mod commands;
 pub mod crypto;
 pub mod db;
+pub mod destruction;
 pub mod discord;
 pub mod gateway;
 pub mod i18n;
@@ -141,6 +142,7 @@ pub fn run() {
             save_cli_agent,
             search_messages,
             cleanup_context,
+            destruction::destruction_alerts,
             snapshots::server_snapshots,
             snapshots::restore::apply_snapshot_restore,
             snapshots::restore::stop_snapshot_restore,

@@ -13,6 +13,25 @@ pub const IDIOMA_DEFECTO: &str = "en";
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
     // <CATALOGO>
+    ("The bot lacks the Manage Roles permission", "Al bot le falta el permiso Gestionar roles"),
+    ("Mass deletion protection", "Protección ante borrados masivos"),
+    ("Save an emergency snapshot and alert while the bot is running.", "Guarda un snapshot de emergencia y avisa mientras el bot está encendido."),
+    ("Deletion threshold", "Umbral de borrados"),
+    ("Detection window (seconds)", "Ventana de detección (segundos)"),
+    ("Automatically remove actor roles", "Quitar automáticamente los roles al responsable"),
+    ("Off by default. Requires audit log access and Manage Roles; Discord role hierarchy still applies.", "Desactivado por defecto. Requiere acceso a auditoría y Gestionar roles; se respeta la jerarquía de Discord."),
+    ("Mass deletion detected", "Borrado masivo detectado"),
+    ("Emergency snapshots contain the previous live map: channels, roles, permissions and member roles. Other data is not included.", "Los snapshots de emergencia contienen el mapa en vivo anterior: canales, roles, permisos y roles de miembros. No incluyen otros datos."),
+    ("Mass deletion detected: {count} items. Actor: {actor}", "Borrado masivo detectado: {count} elementos. Responsable: {actor}"),
+    ("Unknown actor (audit log unavailable or delayed)", "Responsable desconocido (auditoría no disponible o retrasada)"),
+    ("Snapshot not found", "Snapshot no encontrado"),
+    ("Emergency snapshot saved", "Snapshot de emergencia guardado"),
+    ("Emergency protection failed: {error}", "Falló la protección de emergencia: {error}"),
+    ("Audit log unavailable: {error}", "Auditoría no disponible: {error}"),
+    ("Audit log request timed out", "La solicitud de auditoría superó el tiempo máximo"),
+    ("Roles removed from {actor}", "Roles retirados a {actor}"),
+    ("Could not remove roles from {actor}: {error}", "No se pudieron quitar los roles a {actor}: {error}"),
+
     ("Use restore <snapshot-id> [undo]", "Usa restore <snapshot-id> [undo]"),
     ("Restore requires structure and role deletion permissions for Discord orders", "Restaurar requiere permisos de estructura y borrado de roles para las órdenes de Discord"),
     ("Restore snapshot", "Restaurar snapshot"),
