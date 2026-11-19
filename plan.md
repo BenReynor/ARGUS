@@ -643,7 +643,7 @@ Verificación manual:
 - [B] Informe visual y correcciones aprobadas
   criterio: vista con filtros por canal/rol, gravedad, datos que sustentan el hallazgo y explicación de su impacto; «Prepare correction» genera una propuesta por el motor existente, muestra el antes/después y pide aprobación antes de modificar Discord; no arregla permisos sola ni ofrece acciones que superen la jerarquía del bot; después vuelve a comprobar los hallazgos corregidos y muestra resultado parcial si no puede hacerlo; tests de correcciones propuestas, descarte y permisos insuficientes
 
-- [ ] Explicar la auditoría a la IA sin concederle escrituras
+- [x] Explicar la auditoría a la IA sin concederle escrituras
   criterio: herramienta MCP de lectura para consultar el informe y sus límites; la IA puede explicar un hallazgo y preparar una propuesta de corrección, pero no eludir Apply ni las confirmaciones destructivas; devuelve datos estructurados y no conclusiones de «servidor seguro» con información incompleta; tests de la clasificación de lectura y de que consultar no cambia el servidor
 
 ## FASE 24 — Conectar la IA con otros bots mediante MCP e integraciones autorizadas
