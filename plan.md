@@ -546,7 +546,7 @@ Si alguien con permisos (o un bot ajeno) borra canales y roles, hoy no hay forma
 - [x] Snapshots desde el MCP y las órdenes de Discord
   criterio: `argus-mcp` gana herramientas para listar snapshots, crear uno, compararlo con el servidor y pedir la propuesta de restauración (con sus conflictos); ninguna aplica cambios por sí sola: la propuesta sigue el flujo normal y necesita confirmación; desde Discord, «restaura el último snapshot» genera la misma propuesta y pide «sí»; la IA explica los conflictos y pregunta antes de aplicar; tests de cada herramienta y de que nada se aplica sin confirmar
 
-- [ ] Miembros que se fueron
+- [x] Miembros que se fueron
   criterio: a partir del snapshot, Backups muestra quién estaba y ya no está (id, nombre y roles que tenía), exportable a archivo; «Invitar» crea una invitación y la envía por DM a quienes el bot pueda escribir, e indica a quiénes no se pudo (Discord no permite a un bot volver a meter a nadie en el servidor, ni escribir a quien no comparte un servidor con él); opción **«Devolver sus roles al volver»** (activada por defecto tras una restauración): si entra alguien del snapshot, el bot le reasigna los roles que tenía y lo anota en Logs; tests con eventos simulados de entrada y con DM que falla
 
 - [ ] Expulsar a todos los miembros
