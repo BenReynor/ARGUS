@@ -675,7 +675,7 @@ Verificación manual:
 - [B] Motor de servicio opcional y una sola conexión por bot
   criterio: modo sin ventana separado de la interfaz, desactivado por defecto, que solo se inicia/instala al habilitarlo explícitamente; interfaz y servicio comparten estado mediante un canal local autenticado y con permisos del usuario, sin enviar tokens por el canal; un bloqueo/registro de propietario impide conexiones duplicadas al Gateway por el mismo bot; abrir/cerrar la interfaz no pierde ni repite operaciones ni sus avisos; el servicio mantiene los límites, confirmaciones y resultados de las fases anteriores y no añade tareas programadas genéricas ni módulos de otros bots; pruebas con servicio/Gateway falsos de doble arranque, reconexión de la interfaz y parada ordenada
 
-- [ ] Arranque opcional y diagnóstico del servicio
+- [B] Arranque opcional y diagnóstico del servicio
   criterio: controles visibles para habilitar/deshabilitar el arranque con el sistema, iniciar, detener y consultar estado/último error; no instala un servicio del sistema ni solicita privilegios por abrir ARGUS, y el inicio automático viene desactivado; documenta qué se mantiene activo y que el equipo debe permanecer encendido y conectado; diagnóstico distingue servicio detenido, interfaz desconectada y Gateway caído; pruebas sin modificar el arranque real del equipo, más checklist manual separado para Linux y Windows
 
 ## Ideas fuera de esta etapa
