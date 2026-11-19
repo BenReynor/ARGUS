@@ -609,7 +609,7 @@ Verificación manual:
 
 ## FASE 21 — Diagnóstico integrado de ARGUS
 
-- [ ] Motor de comprobaciones sin efectos sobre Discord
+- [B] Motor de comprobaciones sin efectos sobre Discord
   criterio: comando de diagnóstico que comprueba configuración, acceso a BD, disponibilidad del llavero, estado del Gateway y permisos necesarios para construir, y detección/configuración de Claude, Codex, OpenCode y MCP; cada comprobación devuelve correcto, advertencia, fallo o no comprobado con su explicación y fecha; separa «binario encontrado», «sesión disponible» y «servicio responde»; no lee ni devuelve tokens/archivos de autenticación, no conecta nuevos bots, no abre login ni llama a modelos de pago automáticamente; cada proceso/petición tiene timeout y cancelación; tests con agentes/MCP/Discord falsos, sin sesión, sin red, permiso ausente y proceso que se cuelga
 
 - [ ] Pantalla de diagnóstico con acciones para resolver problemas
