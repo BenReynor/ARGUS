@@ -612,7 +612,7 @@ Verificación manual:
 - [B] Motor de comprobaciones sin efectos sobre Discord
   criterio: comando de diagnóstico que comprueba configuración, acceso a BD, disponibilidad del llavero, estado del Gateway y permisos necesarios para construir, y detección/configuración de Claude, Codex, OpenCode y MCP; cada comprobación devuelve correcto, advertencia, fallo o no comprobado con su explicación y fecha; separa «binario encontrado», «sesión disponible» y «servicio responde»; no lee ni devuelve tokens/archivos de autenticación, no conecta nuevos bots, no abre login ni llama a modelos de pago automáticamente; cada proceso/petición tiene timeout y cancelación; tests con agentes/MCP/Discord falsos, sin sesión, sin red, permiso ausente y proceso que se cuelga
 
-- [ ] Pantalla de diagnóstico con acciones para resolver problemas
+- [B] Pantalla de diagnóstico con acciones para resolver problemas
   criterio: botón «Run diagnostics» desde Settings y acceso desde un fallo de construcción; lista visual por componente, progreso, última comprobación y sugerencia concreta de solución, usando los estados compartidos de la fase 20; cualquier prueba que escriba datos o use IA requiere una acción explícita separada y explica su alcance; no hay un indicador global de «todo funciona» si algo no se pudo comprobar; todo con t(); pruebas de resultados parciales, cancelación y reintento de una comprobación
 
 - [ ] Informe de diagnóstico exportable sin secretos
