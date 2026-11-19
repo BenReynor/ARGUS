@@ -1044,6 +1044,64 @@ impl ArgusMcp {
         Ok(json!({ "entradas": entradas }).to_string())
     }
 
+    /// Informe parcial de concesiones explícitas, sin inferir acceso efectivo.
+    pub async fn informe_permisos_json(&self, guild_id: Option<&str>) -> Result<String, String> {
+        let gid = self.servidor_de(guild_id).await?;
+        let roles = commands::leer_roles(&self.state, &gid, self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        let canales = commands::leer_canales(&self.state, &gid, self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        let sensibles = [
+            (3, "Administrator"),
+            (5, "ManageGuild"),
+            (4, "ManageChannels"),
+            (28, "ManageRoles"),
+            (13, "ManageMessages"),
+            (1, "KickMembers"),
+            (2, "BanMembers"),
+            (29, "ManageWebhooks"),
+            (40, "ModerateMembers"),
+        ];
+        let mut hallazgos = Vec::new();
+        for rol in &roles {
+            let bits = rol
+                .permissions_bitfield
+                .as_deref()
+                .unwrap_or("")
+                .parse::<u64>()
+                .map_err(|_| "Invalid role permission bits".to_string())?;
+            for (bit, permiso) in sensibles {
+                if bits & (1_u64 << bit) != 0 {
+                    hallazgos.push(json!({"tipo":"role_grant", "role_id":rol.id,
+                        "role_name":rol.name, "permission":permiso, "permission_bit":bit,
+                        "evidence_bits":bits.to_string()}));
+                }
+            }
+        }
+        let overwrites: Vec<_> = canales
+            .iter()
+            .flat_map(|canal| {
+                canal.overwrites.iter().flatten().map(move |o| {
+                    json!({
+                        "channel_id":canal.id, "channel_name":canal.name,
+                        "target_id":o.id, "target_type":o.type_, "allow":o.allow, "deny":o.deny
+                    })
+                })
+            })
+            .collect();
+        Ok(json!({
+            "guild_id":gid, "status":"partial", "findings":hallazgos,
+            "channel_overwrites":overwrites,
+            "limits":["Only selected explicit role grants are reported as findings; other permissions are not assessed.",
+                "Channel overwrites are raw evidence, not effective access calculations.",
+                "Members, ownership, role combinations, threads and user intent are not assessed; absence of findings does not establish security.",
+                "Data is a point-in-time observation and may change."],
+            "correction_workflow":"Explain evidence and prepare a proposal; the user must review and Apply it in ARGUS, including any destructive confirmations."
+        }).to_string())
+    }
+
     pub async fn leer_mensajes_json(
         &self,
         guild_id: Option<&str>,
@@ -1925,6 +1983,7 @@ fn miembro_json(m: &Member, roles: &[Role]) -> serde_json::Value {
 /// Herramientas que solo leen (no cambian nada en Discord ni en la BD). Son las
 /// únicas que se le dan a un agente de IA; el resto va por propuesta aprobada.
 pub const HERRAMIENTAS_LECTURA: &[&str] = &[
+    "informe_permisos",
     "info_restauracion",
     "listar_snapshots",
     "comparar_snapshot",
@@ -2579,6 +2638,18 @@ impl ArgusMcp {
         Parameters(p): Parameters<ServidorParams>,
     ) -> Result<String, String> {
         let r = self.ajustes_servidor_json(p.guild_id.as_deref()).await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "informe_permisos",
+        description = "Read a partial structured permissions report, evidence and limitations. Never concludes the server is safe. Corrections require a proposal and user Apply."
+    )]
+    async fn informe_permisos(
+        &self,
+        Parameters(p): Parameters<ServidorParams>,
+    ) -> Result<String, String> {
+        let r = self.informe_permisos_json(p.guild_id.as_deref()).await;
         self.salida(r)
     }
 
@@ -4722,7 +4793,8 @@ mod tests {
 
     #[test]
     fn las_herramientas_de_lectura_no_modifican_nada() {
-        const PERMITIDAS: [&str; 5] = [
+        const PERMITIDAS: [&str; 6] = [
+            "informe_permisos",
             "estado",
             "mapa_servidor",
             "permisos_bot",
@@ -4746,6 +4818,39 @@ mod tests {
         for n in HERRAMIENTAS_ESCRITURA {
             assert!(!HERRAMIENTAS_LECTURA.contains(n));
         }
+    }
+
+    #[tokio::test]
+    async fn informe_permisos_es_parcial_y_solo_lee() {
+        let (_d, mcp, server) = mcp_con_servidor(TODO, true).await;
+        prohibir_cambios(&server).await;
+        let inicio = server.received_requests().await.unwrap().len();
+        let informe = v(mcp.informe_permisos_json(None).await.unwrap());
+        assert_eq!(informe["status"], "partial");
+        assert!(informe["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["permission"] == "ManageMessages"));
+        assert!(informe["channel_overwrites"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|o| o["allow"] == "1024"));
+        assert!(informe["limits"]
+            .to_string()
+            .contains("does not establish security"));
+        assert!(informe["correction_workflow"]
+            .as_str()
+            .unwrap()
+            .contains("Apply"));
+        assert!(HERRAMIENTAS_LECTURA.contains(&"informe_permisos"));
+        assert!(validar_accion("informe_permisos", &json!({})).is_err());
+        let requests = server.received_requests().await.unwrap();
+        assert!(requests[inicio..]
+            .iter()
+            .all(|r| r.method.as_str() == "GET"));
+        assert_eq!(mcp.state.get_active_guild().as_deref(), Some("555"));
     }
 
     // ------------------------- moderación, servidor, invitaciones y webhooks
