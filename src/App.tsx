@@ -1,4 +1,6 @@
 import React, { useEffect } from 'react';
+import { updates } from './store/updates';
+import { UpdateNotice } from './components/UpdateNotice';
 import { listen } from '@tauri-apps/api/event';
 import { useStore } from './store/useStore';
 import { Sidebar } from './components/Sidebar';
@@ -43,7 +45,9 @@ function App() {
       try {
         pasoCarga('Reading your settings…', 50);
         // El backend es la fuente de verdad (incluye tema y modo guardados).
-        setConfig(await getConfig());
+        const config = await getConfig();
+        setConfig(config);
+        if (config.auto_update) void updates.check();
         const preferences = await backupWindowPreferences();
         if (preferences) useStore.getState().setUiSettings(preferences);
       } catch (e) {
@@ -127,6 +131,7 @@ function App() {
       <div className="main-layout">
         <Header titulo={seccion.label} icono={iconosSeccion[seccion.icon]} />
         <main className="main-content">
+          <UpdateNotice />
           <DestructionAlerts />
           {renderView()}
         </main>

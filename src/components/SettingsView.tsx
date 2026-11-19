@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useUpdates, updates } from '../store/updates';
 import { useStore, useConfig, useUiSettings, useSetActiveTab, useShowNotification, useActiveGuildId, useGuildSettings } from '../store/useStore';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { backupWindowPreferences, getConfig, keyringAvailable, saveConfig, saveGuildSettings, addBot, deleteBot, startBot, getBotStatus, inviteUrl, rutaMcp } from '../api/tauri';
@@ -56,6 +57,7 @@ const nombreModo = (modo: string): string => {
 
 export const SettingsView: React.FC = () => {
   const config = useConfig();
+  const updateState = useUpdates();
   const [keyringReady, setKeyringReady] = useState<boolean | null>(null);
   useEffect(() => {
     keyringAvailable().then(setKeyringReady).catch(() => setKeyringReady(false));
@@ -503,6 +505,19 @@ export const SettingsView: React.FC = () => {
           value={formData.ai_order_time_limit_minutes}
           onChange={(e) => handleChange('ai_order_time_limit_minutes', Number(e.target.value))} />
         <Button onClick={handleSave} cargando={saving}>{t('Save settings')}</Button>
+      </Seccion>
+      <Seccion ancha titulo={t('About')} descripcion={t('ARGUS version {version}', { version: __APP_VERSION__ })}>
+        <Interruptor titulo={t('Check for updates at startup')} ayuda={t('Updates are installed only when you click Update.')} checked={config.auto_update} onChange={async (auto_update) => {
+          try {
+            await saveConfig({ ...config, auto_update });
+            setConfig({ auto_update });
+          } catch {
+            showNotification(t('Could not save update preferences'), 'error');
+          }
+        }} />
+        <Button cargando={updateState.checking} disabled={updateState.installing} onClick={() => void updates.check(true)}>{t('Check for updates')}</Button>
+        {updateState.status === 'current' && <p role="status">{t('You are up to date.')}</p>}
+        {updateState.status === 'unavailable' && <p role="status">{t('Could not check for updates. Try again when you are online.')}</p>}
       </Seccion>
       <BackupSettings />
 

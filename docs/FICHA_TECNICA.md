@@ -94,3 +94,76 @@ con los mismos chequeos de permisos. Ver [`MCP.md`](MCP.md).
 artefacto `argus-windows`). Los paquetes llevan `argus-mcp` junto a la app.
 Los iconos están en `src-tauri/icons/` y se generan desde `icon.svg`.
 En Linux, `scripts/abrir-argus.sh` compila desde `main` y abre la app (ver README).
+
+## Actualizaciones firmadas (Tauri 2)
+
+El plugin updater consulta al arrancar (por defecto) y desde **Settings → About →
+Check for updates** el manifiesto
+`https://github.com/BenReynor/ARGUS/releases/latest/download/latest.json`.
+El ajuste persistente `Config.auto_update` significa «comprobar al arrancar»,
+**nunca instalar automáticamente**. Puede desactivarse en About. Las preferencias
+antiguas sin ese campo reciben `true`.
+
+El aviso muestra la versión y las notas como texto, sin ejecutar HTML remoto.
+Solo al pulsar **Update** se descarga el paquete, Tauri verifica su firma con la
+clave pública configurada y lo instala; después ARGUS reinicia. Si la descarga,
+la firma o la instalación fallan, se informa y no se reinicia. **Later** cierra el
+aviso sin descargar. Windows puede cerrar el proceso durante la instalación.
+En Linux solo AppImage admite autoactualización: el `.deb` (y otras instalaciones
+fuera de AppImage) muestra las notas y un enlace de descarga a la release para
+instalar manualmente con el gestor de paquetes. Sin red, el arranque no muestra
+errores; una comprobación manual indica que no ha podido consultar. Timeout: 10 s.
+
+### Identidad de firma del autor
+
+La clave pública de producción está configurada en `plugins.updater.pubkey`.
+Su identificador Minisign es **315B1B8F56AEB0CA**; la proporcionó el autor el
+2026-11-19. La clave privada queda en GitHub Actions: nunca forma parte del
+repositorio, de los instaladores ni de esta configuración.
+
+Los secretos de Actions deben llamarse `TAURI_SIGNING_PRIVATE_KEY` (contenido de
+la clave privada cifrada) y `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (su contraseña).
+El CI firma un archivo pequeño y verifica el resultado con la pública antes de
+empezar el empaquetado: si falta un secreto, la contraseña es incorrecta o las
+claves no coinciden, la release se detiene sin publicar instaladores.
+
+Conservar una copia cifrada de la clave y su contraseña fuera del PC; perder la
+privada impide actualizar las instalaciones que confían en la pública actual.
+Para una futura rotación, generar otra pareja con Tauri signer y ejecutar
+`node scripts/configurar-clave-updater.mjs /ruta/segura/argus.key.pub`: ese script
+solo acepta un archivo **público** `.pub`, valida su formato y actualiza la
+configuración. Nunca se debe pasar la clave privada al script.
+
+La instalación en AppImage y Windows de prueba debe comprobarse con dos
+versiones publicadas: el aviso no descarga nada hasta pulsar Update, una firma
+ajena se rechaza y la app se reinicia solo tras instalar correctamente. Comprobar
+también la descarga manual del `.deb`, la opción desactivada y el arranque sin red.
+Las instalaciones antiguas necesitan instalar manualmente la primera versión
+que incluye este actualizador; no pueden aprender una clave nueva por sí solas.
+
+### CI de release
+
+Al subir un tag `v*`, ambos empaquetadores reciben los dos secretos anteriores.
+`createUpdaterArtifacts: true` genera las firmas `.sig` de AppImage y los
+instaladores de Windows. PR y ramas generan Windows sin firma mediante
+`tauri.unsigned.conf.json`; no necesitan secretos ni publican manifiesto.
+
+Tras pasar los tests, el job de release crea un borrador con notas de GitHub,
+reúne instaladores y firmas y ejecuta `scripts/crear-latest.mjs`. Este exige un
+AppImage y un instalador NSIS y un MSI con sus respectivas firmas y que la versión del tag
+coincida con `tauri.conf.json`, Cargo y los archivos de npm. Una discrepancia
+se detecta antes de empaquetar, sin crear una release parcial. Produce `latest.json` con versión, fecha, notas y
+las plataformas `linux-x86_64`, `windows-x86_64` (NSIS) y `windows-x86_64-msi`. Se suben todos los paquetes,
+firmas, manifiesto y `SHA256SUMS` antes de publicar el borrador como última release.
+El manifiesto se genera solo tras verificar criptográficamente cada firma con
+la clave pública configurada. Tauri exige también que la versión anunciada
+coincida con la versión incluida en el comentario firmado (`requireSignedVersion`).
+No se incluyen secretos en el manifiesto ni en los artefactos.
+
+Pruebas sin red: `tests/actualizaciones.test.ts` (precedencia SemVer, aviso,
+consentimiento, descarga manual, error de firma, fallo de red y manifiesto) y
+`state::tests::update_check_defaults_and_disabled_preference_survive_reload`.
+`tests/firmaUpdater.test.ts` genera claves efímeras con Tauri signer, firma un
+archivo y comprueba aceptación, rechazo de otra clave, datos modificados y
+versión incorrecta; nunca usa la privada real ni la red.
+Referencia del protocolo y firma: https://v2.tauri.app/plugin/updater/.

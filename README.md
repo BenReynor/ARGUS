@@ -116,7 +116,7 @@ sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
 git clone https://github.com/BenReynor/ARGUS.git
 cd ARGUS
 npm install
-npm run tauri build
+npm run tauri build -- --config src-tauri/tauri.unsigned.conf.json
 ```
 
 The packages end up in `src-tauri/target/release/bundle/` (`.deb`, `.rpm` and

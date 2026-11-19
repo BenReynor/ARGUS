@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Permisos de la ventana principal",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "dialog:allow-open",
@@ -12,7 +14,16 @@
     "fs:allow-write-text-file",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://discord.com/*" }]
-    }
+      "allow": [
+        {
+          "url": "https://discord.com/*"
+        },
+        {
+          "url": "https://github.com/BenReynor/ARGUS/releases/*"
+        }
+      ]
+    },
+    "updater:default",
+    "process:allow-restart"
   ]
 }

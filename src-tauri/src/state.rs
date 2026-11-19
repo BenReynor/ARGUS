@@ -109,6 +109,8 @@ pub struct Config {
 
     // General
     pub language: String,
+    /// Comprobar al arrancar; instalar siempre requiere consentimiento en la UI.
+    #[serde(default = "default_check_updates")]
     pub auto_update: bool,
     pub telemetry_opt_in: bool,
     pub anti_spam_cooldown_secs: u32,
@@ -165,6 +167,10 @@ fn default_ui_language() -> String {
 
 fn default_ui_theme() -> String {
     "discord".to_string()
+}
+
+fn default_check_updates() -> bool {
+    true
 }
 
 fn default_auto_sync_map() -> bool {
@@ -246,7 +252,7 @@ impl Default for Config {
             backup: BackupConfig::default(),
 
             language: "es".to_string(),
-            auto_update: true,
+            auto_update: default_check_updates(),
             telemetry_opt_in: false,
             anti_spam_cooldown_secs: 30,
             responder_triggers: ResponderTriggers::default(),
@@ -521,6 +527,18 @@ mod tests {
             config.ai_order_time_limit_minutes = minutes;
             assert!(config.validate_ai_time_limits().is_err());
         }
+    }
+
+    #[test]
+    fn update_check_defaults_and_disabled_preference_survive_reload() {
+        let mut json = serde_json::to_value(Config::default()).unwrap();
+        json.as_object_mut().unwrap().remove("auto_update");
+        let mut config: Config = serde_json::from_value(json).unwrap();
+        assert!(config.auto_update);
+        config.auto_update = false;
+        let restored: Config =
+            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        assert!(!restored.auto_update);
     }
 
     #[test]

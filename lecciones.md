@@ -76,3 +76,16 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - Síntoma: El gate falló antes de pasar: [GATE] ✗ juez: criterio NO cumplido (No protege al ejecutor real: acepta como actor cualquier ID del servidor, pudiendo expulsar a quien lanza la acción.); [GATE] ✗ criterio: 98_criterio.sh falló
 - Causa: [GATE] ✗ juez: criterio NO cumplido (No protege al ejecutor real: acepta como actor cualquier ID del servidor, pudiendo expulsar a quien lanza la acción.) warning: unused variable: `state` --> src/commands.rs:2617:29 | 2617 | async fn export_all_data_en(state: State<'_, AppState>) -> Result<Vec<u8>, String> { |                             ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2629:25 2629 | async fn import_data_en(state: State<'_, AppState>, _data: Vec<u8>) -> Result<String, String> { |                         ^^^^^ help: if this is inte
 - Prevención: Evita exactamente ese fallo y compruébalo con `.dedalo/estado/gate --solo 98_criterio.sh` antes de terminar (98_criterio.sh).
+
+## 2026-11-19 — Actualizaciones firmadas desbloqueadas
+- Se recuperó la implementación bloqueada y se instaló la clave pública real del
+  autor (Minisign 315B1B8F56AEB0CA). La privada y su contraseña quedan en Actions.
+- El CI prueba la pareja de claves antes de empaquetar y verifica cada artefacto
+  antes de generar latest.json. La versión también forma parte de la firma.
+- Para compilar paquetes locales sin la privada, usar tauri.unsigned.conf.json;
+  --no-bundle y el modo de desarrollo no requieren firma.
+- Pruebas sin red: firma real de un archivo con claves efímeras, rechazo de otra
+  clave/archivo/versión, consentimiento del updater y preferencias persistentes.
+- La primera instalación real de AppImage/Windows sigue siendo una comprobación
+  manual de release; no confundir la prueba con claves efímeras con haber usado
+  o inspeccionado los secretos reales del autor.

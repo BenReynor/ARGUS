@@ -59,6 +59,14 @@ comandos (`claude`, `codex` u `opencode`, modelo a elegir) en un chat dentro de 
 - Plan y conversación se guardan por servidor; la sesión del agente se reanuda.
 - El token del bot nunca se pasa al agente: argus-mcp lo lee de la BD.
 
+## Actualizaciones firmadas (FASE 18)
+
+El actualizador de Tauri comprueba al arrancar y desde Settings → About. Informa
+versión y notas, y solo instala tras pulsar Update; verifica firma y versión
+firmada y reinicia. Fuera de AppImage en Linux ofrece descarga manual. El CI
+firma con los secretos de Actions y verifica los artefactos con la pública del
+autor antes de publicar `latest.json`. Detalles en docs/FICHA_TECNICA.md.
+
 ## Después del MVP (visión, sin criterios todavía)
 
 Cada bloque se convierte en tareas con `criterio:` cuando le toque.

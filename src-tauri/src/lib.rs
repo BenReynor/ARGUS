@@ -5,6 +5,7 @@ use tauri::{
 };
 use tauri_plugin_log::{Target, TargetKind};
 
+mod actualizaciones;
 pub mod asistente;
 pub mod backup;
 pub mod chat;
@@ -67,9 +68,12 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             crypto::keyring_available,
+            actualizaciones::updater_install_supported,
             start_bot,
             stop_bot,
             get_bot_status,
