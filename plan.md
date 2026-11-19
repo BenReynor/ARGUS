@@ -615,7 +615,7 @@ Verificación manual:
 - [B] Pantalla de diagnóstico con acciones para resolver problemas
   criterio: botón «Run diagnostics» desde Settings y acceso desde un fallo de construcción; lista visual por componente, progreso, última comprobación y sugerencia concreta de solución, usando los estados compartidos de la fase 20; cualquier prueba que escriba datos o use IA requiere una acción explícita separada y explica su alcance; no hay un indicador global de «todo funciona» si algo no se pudo comprobar; todo con t(); pruebas de resultados parciales, cancelación y reintento de una comprobación
 
-- [ ] Informe de diagnóstico exportable sin secretos
+- [x] Informe de diagnóstico exportable sin secretos
   criterio: exportar un informe legible con versión, sistema, componentes comprobados y resultados, sin tokens, contraseñas, conversaciones, contenido privado de canales ni valores de variables de entorno; el usuario puede revisarlo antes de compartirlo; tests con errores simulados que contienen valores sensibles y comprobación de su redacción antes de mostrar o exportar
 
 ## FASE 22 — Biblioteca personal de plantillas de construcción
