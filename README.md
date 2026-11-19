@@ -150,9 +150,8 @@ To try local changes, build with `npm run tauri build -- --no-bundle` and run
    ARGUS validates it with Discord and shows its name and avatar.
 3. Click **Invite to a server**: the Discord invite opens with the basic
    permissions (view channels, messages, manage channels and roles, timeout,
-   kick and ban). For **full control**, then give the bot a role with
-   **Administrator** and move it above the roles it has to manage in the
-   hierarchy.
+   kick and ban). Keep the bot **without Administrator** and grant only the
+   permissions you need. Move its role above only the roles it must manage.
 4. Click **Turn on** to connect it and pick the server in the left-hand column.
    **Dashboard**, **Channels**, **Members**, **Roles**, **Server** and **Logs**
    work on that server.
@@ -178,6 +177,10 @@ Tool list, other clients and troubleshooting: [`docs/MCP.md`](docs/MCP.md).
 
 ## Privacy and security
 
+Read the [security guide](SECURITY.md) ([Español](docs/SEGURIDAD.md)) for
+safeguards, remaining risks, recommended settings and how to report a
+vulnerability privately.
+
 - Tokens are stored **encrypted** (AES-256-GCM) in a local database
   (`~/.config/argus/` on Linux, `%APPDATA%\argus\` on Windows). Never in plain
   text, in browser storage or in the logs.
@@ -190,7 +193,8 @@ Tool list, other clients and troubleshooting: [`docs/MCP.md`](docs/MCP.md).
   for new tokens and shows a warning in Settings. Enable/unlock the keyring and
   restart to migrate. Already migrated tokens remain intact and require the
   original keyring; copying the database alone cannot restore access to them.
-- ARGUS has no telemetry: it only talks to the Discord API.
+- ARGUS has no telemetry. AI features send context, including data read by the
+  agent, to the selected model provider. Review what you share before use.
 - Nothing is tied to a specific server, channel or bot; it works for anyone.
 
 ## Status and what's next

@@ -477,7 +477,7 @@ ARGUS ya exige estar en la lista de órdenes, el «sí» del autor y un agente c
 - [x] Clave de cifrado en el llavero del sistema
   criterio: la clave maestra es aleatoria (32 bytes) y se guarda en el llavero del sistema (crate `keyring`: Secret Service en Linux, Credential Manager en Windows); al arrancar, si los tokens están cifrados con la clave antigua derivada del machine-id, se descifran y se vuelven a cifrar con la nueva (migración única, sin perder bots); si no hay llavero disponible se sigue con la clave antigua y se muestra un aviso en Settings; `argus-mcp` usa la misma clave; tests con un llavero falso inyectado (migración, sin llavero, clave ya existente) y sin tocar el llavero real; docs (README «Privacy and security» en los dos idiomas) actualizados
 
-- [B] Documentación de seguridad
+- [x] Documentación de seguridad
   criterio: `docs/SEGURIDAD.md` (y `SECURITY.md` en inglés en la raíz, que GitHub muestra) con: qué protege ARGUS (tokens, órdenes, confirmación, agente solo lectura, límites), los riesgos que quedan (prompt injection, proveedor del modelo ve lo que lee, MCP con todo permitido en tu PC) y recomendaciones (bot sin Administrator, lista de órdenes corta, confirmación activada); README enlaza a él; cómo reportar un problema de seguridad
 
 Verificación manual (en tu servidor de pruebas):

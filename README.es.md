@@ -152,9 +152,8 @@ de esta copia sin sustituirlos por la versión de `main`.
    lo valida con Discord y muestra su nombre y avatar.
 3. Pulsa **Invitar a un servidor**: se abre la invitación de Discord con los
    permisos básicos (ver canales, mensajes, gestionar canales y roles, timeout,
-   expulsar y banear). Para el **control total**, dale después al bot un rol con
-   **Administrador** y súbelo en la jerarquía por encima de los roles que deba
-   gestionar.
+   expulsar y banear). Mantén el bot **sin Administrador** y concede solo los
+   permisos necesarios. Sube su rol solo por encima de los roles que deba gestionar.
 4. Pulsa **Encender** para conectarlo y elige el servidor en la columna de la
    izquierda. **Panel**, **Canales**, **Miembros**, **Roles**, **Servidor** y
    **Logs** trabajan sobre ese servidor.
@@ -181,6 +180,9 @@ Lista de herramientas, otros clientes y solución de problemas:
 
 ## Privacidad y seguridad
 
+Consulta la [guía de seguridad](docs/SEGURIDAD.md): protecciones, riesgos que
+quedan, configuración recomendada y cómo reportar una vulnerabilidad en privado.
+
 - Los tokens se guardan **cifrados** (AES-256-GCM) en una base de datos local
   (`~/.config/argus/` en Linux, `%APPDATA%\argus\` en Windows). Nunca en texto
   plano, en el almacenamiento del navegador ni en los logs.
@@ -193,7 +195,8 @@ Lista de herramientas, otros clientes y solución de problemas:
   nuevos tokens y avisa en Ajustes. Habilita/desbloquea el llavero y reinicia
   para migrar. Los tokens ya migrados permanecen intactos y necesitan el
   llavero original; copiar solo la BD no permite recuperar su acceso.
-- ARGUS no tiene telemetría: solo habla con la API de Discord.
+- ARGUS no tiene telemetría. Las funciones de IA envían contexto, incluidos los
+  datos que lee el agente, al proveedor del modelo elegido. Revisa qué compartes.
 - Nada está atado a un servidor, canal o bot concreto; sirve para cualquiera.
 
 ## Estado y lo que viene
