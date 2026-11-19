@@ -134,6 +134,7 @@ optional parameter.
 | `info_servidor` | `guild_id?` | General server data. |
 | `ajustes_servidor` | `guild_id?` | Server settings (verification, filters, AFK…). |
 | `registro_auditoria` | `guild_id?` | Latest audit log entries. |
+| `informe_permisos` | `guild_id?` | Partial permissions report: selected explicit role grants, raw channel overwrites and limitations. Does not calculate effective access or establish server safety. Corrections require a proposal, user Apply and any destructive confirmations. |
 | `leer_mensajes` | `guild_id?`, `channel_id`, `limite?` (default and max. 50) | Latest messages of a channel. |
 | `listar_baneos` | `guild_id?` | Banned users. |
 | `listar_invitaciones` | `guild_id?` | Active invites. |

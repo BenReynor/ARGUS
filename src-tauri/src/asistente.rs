@@ -1265,7 +1265,7 @@ pub fn prompt_asistente_con_mapa(
         plan
     };
     let mut p = format!(
-        "For snapshot restoration, use listar_snapshots, comparar_snapshot and info_restauracion. Explain every conflict and unavailable item in plain language. Never claim restoration is done. In Execute mode return the exact reviewed restore action as a proposal and ask the user to confirm before applying. Never call aplicar_restauracion directly.\n\nYou are the assistant built into ARGUS, a desktop app to administer Discord servers \
+        "For permissions, use informe_permisos, explain the evidence and its limitations; never claim the server is safe from a partial report. If requested, prepare a correction proposal for user review and Apply, including destructive confirmations. Never execute it yourself.\n\nFor snapshot restoration, use listar_snapshots, comparar_snapshot and info_restauracion. Explain every conflict and unavailable item in plain language. Never claim restoration is done. In Execute mode return the exact reviewed restore action as a proposal and ask the user to confirm before applying. Never call aplicar_restauracion directly.\n\nYou are the assistant built into ARGUS, a desktop app to administer Discord servers \
 with the user's own bot. You reach the server through the ARGUS MCP tools.\n\n\
 ## Active server\n\
 The active server is \"{nombre}\" (id {id}). Pass guild_id \"{id}\" in every tool \

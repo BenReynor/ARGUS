@@ -108,3 +108,93 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - Síntoma: El agente no cumplió el criterio tras 2 intentos.
 - Causa: gate_fail en la iteración 1: [GATE] ✗ juez: criterio NO cumplido (Una operación cuyos pasos fallan se registra como parcial; además, se omiten destinos como message_ids.) | 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^ warning: unused import: `Manager` --> src/backup.rs:8:24 8 | use tauri::{AppHandle, Manager, State}; |                        ^^^^^^^
 - Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 14:19 — Tarea bloqueada: Historial de operaciones con estados compartidos
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 1: [GATE] ✗ juez: criterio NO cumplido (El servidor fijado no se aplica a acciones sin guild_id: pueden ejecutarse en otro servidor que el registrado.) | 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^ warning: unused import: `Manager` --> src/backup.rs:8:24 8 | use tauri::{AppHandle, Manager, State}; |                        ^^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 14:52 — Tarea bloqueada: Comprobar el resultado tras construir o modificar el servidor
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 1: [GATE] ✗ juez: criterio NO cumplido (El motor marca éxito al aceptar la acción, sin verificar el resultado ni reconciliar timeouts ambiguos.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 14:58 — Tarea bloqueada: Panel visual de resultados y avisos consistentes
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 2: [GATE] ✗ juez: criterio NO cumplido (El panel solo registra avisos: faltan historial de operaciones, resumen de pasos, progreso y pruebas requeridas.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 15:07 — Tarea bloqueada: Motor de comprobaciones sin efectos sobre Discord
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 3: [GATE] ✗ juez: criterio NO cumplido (Lee el token del bot para consultar permisos y faltan pruebas con agentes, MCP y procesos colgados.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 15:15 — Tarea bloqueada: Pantalla de diagnóstico con acciones para resolver problemas
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 4: [GATE] ✗ juez: criterio NO cumplido (Diagnóstico define estados propios y no reutiliza los estados compartidos de la fase 20.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 15:27 — Tarea bloqueada: Guardar y organizar las plantillas propias
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 6: [GATE] ✗ juez: criterio NO cumplido (Solo permite editar metadatos; no permite editar la estructura de una plantilla guardada.) | 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^ warning: unused import: `Manager` --> src/backup.rs:8:24 8 | use tauri::{AppHandle, Manager, State}; |                        ^^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 15:37 — Corregida en reintento: Importar y exportar plantillas de la biblioteca
+- Síntoma: El gate falló antes de pasar: [GATE] ✗ juez: criterio NO cumplido (No existe el flujo de importación y exportación de plantillas ni sus validaciones y pruebas.); [GATE] ✗ criterio: 98_criterio.sh falló
+- Causa: [GATE] ✗ juez: criterio NO cumplido (No existe el flujo de importación y exportación de plantillas ni sus validaciones y pruebas.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Evita exactamente ese fallo y compruébalo con `.dedalo/estado/gate --solo 98_criterio.sh` antes de terminar (98_criterio.sh).
+
+## 2026-11-19 15:42 — Tarea bloqueada: Aplicar una plantilla mediante el motor de propuestas
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 8: [GATE] ✗ juez: criterio NO cumplido (Faltan la aplicación de plantillas mediante planes, la vista previa de destino y los tests exigidos.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 15:48 — Tarea bloqueada: Usar la biblioteca desde la IA
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 9: [GATE] ✗ juez: criterio NO cumplido (El asistente solo recibe la plantilla seleccionada; no puede listar ni consultar por sí mismo las disponibles.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 15:57 — Tarea bloqueada: Calcular accesos efectivos y detectar hallazgos comprobables
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 10: [GATE] ✗ juez: criterio NO cumplido (Omite permisos sensibles como Manage Messages y no destaca los concedidos por overwrites de canal.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 16:01 — Tarea bloqueada: Informe visual y correcciones aprobadas
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 11: [GATE] ✗ juez: criterio NO cumplido (Falta la vista de hallazgos y el flujo de corrección, aprobación y comprobación posterior.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 16:06 — Corregida en reintento: Explicar la auditoría a la IA sin concederle escrituras
+- Síntoma: El gate falló antes de pasar: [GATE] ✗ juez: criterio NO cumplido (No existe la herramienta MCP para consultar el informe ni sus pruebas de lectura sin cambios.); [GATE] ✗ criterio: 98_criterio.sh falló
+- Causa: [GATE] ✗ juez: criterio NO cumplido (No existe la herramienta MCP para consultar el informe ni sus pruebas de lectura sin cambios.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Evita exactamente ese fallo y compruébalo con `.dedalo/estado/gate --solo 98_criterio.sh` antes de terminar (98_criterio.sh).
+
+## 2026-11-19 16:11 — Tarea bloqueada: Catálogo de conectores y capacidades reales
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 13: [GATE] ✗ juez: criterio NO cumplido (El catálogo no está integrado: no permite habilitar varios conectores ni probarlos desde diagnóstico.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 16:14 — Tarea bloqueada: Vincular cuentas y permisos sin compartir credenciales con la IA
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 14: [GATE] ✗ juez: criterio NO cumplido (Solo hay un catálogo sin conectores implementados; faltan autorización, credenciales, desconexión y pruebas.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 16:17 — Tarea bloqueada: Lectura de varios MCP con aislamiento entre servicios
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 15: [GATE] ✗ juez: criterio NO cumplido (Falta la capa multiconector con límites y aislamiento; tampoco existen los tests con dos MCP falsos.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 16:20 — Tarea bloqueada: Propuestas para configurar otros bots y comprobar su resultado
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 16: [GATE] ✗ juez: criterio NO cumplido (No existe el adaptador ni el flujo de propuestas, ejecución aprobada y verificación para otros bots.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 16:31 — Tarea bloqueada: Motor de servicio opcional y una sola conexión por bot
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 19: [GATE] ✗ juez: criterio NO cumplido (No existe servicio independiente ni canal local; la interfaz indica que aún no está disponible.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 16:36 — Tarea bloqueada: Arranque opcional y diagnóstico del servicio
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 20: [GATE] ✗ juez: criterio NO cumplido (Faltan el servicio independiente, sus controles, el diagnóstico diferenciado y las pruebas correspondientes.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.

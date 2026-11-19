@@ -18,6 +18,7 @@ import { RespuestasDiscord } from './RespuestasDiscord';
 import { ContextoPersonalidad } from './ContextoPersonalidad';
 import './Asistente.css';
 import { DiffView } from './DiffView';
+import { TemplateTransfer } from './TemplateTransfer';
 
 type Modo = 'read' | 'plan' | 'execute';
 interface Herramienta { id: string; nombre: string; ok: boolean | null }
@@ -987,7 +988,7 @@ export const AsistenteView: React.FC = () => {
           <button key={id} role="tab" aria-selected={pestana === id} className="pestanas__tab" onClick={() => setPestana(id)}>{etiqueta}</button>
         ))}
       </div>
-      {pestana === 'build' ? <ChatAsistente key="construccion" tipo="construccion" /> : pestana === 'moderacion' ? <ChatAsistente key="moderacion" tipo="moderacion" /> : pestana === 'contexto' ? <ContextoPersonalidad /> : <RespuestasDiscord onAbrirPersonalidad={() => setPestana('contexto')} />}
+      {pestana === 'build' ? <><ChatAsistente key="construccion" tipo="construccion" /><TemplateTransfer /></> : pestana === 'moderacion' ? <ChatAsistente key="moderacion" tipo="moderacion" /> : pestana === 'contexto' ? <ContextoPersonalidad /> : <RespuestasDiscord onAbrirPersonalidad={() => setPestana('contexto')} />}
     </div>
   );
 };
