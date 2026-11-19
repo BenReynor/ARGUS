@@ -543,7 +543,7 @@ Si alguien con permisos (o un bot ajeno) borra canales y roles, hoy no hay forma
 - [x] Detectar destrucción masiva y avisar
   criterio: con el bot encendido, si en poco tiempo (p. ej. 5 canales o roles en 1 minuto) se borran canales o roles, ARGUS crea un snapshot de emergencia del estado anterior conocido (del mapa en vivo), muestra una alerta nativa y en Logs con quién lo hizo (registro de auditoría) y ofrece «Restore»; umbrales configurables y opción de quitar los roles al responsable automáticamente (desactivada por defecto); tests del detector con eventos simulados del Gateway; «Restore» usa el motor de restauración de la tarea anterior, sin una restauración propia
 
-- [ ] Snapshots desde el MCP y las órdenes de Discord
+- [x] Snapshots desde el MCP y las órdenes de Discord
   criterio: `argus-mcp` gana herramientas para listar snapshots, crear uno, compararlo con el servidor y pedir la propuesta de restauración (con sus conflictos); ninguna aplica cambios por sí sola: la propuesta sigue el flujo normal y necesita confirmación; desde Discord, «restaura el último snapshot» genera la misma propuesta y pide «sí»; la IA explica los conflictos y pregunta antes de aplicar; tests de cada herramienta y de que nada se aplica sin confirmar
 
 - [ ] Miembros que se fueron
