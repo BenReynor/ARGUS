@@ -173,3 +173,8 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - Síntoma: El agente no cumplió el criterio tras 2 intentos.
 - Causa: gate_fail en la iteración 13: [GATE] ✗ juez: criterio NO cumplido (El catálogo no está integrado: no permite habilitar varios conectores ni probarlos desde diagnóstico.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
 - Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 16:14 — Tarea bloqueada: Vincular cuentas y permisos sin compartir credenciales con la IA
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 14: [GATE] ✗ juez: criterio NO cumplido (Solo hay un catálogo sin conectores implementados; faltan autorización, credenciales, desconexión y pruebas.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.

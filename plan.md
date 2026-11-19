@@ -651,7 +651,7 @@ Verificación manual:
 - [B] Catálogo de conectores y capacidades reales
   criterio: inventario versionado de conectores por servicio/bot, con origen, método oficial disponible (MCP/API autorizada), requisitos, permisos, herramientas de lectura/escritura y limitaciones; permite habilitar varios conectores para un servidor y probar cada conexión desde diagnóstico; los conectores no implementados o no comprobados aparecen como tales; no promete que todos los bots tengan MCP ni que un bot pueda configurar a otro enviándole mensajes; sin funciones propias de bienvenida/tickets/niveles; tests con catálogo y conectores falsos
 
-- [ ] Vincular cuentas y permisos sin compartir credenciales con la IA
+- [B] Vincular cuentas y permisos sin compartir credenciales con la IA
   criterio: cada conector se activa por decisión del usuario, queda asociado al servicio/cuenta/servidor correctos y muestra lo que permite hacer; usa OAuth/API/MCP del servicio cuando esté disponible y cifrado local/llavero para sus credenciales; no solicita el token privado de un bot ajeno, no automatiza cuentas personales de Discord ni crea selfbots; desconectar deja de ofrecer sus herramientas; los diagnósticos, logs y prompts no contienen credenciales; tests con autorización falsa, expiración y revocación
 
 - [ ] Lectura de varios MCP con aislamiento entre servicios
