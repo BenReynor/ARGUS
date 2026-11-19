@@ -620,7 +620,7 @@ Verificación manual:
 
 ## FASE 22 — Biblioteca personal de plantillas de construcción
 
-- [ ] Guardar y organizar las plantillas propias
+- [B] Guardar y organizar las plantillas propias
   criterio: biblioteca local con nombre, descripción, etiquetas, fecha y esquema versionado; crear desde el editor del plan o desde una estructura/snapshot elegidos por el usuario, editar, buscar, duplicar y borrar con confirmación; representa canales, categorías, roles, descripciones y permisos por referencias portátiles; no incluye tokens, mensajes ni datos personales de miembros por defecto; mantiene separados la plantilla reusable y los snapshots de recuperación; migración compatible con la tabla templates existente y tests de persistencia, duplicado y esquema antiguo
 
 - [ ] Importar y exportar plantillas de la biblioteca
