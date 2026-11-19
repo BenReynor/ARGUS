@@ -141,6 +141,10 @@ idea independiente: nunca bloquear funciones por no donar.
 
 ## Integración con Dédalo
 
+El autor indicó usar Dédalo para la implementación: ejecutar las tareas con su
+loop, gate y revisión, consultando el estado antes de iniciar o reanudar una
+ejecución para no duplicarla.
+
 `plan.md` usa el formato de Dédalo (`- [ ]` / `- [x]` / `- [B]`, una línea
 `criterio:` por tarea). Las tareas manuales van como viñetas simples, sin casilla,
 para que el loop no las tome.

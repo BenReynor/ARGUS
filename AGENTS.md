@@ -4,6 +4,9 @@ Reglas operativas para agentes. Qué es ARGUS y por qué: CONTEXTO.md. Qué arch
 existen: ARCHITECTURE_MAP.md. Errores ya corregidos: lecciones.md.
 
 ## Reglas
+- Por indicación del autor, usar **Dédalo** para ejecutar las tareas de
+  implementación de `plan.md`, con su gate y revisión por tarea. Consultar el
+  estado del loop antes de iniciar o reanudar para no duplicar ejecuciones.
 - Prioridad del producto: construir/configurar servidores con IA e integrarla
   con otros bots autorizados (ver CONTEXTO.md y FASES 20–25 de plan.md). No añadir
   módulos propios de bienvenida, verificación, autoroles, tickets o niveles ni
