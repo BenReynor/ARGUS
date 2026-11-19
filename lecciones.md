@@ -71,3 +71,8 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - Síntoma: El agente no cumplió el criterio tras 2 intentos.
 - Causa: revisor_fail en la iteración 1: El emparejamiento por nombre no distingue roles gestionados de roles editables: un rol normal borrado puede vincularse a un rol de integración con el mismo nombre. Así no se recrea el rol perdido y Apply intenta modificar o asignar un rol gestionado, operaciones que Discord rechaza, deteniendo la restauración.
 - Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-18 23:25 — Corregida en reintento: Expulsar a todos los miembros
+- Síntoma: El gate falló antes de pasar: [GATE] ✗ juez: criterio NO cumplido (No protege al ejecutor real: acepta como actor cualquier ID del servidor, pudiendo expulsar a quien lanza la acción.); [GATE] ✗ criterio: 98_criterio.sh falló
+- Causa: [GATE] ✗ juez: criterio NO cumplido (No protege al ejecutor real: acepta como actor cualquier ID del servidor, pudiendo expulsar a quien lanza la acción.) warning: unused variable: `state` --> src/commands.rs:2617:29 | 2617 | async fn export_all_data_en(state: State<'_, AppState>) -> Result<Vec<u8>, String> { |                             ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2629:25 2629 | async fn import_data_en(state: State<'_, AppState>, _data: Vec<u8>) -> Result<String, String> { |                         ^^^^^ help: if this is inte
+- Prevención: Evita exactamente ese fallo y compruébalo con `.dedalo/estado/gate --solo 98_criterio.sh` antes de terminar (98_criterio.sh).

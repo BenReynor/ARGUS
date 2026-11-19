@@ -549,7 +549,7 @@ Si alguien con permisos (o un bot ajeno) borra canales y roles, hoy no hay forma
 - [x] Miembros que se fueron
   criterio: a partir del snapshot, Backups muestra quién estaba y ya no está (id, nombre y roles que tenía), exportable a archivo; «Invitar» crea una invitación y la envía por DM a quienes el bot pueda escribir, e indica a quiénes no se pudo (Discord no permite a un bot volver a meter a nadie en el servidor, ni escribir a quien no comparte un servidor con él); opción **«Devolver sus roles al volver»** (activada por defecto tras una restauración): si entra alguien del snapshot, el bot le reasigna los roles que tenía y lo anota en Logs; tests con eventos simulados de entrada y con DM que falla
 
-- [ ] Expulsar a todos los miembros
+- [x] Expulsar a todos los miembros
   criterio: acción solo de la app (nunca desde el MCP, las órdenes de Discord ni la IA), en Backups o Moderation; antes de empezar crea un snapshot automático; **doble confirmación**: muestra cuántos miembros se expulsarán y pide escribir el nombre del servidor; nunca expulsa al dueño, al propio bot ni a quien la lanza, y se pueden excluir roles (por defecto, los que tienen Administrator); avanza respetando los límites de Discord con progreso «N de M» y botón Stop; los que no se pueden expulsar (rol por encima del bot) se listan al final; tests con el Discord falso: exclusiones, Stop y que el MCP y las órdenes no la ofrecen
 
 - [ ] Snapshots automáticos cada 12 horas
