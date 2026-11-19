@@ -3,6 +3,14 @@
 export const NOMBRE_ES = 'Español';
 
 export const es: Record<string, string> = {
+  "External services": "Servicios externos",
+  "Configuration of external services": "Configuración de servicios externos",
+  "No external configuration connectors are currently available in ARGUS.": "Actualmente no hay conectores de configuración externos disponibles en ARGUS.",
+  "When a service has no available configuration API or MCP, configure it manually in its official panel. Consult the provider’s official documentation for the correct panel and steps.": "Si un servicio no dispone de una API o MCP de configuración, configúralo manualmente en su panel oficial. Consulta la documentación oficial del proveedor para encontrar el panel y los pasos correctos.",
+  "ARGUS cannot read or change that service’s settings or verify the result. Check the settings in the official panel after saving.": "ARGUS no puede leer ni cambiar los ajustes de ese servicio ni verificar el resultado. Comprueba los ajustes en el panel oficial después de guardar.",
+  "Future browser recipes": "Futuras recetas de navegador",
+  "Browser recipes are not available. They would be a separate, optional feature, never installed or enabled by default or used as a substitute for MCP.": "Las recetas de navegador no están disponibles. Serían una función separada y opcional, que nunca se instalaría ni activaría por defecto ni se usaría como sustituto de MCP.",
+  "A future recipe must use a visible browser, let you log in yourself, show its date and warn that it may be outdated, and ask for confirmation before saving. ARGUS must not access your password or simulate your Discord user session.": "Una futura receta deberá usar un navegador visible, permitirte iniciar sesión personalmente, mostrar su fecha y advertir que puede estar desactualizada, y pedir confirmación antes de guardar. ARGUS no debe acceder a tu contraseña ni simular tu sesión de usuario de Discord.",
   "Version": "Versión",
   "ARGUS diagnostic report": "Informe de diagnóstico de ARGUS",
   "System": "Sistema",
