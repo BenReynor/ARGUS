@@ -3,6 +3,7 @@
 export const NOMBRE_ES = 'Español';
 
 export const es: Record<string, string> = {
+  "When enabled, closing hides ARGUS in the tray and a running bot keeps working. When disabled, closing quits ARGUS and stops the bot. Quit from the tray also stops ARGUS and the bot. An independent service is not available yet.": "Al activarlo, cerrar oculta ARGUS en la bandeja y el bot sigue funcionando si estaba activo. Al desactivarlo, cerrar termina ARGUS y detiene el bot. Salir desde la bandeja también detiene ARGUS y el bot. Todavía no hay un servicio independiente disponible.",
   "External services": "Servicios externos",
   "Configuration of external services": "Configuración de servicios externos",
   "No external configuration connectors are currently available in ARGUS.": "Actualmente no hay conectores de configuración externos disponibles en ARGUS.",

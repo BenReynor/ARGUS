@@ -494,7 +494,7 @@ mod tests;
 #[derive(Serialize, Deserialize)]
 pub struct WindowPreferences {
     auto_start: bool,
-    minimize_to_tray: bool,
+    pub(crate) minimize_to_tray: bool,
 }
 #[tauri::command]
 pub async fn backup_window_preferences(
@@ -511,6 +511,10 @@ pub async fn backup_window_preferences(
                 &serde_json::to_string(&preferences)?,
             )
             .await?;
+            app.state::<crate::ClosePreference>().0.store(
+                preferences.minimize_to_tray,
+                std::sync::atomic::Ordering::SeqCst,
+            );
             Ok(Some(preferences))
         } else {
             Ok(db::get_setting(&pool, "window_preferences")

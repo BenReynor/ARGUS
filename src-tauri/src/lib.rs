@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -46,6 +48,71 @@ mod tests_roles;
 use commands::*;
 use state::AppState;
 
+struct ClosePreference(AtomicBool);
+
+impl Default for ClosePreference {
+    fn default() -> Self {
+        Self(AtomicBool::new(true))
+    }
+}
+
+trait CloseEvent {
+    fn hide(&mut self);
+    fn quit(&mut self);
+}
+
+fn handle_close(event: &mut impl CloseEvent, minimize_to_tray: bool) {
+    if minimize_to_tray {
+        event.hide();
+    } else {
+        event.quit();
+    }
+}
+
+struct WindowClose<'a> {
+    window: &'a tauri::Window,
+    api: &'a tauri::CloseRequestApi,
+}
+
+impl CloseEvent for WindowClose<'_> {
+    fn hide(&mut self) {
+        match self.window.hide() {
+            Ok(()) => self.api.prevent_close(),
+            Err(error) => tracing::error!("Could not hide window: {error}"),
+        }
+    }
+    fn quit(&mut self) {
+        self.window.app_handle().exit(0);
+    }
+}
+
+#[cfg(test)]
+mod close_tests {
+    use super::*;
+    #[derive(Default)]
+    struct FakeClose {
+        hidden: bool,
+        quit: bool,
+    }
+    impl CloseEvent for FakeClose {
+        fn hide(&mut self) {
+            self.hidden = true;
+        }
+        fn quit(&mut self) {
+            self.quit = true;
+        }
+    }
+    #[test]
+    fn close_event_respects_both_preferences() {
+        let mut event = FakeClose::default();
+        handle_close(&mut event, true);
+        assert!(event.hidden && !event.quit);
+        let mut event = FakeClose::default();
+        handle_close(&mut event, false);
+        assert!(event.quit && !event.hidden);
+    }
+}
+
 pub fn run() {
     let app_state = AppState::new();
 
@@ -72,6 +139,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(app_state)
+        .manage(ClosePreference::default())
         .invoke_handler(tauri::generate_handler![
             crypto::keyring_available,
             actualizaciones::updater_install_supported,
@@ -189,6 +257,21 @@ pub fn run() {
             let ruta = db::ruta_bd(&handle)?;
             let pool = tauri::async_runtime::block_on(db::abrir_bd_por_ruta(&ruta))?;
             tauri::async_runtime::block_on(crypto::initialize(&pool))?;
+            let preferences =
+                tauri::async_runtime::block_on(db::get_setting(&pool, "window_preferences"));
+            match preferences {
+                Ok(Some(value)) => {
+                    match serde_json::from_str::<backup::WindowPreferences>(&value) {
+                        Ok(preferences) => app
+                            .state::<ClosePreference>()
+                            .0
+                            .store(preferences.minimize_to_tray, Ordering::SeqCst),
+                        Err(error) => tracing::error!("Could not load window preferences: {error}"),
+                    }
+                }
+                Err(error) => tracing::error!("Could not load window preferences: {error}"),
+                Ok(None) => {}
+            }
             app.manage(pool);
             backup::start_automatic(handle.clone());
             snapshots::start_automatic(handle.clone());
@@ -263,8 +346,8 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                window.hide().unwrap();
-                api.prevent_close();
+                let preference = window.state::<ClosePreference>().0.load(Ordering::SeqCst);
+                handle_close(&mut WindowClose { window, api }, preference);
             }
         })
         .run(tauri::generate_context!())

@@ -544,7 +544,7 @@ export const SettingsView: React.FC = () => {
           placeholder={t('Server ID')}
         />
         <Interruptor titulo={t('Auto-start the bot when ARGUS opens')} ayuda={t('Connects the active bot as soon as the app starts.')} checked={formData.auto_start} onChange={(v) => handleChange('auto_start', v)} />
-        <Interruptor titulo={t('Minimize to the tray when closing the window')} ayuda={t('ARGUS keeps running in the background.')} checked={formData.minimize_to_tray} onChange={(v) => handleChange('minimize_to_tray', v)} />
+        <Interruptor titulo={t('Minimize to the tray when closing the window')} ayuda={t('When enabled, closing hides ARGUS in the tray and a running bot keeps working. When disabled, closing quits ARGUS and stops the bot. Quit from the tray also stops ARGUS and the bot. An independent service is not available yet.')} checked={formData.minimize_to_tray} onChange={(v) => handleChange('minimize_to_tray', v)} />
         <div>
           <Button onClick={handleSave} cargando={saving}>
             {!saving && <Save size={14} />} {saving ? t('Saving…') : t('Save settings')}
