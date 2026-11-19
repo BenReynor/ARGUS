@@ -738,7 +738,7 @@ pub async fn ejecutar_orden(
         });
     }
     let mut stderr = hijo.stderr.take().expect("stderr piped");
-    let errores = tokio::spawn(async move {
+    let mut errores = tokio::spawn(async move {
         let mut s = String::new();
         let _ = stderr.read_to_string(&mut s).await;
         s
@@ -766,8 +766,25 @@ pub async fn ejecutar_orden(
             }
         }
     }
-    let estado = hijo.wait().await;
-    let stderr = errores.await.unwrap_or_default();
+    // El agente puede cerrar stdout antes de terminar o dejar stderr en un hijo.
+    // La parada sigue activa durante ambas esperas.
+    let estado = tokio::select! {
+        estado = hijo.wait() => estado,
+        _ = cancelar.notified(), if !cancelado => {
+            cancelado = true;
+            if let Some(p) = pid { matar_grupo(p); }
+            let _ = hijo.start_kill();
+            hijo.wait().await
+        }
+    };
+    let stderr = tokio::select! {
+        r = &mut errores => r.unwrap_or_default(),
+        _ = cancelar.notified(), if !cancelado => {
+            cancelado = true;
+            if let Some(p) = pid { matar_grupo(p); }
+            errores.await.unwrap_or_default()
+        }
+    };
     if !cancelado && !lector.error {
         let fallo = !matches!(&estado, Ok(s) if s.success());
         if fallo && !stderr.trim().is_empty() {
@@ -789,6 +806,40 @@ pub async fn ejecutar_orden(
     Ok(lector.sesion)
 }
 
+/// Ejecuta con plazo total, incluyendo herramientas y esperas del agente.
+pub const ERROR_TIEMPO_IA: &str = "The AI time limit was exceeded and the agent was stopped. Try a more specific request or fewer messages per channel";
+
+pub async fn ejecutar_orden_con_limite(
+    orden: &OrdenAgente,
+    agente: &str,
+    cancelar: &tokio::sync::Notify,
+    limite: std::time::Duration,
+    mut emitir: impl FnMut(EventoAsistente),
+) -> Result<Option<String>, String> {
+    let agotado = std::sync::atomic::AtomicBool::new(false);
+    let ejecucion = ejecutar_orden(orden, agente, cancelar, |mut e| {
+        // Un fin simultáneo al vencimiento nunca publica una propuesta o plan.
+        if agotado.load(std::sync::atomic::Ordering::SeqCst) {
+            if let EventoAsistente::Fin { cancelado, .. } = &mut e {
+                *cancelado = true;
+            } else {
+                return;
+            }
+        }
+        emitir(e);
+    });
+    tokio::pin!(ejecucion);
+    tokio::select! {
+        r = &mut ejecucion => r,
+        _ = tokio::time::sleep(limite) => {
+            agotado.store(true, std::sync::atomic::Ordering::SeqCst);
+            cancelar.notify_one();
+            let _ = ejecucion.await;
+            Err(ERROR_TIEMPO_IA.into())
+        }
+    }
+}
+
 /// Lanza el agente constructor sin interfaz y devuelve todo el texto de su
 /// respuesta. Pasado `limite` mata el proceso y su grupo. No usa el cerrojo de
 /// la app: el que limita los constructores es el del llamador.
@@ -798,27 +849,27 @@ pub async fn texto_del_constructor(
     limite: std::time::Duration,
 ) -> Result<String, String> {
     let cancelar = tokio::sync::Notify::new();
+    texto_del_constructor_cancelable(orden, agente, limite, &cancelar).await
+}
+
+/// Constructor con parada privada del llamador; termina también el grupo del agente.
+pub async fn texto_del_constructor_cancelable(
+    orden: &OrdenAgente,
+    agente: &str,
+    limite: std::time::Duration,
+    cancelar: &tokio::sync::Notify,
+) -> Result<String, String> {
     let mut texto = String::new();
     let mut error: Option<String> = None;
-    {
-        let ejecucion = ejecutar_orden(orden, agente, &cancelar, |e| match e {
-            EventoAsistente::Texto { texto: t } => {
-                texto.push_str(&t);
-                texto.push('\n');
-            }
-            EventoAsistente::Error { mensaje } => error = Some(mensaje),
-            _ => {}
-        });
-        tokio::pin!(ejecucion);
-        tokio::select! {
-            r = &mut ejecucion => { r?; }
-            _ = tokio::time::sleep(limite) => {
-                cancelar.notify_one();
-                let _ = ejecucion.await;
-                return Err("The AI agent took too long to reply".into());
-            }
+    ejecutar_orden_con_limite(orden, agente, cancelar, limite, |e| match e {
+        EventoAsistente::Texto { texto: t } => {
+            texto.push_str(&t);
+            texto.push('\n');
         }
-    }
+        EventoAsistente::Error { mensaje } => error = Some(mensaje),
+        _ => {}
+    })
+    .await?;
     if let Some(e) = error {
         return Err(e);
     }
@@ -860,7 +911,7 @@ impl Drop for Turno {
     }
 }
 
-/// Ejemplo de propuesta del prompt: rol + categoría + canal con tema + permiso por nombre.
+/// Ejemplo de propuesta: rol + categoría y canal con permisos incluidos al crear.
 const EJEMPLO_PROPUESTA: &str = r##"{
   "resumen": "A moderators role and a private staff category with one channel",
   "acciones": [
@@ -871,18 +922,19 @@ const EJEMPLO_PROPUESTA: &str = r##"{
     },
     {
       "herramienta": "crear_canal",
-      "args": { "nombre": "Staff", "tipo": "categoria" },
+      "args": { "nombre": "Staff", "tipo": "categoria", "permisos": [
+        { "objetivo": "@everyone", "tipo": "rol", "denegar": ["ViewChannel"] },
+        { "objetivo": "Moderators", "tipo": "rol", "permitir": ["ViewChannel", "SendMessages"] }
+      ] },
       "descripcion": "Create the Staff category"
     },
     {
       "herramienta": "crear_canal",
-      "args": { "nombre": "mod-chat", "tipo": "texto", "categoria_id": "Staff", "tema": "Private chat for the moderation team" },
+      "args": { "nombre": "mod-chat", "tipo": "texto", "categoria_id": "Staff", "tema": "Private chat for the moderation team", "permisos": [
+        { "objetivo": "@everyone", "tipo": "rol", "denegar": ["ViewChannel"] },
+        { "objetivo": "Moderators", "tipo": "rol", "permitir": ["ViewChannel", "SendMessages"] }
+      ] },
       "descripcion": "Create #mod-chat inside Staff"
-    },
-    {
-      "herramienta": "permiso_canal",
-      "args": { "channel_id": "mod-chat", "target_id": "Moderators", "tipo": "rol", "permitir": ["ViewChannel", "SendMessages"] },
-      "descripcion": "Let Moderators see and write in #mod-chat"
     }
   ]
 }"##;
@@ -1276,6 +1328,13 @@ Format: {{\"resumen\": string, \"acciones\": [{{\"herramienta\": string, \"args\
 - Where an id of a role, channel or category goes (`categoria_id`, `channel_id`, `role_id`, \
 `target_id` with tipo \"rol\"), you may write its name instead; it can be something an earlier \
 action creates.\n\
+- For a new channel or category, include its permission overwrites in `permisos` of \
+`crear_canal`: [{{\"objetivo\": \"role or member name/id\", \"tipo\": \"rol\", \
+\"permitir\": [\"ViewChannel\"], \"denegar\": [\"SendMessages\"]}}]. `objetivo` may name a role \
+created in this proposal; `tipo` is \"rol\" or \"miembro\"; `@everyone` means the server's default role. ARGUS merges the \
+parent category's overwrites with these, with the channel's own entry winning for the same \
+target. Use `permiso_canal` only for channels or categories that already exist; do not add \
+a separate `permiso_canal` action after creating one.\n\
 - Permission names are Discord's (e.g. \"ViewChannel\", \"SendMessages\", \
 \"ReadMessageHistory\", \"Connect\", \"Speak\", \"ManageMessages\", \"ModerateMembers\", \
 \"Administrator\"). Create roles in the order the plan lists them (highest first); do not use \
@@ -1286,8 +1345,8 @@ or rename anything the plan does not explicitly ask for.\n\
 channel), do NOT write a JSON block: say briefly what you found and ask the one question \
 needed, in the user's language.\n\
 - Use exactly these arguments for each tool (required ones must be present):\n{firmas}\n\n\
-Example of a valid answer block (a role, a category, a channel with topic and a permission by \
-name):\n```json\n{ejemplo}\n```\n",
+Example of a valid answer block (a role, a category and a channel with topic and permissions \
+included at creation):\n```json\n{ejemplo}\n```\n",
             escritura = crate::mcp::HERRAMIENTAS_ESCRITURA.join(", "),
             firmas = crate::mcp::firmas_escritura(),
             ejemplo = EJEMPLO_PROPUESTA,
@@ -1559,7 +1618,8 @@ pub async fn enviar_al_asistente(
         };
         let mut respuesta = String::new();
         let mut con_error = false;
-        let nueva_sesion = ejecutar_orden(&orden, &agente, &cancelar, |e| {
+        let limite = { state.config.lock().unwrap().ai_time_limit() };
+        let nueva_sesion = ejecutar_orden_con_limite(&orden, &agente, &cancelar, limite, |e| {
             match &e {
                 EventoAsistente::Texto { texto } => {
                     respuesta.push_str(texto);
@@ -1611,6 +1671,7 @@ pub async fn enviar_al_asistente(
         // Guarda el id de sesión para reanudarla en el siguiente turno.
         if let Some(id) = &nueva_sesion {
             let mut c = previa.unwrap_or_else(|| crate::db::ConversacionAsistente {
+                lectura_confirmada: 0,
                 agente: agente.clone(),
                 modelo: modelo.clone(),
                 session_id: None,
@@ -1658,6 +1719,25 @@ pub fn resumir_plan(state: tauri::State<'_, AppState>, plan: String) -> ResumenP
     }
 }
 
+/// Preflight local: usa el mismo compilador y mapa que la construcción.
+#[tauri::command]
+pub fn coste_descripciones_plan(
+    state: tauri::State<'_, AppState>,
+    plan: String,
+) -> crate::plan_descripciones::CosteDescripciones {
+    let gid = state.get_active_guild();
+    let mapas = state.server_maps.lock().unwrap();
+    let mapa = gid.as_ref().and_then(|g| mapas.get(g));
+    let comp = crate::plan_compilar::compilar(
+        &crate::plan_estructurado::analizar(&plan),
+        &crate::plan_compilar::Existentes {
+            roles: mapa.map_or(&[], |m| m.roles.as_slice()),
+            canales: mapa.map_or(&[], |m| m.channels.as_slice()),
+        },
+    );
+    crate::plan_descripciones::coste_descripciones(comp.pendientes.len())
+}
+
 /// Resultado de «Build from plan»: la propuesta compilada y de dónde salió.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ResultadoConstruccion {
@@ -1682,6 +1762,7 @@ pub async fn construir_desde_plan(
     agente: String,
     modelo: String,
     plan: Option<String>,
+    descripciones_confirmadas: Option<usize>,
 ) -> Result<ResultadoConstruccion, String> {
     let r = async {
         let gid = state
@@ -1716,6 +1797,10 @@ pub async fn construir_desde_plan(
                 canales: &canales,
             },
         );
+        crate::plan_descripciones::validar_confirmacion(
+            comp.pendientes.len(),
+            descripciones_confirmadas,
+        )?;
         let desde_estructura = comp.propuesta.acciones.len();
         let mut descripciones_ia = 0;
         if !comp.pendientes.is_empty() {
@@ -1723,14 +1808,9 @@ pub async fn construir_desde_plan(
                 .ok_or_else(|| format!("{agente} is not installed"))?;
             let cancelar = std::sync::Arc::new(tokio::sync::Notify::new());
             let _turno = Turno::tomar(cancelar)?;
+            let limite = { state.config.lock().unwrap().ai_time_limit() };
             descripciones_ia = crate::plan_descripciones::escribir_descripciones(
-                &mut comp,
-                &contexto,
-                &idioma,
-                &agente,
-                &ruta,
-                &modelo,
-                std::time::Duration::from_secs(300),
+                &mut comp, &contexto, &idioma, &agente, &ruta, &modelo, limite,
             )
             .await;
         }
@@ -1891,6 +1971,88 @@ pub async fn guardar_contexto_servidor(
     localizar_error(&state, r)
 }
 
+/// Estimación de las páginas de historial (100 mensajes por petición).
+/// No incluye otras herramientas del agente, permisos ni reintentos.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct EstimacionLectura {
+    pub limite: u32,
+    pub canales: usize,
+    pub peticiones: usize,
+    pub requiere_confirmacion: bool,
+}
+
+fn estimar_lectura(
+    limite: u32,
+    canales: usize,
+    confirmado: u32,
+    no_preguntar: bool,
+) -> EstimacionLectura {
+    let limite = limite.clamp(1, crate::mcp::BUSQUEDA_MAX as u32);
+    EstimacionLectura {
+        limite,
+        canales,
+        peticiones: (limite as usize).div_ceil(100) * canales,
+        requiere_confirmacion: limite >= 500 && confirmado < limite && !no_preguntar,
+    }
+}
+
+/// Prepara la lectura sin leer mensajes ni iniciar el modelo. Solo recuerda
+/// la aceptación cuando el usuario pulsa Continuar en el diálogo.
+#[tauri::command]
+pub async fn preparar_lectura_moderacion(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    guild_id: String,
+    agente: String,
+    modelo: String,
+    limite: u32,
+    confirmar: bool,
+    no_preguntar: bool,
+) -> Result<EstimacionLectura, String> {
+    let r = async {
+        let (bot, pool) = bot_y_pool(&app, &state).await?;
+        let canales = crate::commands::leer_canales(&state, &guild_id, None)
+            .await?
+            .iter()
+            .filter(|c| matches!(c.channel_type, 0 | 5))
+            .count();
+        let mut ajustes = crate::db::get_guild_settings(&pool, &bot, &guild_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let mut conversacion =
+            crate::db::leer_conversacion(&pool, &bot, &guild_id, "moderacion", Some(&agente))
+                .await
+                .map_err(|e| e.to_string())?
+                .unwrap_or_else(|| crate::db::ConversacionAsistente {
+                    agente,
+                    modelo,
+                    mensajes: serde_json::json!([]),
+                    ..Default::default()
+                });
+        let estimacion = estimar_lectura(
+            limite,
+            canales,
+            conversacion.lectura_confirmada,
+            ajustes.moderacion_no_preguntar,
+        );
+        if confirmar && estimacion.requiere_confirmacion {
+            conversacion.lectura_confirmada = estimacion.limite;
+            crate::db::guardar_conversacion(&pool, &bot, &guild_id, "moderacion", &conversacion)
+                .await
+                .map_err(|e| e.to_string())?;
+            if no_preguntar {
+                ajustes.moderacion_no_preguntar = true;
+                crate::db::save_guild_settings(&pool, &bot, &guild_id, &ajustes)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(estimacion)
+    }
+    .await;
+    localizar_error(&state, r)
+}
+
 /// Conversación guardada del servidor. Si `agente` es otro distinto del de la
 /// conversación, esta se descarta y devuelve `None`.
 #[tauri::command]
@@ -1932,6 +2094,7 @@ pub async fn guardar_conversacion(
                 .await
                 .map_err(|e| e.to_string())?;
         let c = crate::db::ConversacionAsistente {
+            lectura_confirmada: previa.as_ref().map_or(0, |p| p.lectura_confirmada),
             session_id: previa.and_then(|p| p.session_id),
             agente,
             modelo,
@@ -1969,6 +2132,33 @@ mod tests_orden {
     use super::*;
     use crate::mcp::{HERRAMIENTAS_ESCRITURA, HERRAMIENTAS_LECTURA};
     use serde_json::Value;
+
+    #[test]
+    fn estimacion_lectura_paginas_limites_y_confirmacion() {
+        for (limite, canales, peticiones) in [
+            (50, 3, 3),
+            (100, 3, 3),
+            (101, 3, 6),
+            (200, 3, 6),
+            (500, 3, 15),
+            (1000, 3, 30),
+            (5000, 3, 150),
+            (5000, 0, 0),
+            (10000, 2, 100),
+        ] {
+            let e = estimar_lectura(limite, canales, 0, false);
+            assert_eq!(e.peticiones, peticiones);
+            assert_eq!(e.limite, limite.min(5000));
+            assert_eq!(e.requiere_confirmacion, limite >= 500);
+        }
+        assert!(!estimar_lectura(500, 4, 500, false).requiere_confirmacion);
+        assert!(!estimar_lectura(500, 4, 1000, false).requiere_confirmacion);
+        assert!(estimar_lectura(1000, 4, 500, false).requiere_confirmacion);
+        for limite in [500, 1000, 5000] {
+            assert!(!estimar_lectura(limite, 4, 0, true).requiere_confirmacion);
+            assert!(estimar_lectura(limite, 4, 0, false).requiere_confirmacion);
+        }
+    }
 
     fn orden(agente: &str, sesion: Option<&str>) -> OrdenAgente {
         orden_agente(
@@ -2410,6 +2600,78 @@ EOF"#,
         assert!(!marca.exists(), "el nieto sobrevivió");
     }
 
+    #[tokio::test]
+    async fn plazo_detiene_asistente_y_constructor_lentos() {
+        use std::time::{Duration, Instant};
+        for constructor in [false, true] {
+            let marca = std::env::temp_dir()
+                .join(format!("argus_plazo_{}_{constructor}", std::process::id()));
+            let _ = std::fs::remove_file(&marca);
+            let cuerpo = format!(
+                "(sleep 1; touch {}) &\n{}sleep 30",
+                marca.display(),
+                if constructor { "exec 1>&-\n" } else { "" }
+            );
+            let o = orden(guion(
+                if constructor {
+                    "plazo_constructor"
+                } else {
+                    "plazo_app"
+                },
+                &cuerpo,
+            ));
+            let cancelar = tokio::sync::Notify::new();
+            let inicio = Instant::now();
+            let mut eventos = Vec::new();
+            let resultado = if constructor {
+                texto_del_constructor_cancelable(
+                    &o,
+                    "claude",
+                    Duration::from_millis(150),
+                    &cancelar,
+                )
+                .await
+                .map(|_| None)
+            } else {
+                ejecutar_orden_con_limite(
+                    &o,
+                    "claude",
+                    &cancelar,
+                    Duration::from_millis(150),
+                    |e| eventos.push(e),
+                )
+                .await
+            };
+            assert_eq!(resultado.unwrap_err(), ERROR_TIEMPO_IA);
+            assert!(inicio.elapsed() < Duration::from_secs(3));
+            if !constructor {
+                assert!(matches!(
+                    eventos.last(),
+                    Some(EventoAsistente::Fin {
+                        cancelado: true,
+                        ..
+                    })
+                ));
+                assert!(!eventos.iter().any(|e| matches!(
+                    e,
+                    EventoAsistente::Fin {
+                        cancelado: false,
+                        ..
+                    }
+                )));
+            }
+            tokio::time::sleep(Duration::from_millis(1100)).await;
+            assert!(!marca.exists(), "el proceso hijo sobrevivió al plazo");
+        }
+        let o = orden(guion(
+            "plazo_rapido",
+            "echo '{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"ok\"}]}}'",
+        ));
+        assert!(texto_del_constructor(&o, "claude", Duration::from_secs(3))
+            .await
+            .is_ok());
+    }
+
     #[test]
     fn un_solo_agente_a_la_vez() {
         let n = std::sync::Arc::new(tokio::sync::Notify::new());
@@ -2649,6 +2911,20 @@ mod tests_prompt {
     }
 
     #[test]
+    fn execute_pide_permisos_en_la_creacion_y_reserva_permiso_canal_para_existentes() {
+        for idioma in ["en", "es"] {
+            let p = prompt(ModoAsistente::Execute, idioma);
+            assert!(p.contains(
+                "For a new channel or category, include its permission overwrites in `permisos` of"
+            ));
+            assert!(p.contains(
+                "Use `permiso_canal` only for channels or categories that already exist"
+            ));
+            assert!(p.contains("a separate `permiso_canal` action after creating one"));
+        }
+    }
+
+    #[test]
     fn execute_recibe_el_plan_analizado_y_el_mapa_compacto() {
         let plan = "## Rol: Moderators\n## Categoría: Staff\n- texto: mod-chat\n";
         let p = prompt_asistente_con_mapa(
@@ -2790,7 +3066,24 @@ mod tests_prompt {
     #[test]
     fn el_ejemplo_del_prompt_es_una_propuesta_valida() {
         let propuesta = extraer_propuesta(&prompt(ModoAsistente::Execute, "en")).unwrap();
-        assert_eq!(propuesta.acciones.len(), 4);
+        assert_eq!(propuesta.acciones.len(), 3);
+        assert!(propuesta
+            .acciones
+            .iter()
+            .all(|a| a.herramienta != "permiso_canal"));
+        for accion in &propuesta.acciones[1..] {
+            assert_eq!(accion.herramienta, "crear_canal");
+            assert_eq!(accion.args["permisos"][0]["objetivo"], "@everyone");
+            assert_eq!(
+                accion.args["permisos"][0]["denegar"],
+                serde_json::json!(["ViewChannel"])
+            );
+            assert_eq!(accion.args["permisos"][1]["objetivo"], "Moderators");
+            assert_eq!(
+                accion.args["permisos"][1]["permitir"],
+                serde_json::json!(["ViewChannel", "SendMessages"])
+            );
+        }
         let v = validar(&propuesta);
         assert!(v.errores.is_empty(), "{:?}", v.errores);
     }

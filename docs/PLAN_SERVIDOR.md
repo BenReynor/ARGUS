@@ -90,6 +90,20 @@ from their category) is ignored, and the AI does not write it.
 `@everyone` is valid as a role. In a channel the permissions are **added** to
 those of its category.
 
+New categories and channels receive their permissions in the same request that
+creates them. Each channel includes the category's permissions plus its own;
+when both specify the same target, the channel takes precedence. Existing
+channels and categories still use separate permission updates.
+
+Discord may show **“Not synced with category”** when a channel has its own
+permissions. This is expected: it keeps the plan's channel-specific rules.
+Later category permission changes do not automatically update an unsynced
+channel; syncing it in Discord replaces its own rules with the category's.
+
+The “Archivo de Sitio-19” regression test measures **7 write requests instead
+of 25**: 1 role, 1 category and 5 channels, with 18 permission overwrites included
+in creation. Validation and category reads are counted separately.
+
 ### Variables
 
 ```

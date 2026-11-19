@@ -16,6 +16,22 @@ use crate::state::{AppState, Channel, Role};
 /// Tipo de canal de Discord que es una categoría.
 const TIPO_CATEGORIA: u8 = 4;
 
+/// Acciones que no se pueden deshacer restaurando el estado anterior. Incluye
+/// los envíos y avisos: el destinatario ya puede haberlos recibido.
+pub const ACCIONES_DESTRUCTIVAS: &[&str] = &[
+    "borrar_canal",
+    "borrar_rol",
+    "banear",
+    "expulsar",
+    "borrar_mensaje",
+    "borrar_mensajes",
+    "borrar_invitacion",
+    "borrar_webhook",
+    "enviar_mensaje",
+    "enviar_dm",
+    "avisar",
+];
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Accion {
     /// Nombre de una herramienta de escritura del MCP (`crear_rol`, …).
@@ -35,6 +51,57 @@ pub struct Propuesta {
     pub resumen: String,
     #[serde(default)]
     pub acciones: Vec<Accion>,
+}
+
+impl Propuesta {
+    /// Solo para el origen Discord. Deniega herramientas sin grupo conocido.
+    pub fn validar_desde_discord(
+        &self,
+        permisos: &crate::db::PermisosOrdenes,
+    ) -> Result<(), String> {
+        for accion in &self.acciones {
+            let h = accion.herramienta.as_str();
+            let permitido = match h {
+                "crear_canal"
+                | "editar_canal"
+                | "ordenar_canales"
+                | "crear_rol"
+                | "editar_rol"
+                | "ordenar_roles"
+                | "dar_rol"
+                | "quitar_rol"
+                | "permiso_canal"
+                | "quitar_permiso_canal"
+                | "cambiar_apodo"
+                | "editar_servidor"
+                | "crear_invitacion"
+                | "borrar_invitacion"
+                | "crear_webhook"
+                | "borrar_webhook" => permisos.estructura,
+                "borrar_canal" | "borrar_rol" => permisos.borrar_canales_roles,
+                "silenciar" => permisos.silenciar,
+                "expulsar" => permisos.expulsar,
+                "banear" | "desbanear" => permisos.banear,
+                "borrar_mensaje" | "borrar_mensajes" => permisos.borrar_mensajes,
+                "avisar" | "enviar_mensaje" | "enviar_dm" | "fijar_mensaje"
+                | "desfijar_mensaje" => permisos.avisos,
+                _ => false,
+            };
+            if !permitido {
+                return Err(format!("Action «{h}» is not allowed from Discord. Check Allow from Discord in Discord replies"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Herramientas irreversibles presentes, sin duplicados y en orden estable.
+    pub fn acciones_destructivas(&self) -> Vec<&'static str> {
+        ACCIONES_DESTRUCTIVAS
+            .iter()
+            .copied()
+            .filter(|herramienta| self.acciones.iter().any(|a| a.herramienta == *herramienta))
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -118,8 +185,11 @@ pub async fn aplicar_propuesta(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     propuesta: Propuesta,
+    anteriores: Option<Vec<ResultadoAccion>>,
 ) -> Result<ResumenPropuesta, String> {
     use tauri::Emitter;
+    // Se reinicia antes de cualquier await: Stop durante la preparación cuenta.
+    CANCELAR.store(false, Ordering::SeqCst);
     // El servidor es el elegido en la app, no el «servidor activo» del MCP
     // (que la app nunca fija): sin esto, aplicar fallaba con «No active server».
     let guild_id = state
@@ -128,7 +198,6 @@ pub async fn aplicar_propuesta(
     let propuesta = con_servidor(&propuesta, &guild_id);
     let pool = crate::db::get_pool(&app).await.map_err(|e| e.to_string())?;
     let mcp = crate::mcp::ArgusMcp::nuevo(pool, None).await?;
-    CANCELAR.store(false, Ordering::SeqCst);
     let emisor = app.clone();
     let mut avance = move |total: usize, r: &ResultadoAccion| {
         if let Err(e) = emisor.emit(EVENTO_ACCION, AvanceAccion::de(total, r)) {
@@ -136,7 +205,12 @@ pub async fn aplicar_propuesta(
         }
     };
     let resumen = mcp
-        .ejecutar_propuesta_con(&propuesta, &CANCELAR, &mut avance)
+        .ejecutar_propuesta_reanudable(
+            &propuesta,
+            &CANCELAR,
+            &mut avance,
+            &anteriores.unwrap_or_default(),
+        )
         .await?;
     if let Err(e) = app.emit(EVENTO_RESUMEN, resumen.clone()) {
         tracing::warn!("no se pudo emitir {EVENTO_RESUMEN}: {e}");
@@ -299,13 +373,14 @@ pub struct Nombres {
     roles: HashMap<String, String>,
     canales: HashMap<String, String>,
     categorias: HashMap<String, String>,
+    miembros: HashMap<String, String>,
 }
 
 impl Nombres {
     pub fn desde(roles: &[Role], canales: &[Channel]) -> Self {
         let mut n = Self::default();
         for r in roles {
-            n.roles.insert(clave(&r.name), r.id.clone());
+            n.registrar_rol(&r.name, &r.id);
         }
         for c in canales {
             n.registrar_canal(&c.name, c.channel_type == TIPO_CATEGORIA, &c.id);
@@ -313,7 +388,31 @@ impl Nombres {
         n
     }
 
+    pub fn registrar_miembros(&mut self, miembros: &[crate::state::Member]) {
+        for m in miembros {
+            self.miembros.insert(m.user_id.clone(), m.user_id.clone());
+            self.miembros.insert(clave(&m.username), m.user_id.clone());
+            if let Some(apodo) = &m.nickname {
+                self.miembros.insert(clave(apodo), m.user_id.clone());
+            }
+        }
+    }
+
+    pub fn resolver_objetivo(&self, objetivo: &str, tipo: &str) -> Result<String, String> {
+        let mapa = if tipo == "rol" {
+            &self.roles
+        } else {
+            &self.miembros
+        };
+        let texto = objetivo.trim();
+        mapa.get(&clave(texto))
+            .or_else(|| mapa.values().find(|id| id.as_str() == texto))
+            .cloned()
+            .ok_or_else(|| format!("Permission target «{texto}» ({tipo}) does not exist and is not created before this action"))
+    }
+
     pub fn registrar_rol(&mut self, nombre: &str, id: &str) {
+        self.roles.insert(id.to_string(), id.to_string());
         self.roles.insert(clave(nombre), id.to_string());
     }
 
@@ -370,6 +469,26 @@ impl Nombres {
             let id = id.clone();
             obj.insert(campo.to_string(), Value::String(id));
         }
+        if herramienta == "crear_canal" {
+            if let Some(permisos) = obj.get_mut("permisos").and_then(Value::as_array_mut) {
+                for permiso in permisos {
+                    let Some(objetivo) = permiso.get("objetivo").and_then(Value::as_str) else {
+                        continue;
+                    };
+                    let Some(tipo @ ("rol" | "miembro")) =
+                        permiso.get("tipo").and_then(Value::as_str)
+                    else {
+                        continue;
+                    };
+                    // @everyone se convierte al id del servidor al ejecutar.
+                    if tipo == "rol" && objetivo.trim() == "@everyone" {
+                        continue;
+                    }
+                    let id = self.resolver_objetivo(objetivo, tipo)?;
+                    permiso["objetivo"] = Value::String(id);
+                }
+            }
+        }
         Ok(args)
     }
 
@@ -405,6 +524,7 @@ pub fn validar_acciones(p: &Propuesta, existentes: &Nombres) -> Validacion {
     let (mut crear_roles, mut editar_roles) = (0, 0);
     let (mut categorias, mut canales, mut editar_canales) = (0, 0, 0);
     let (mut permisos, mut miembros_roles, mut otras) = (0, 0, 0);
+    let mut permisos_incluidos = 0;
     let (mut borrar_canales, mut borrar_roles) = (0, 0);
 
     for indice in orden_de_ejecucion(p) {
@@ -424,6 +544,12 @@ pub fn validar_acciones(p: &Propuesta, existentes: &Nombres) -> Validacion {
                 continue;
             }
         };
+        if h == "crear_canal" {
+            permisos_incluidos += args
+                .get("permisos")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+        }
         match h {
             "crear_rol" => crear_roles += 1,
             "editar_rol" => editar_roles += 1,
@@ -453,6 +579,7 @@ pub fn validar_acciones(p: &Propuesta, existentes: &Nombres) -> Validacion {
         ("Channels to create", canales),
         ("Channels to edit", editar_canales),
         ("Channel permissions to change", permisos),
+        ("Permissions included in creation", permisos_incluidos),
         ("Member roles to change", miembros_roles),
         ("Channels to delete", borrar_canales),
         ("Roles to delete", borrar_roles),
@@ -482,7 +609,13 @@ pub fn validar_en_estado(state: &AppState, propuesta: &Propuesta) -> Validacion 
         let mapas = state.server_maps.lock().unwrap();
         state
             .get_active_guild()
-            .and_then(|g| mapas.get(&g).map(|m| Nombres::desde(&m.roles, &m.channels)))
+            .and_then(|g| {
+                mapas.get(&g).map(|m| {
+                    let mut nombres = Nombres::desde(&m.roles, &m.channels);
+                    nombres.registrar_miembros(&m.members);
+                    nombres
+                })
+            })
             .unwrap_or_default()
     };
     validar_traducida(propuesta, &existentes, &crate::i18n::idioma(state))
@@ -515,6 +648,122 @@ mod tests {
             resumen: "r".to_string(),
             acciones,
         }
+    }
+
+    #[test]
+    fn permisos_discord_cubren_cada_grupo_y_no_alteran_validacion_app() {
+        let grupos: &[(&str, &[&str])] = &[
+            (
+                "estructura",
+                &[
+                    "crear_canal",
+                    "editar_canal",
+                    "ordenar_canales",
+                    "crear_rol",
+                    "editar_rol",
+                    "ordenar_roles",
+                    "dar_rol",
+                    "quitar_rol",
+                    "permiso_canal",
+                    "quitar_permiso_canal",
+                    "cambiar_apodo",
+                    "editar_servidor",
+                    "crear_invitacion",
+                    "borrar_invitacion",
+                    "crear_webhook",
+                    "borrar_webhook",
+                ],
+            ),
+            ("borrar_canales_roles", &["borrar_canal", "borrar_rol"]),
+            ("silenciar", &["silenciar"]),
+            ("expulsar", &["expulsar"]),
+            ("banear", &["banear", "desbanear"]),
+            ("borrar_mensajes", &["borrar_mensaje", "borrar_mensajes"]),
+            (
+                "avisos",
+                &[
+                    "avisar",
+                    "enviar_mensaje",
+                    "enviar_dm",
+                    "fijar_mensaje",
+                    "desfijar_mensaje",
+                ],
+            ),
+        ];
+        let defecto = crate::db::PermisosOrdenes::default();
+        for (grupo, herramientas) in grupos {
+            for h in *herramientas {
+                let p = prop(vec![
+                    acc("crear_canal", json!({"nombre": "nuevo"})),
+                    acc(h, json!({})),
+                ]);
+                let mut valor = serde_json::to_value(&defecto).unwrap();
+                valor[*grupo] = json!(true);
+                let permitido = serde_json::from_value(valor.clone()).unwrap();
+                assert!(p.validar_desde_discord(&permitido).is_ok(), "{h}");
+                valor[*grupo] = json!(false);
+                let denegado = serde_json::from_value(valor).unwrap();
+                let err = prop(vec![acc(h, json!({}))])
+                    .validar_desde_discord(&denegado)
+                    .unwrap_err();
+                assert!(err.contains(h) && err.contains("not allowed from Discord"));
+                let es = crate::i18n::tr("es", &err);
+                assert!(es.contains(h) && es.contains("no está permitida"));
+                assert_eq!(
+                    prop(vec![acc(h, json!({}))])
+                        .validar_desde_discord(&defecto)
+                        .is_ok(),
+                    !matches!(*grupo, "banear" | "borrar_canales_roles")
+                );
+            }
+        }
+        assert!(prop(vec![acc("herramienta_futura", json!({}))])
+            .validar_desde_discord(&defecto)
+            .is_err());
+        // La validación de propuestas de la app no consulta permisos de Discord.
+        assert!(validar_acciones(
+            &prop(vec![acc("borrar_canal", json!({"channel_id": "10"}))]),
+            &existentes()
+        )
+        .errores
+        .is_empty());
+    }
+
+    #[test]
+    fn detecta_cada_accion_irreversible_en_propuestas_mixtas() {
+        assert!(prop(vec![]).acciones_destructivas().is_empty());
+        assert!(prop(vec![acc("crear_canal", json!({}))])
+            .acciones_destructivas()
+            .is_empty());
+        for herramienta in [
+            "borrar_canal",
+            "borrar_rol",
+            "banear",
+            "expulsar",
+            "borrar_mensaje",
+            "borrar_mensajes",
+            "borrar_invitacion",
+            "borrar_webhook",
+            "enviar_mensaje",
+            "enviar_dm",
+            "avisar",
+        ] {
+            assert!(crate::mcp::HERRAMIENTAS_ESCRITURA.contains(&herramienta));
+            let p = prop(vec![
+                acc("crear_canal", json!({})),
+                acc(herramienta, json!({})),
+                acc(herramienta, json!({})),
+            ]);
+            assert_eq!(p.acciones_destructivas(), vec![herramienta]);
+        }
+        let p = prop(vec![
+            acc("borrar_rol", json!({})),
+            acc("borrar_canal", json!({})),
+        ]);
+        assert_eq!(
+            p.acciones_destructivas(),
+            vec!["borrar_canal", "borrar_rol"]
+        );
     }
 
     fn orden(p: &Propuesta) -> Vec<(String, String)> {
@@ -805,6 +1054,64 @@ mod tests {
                 "Member roles to change: 1"
             ]
         );
+    }
+
+    #[test]
+    fn propuesta_mixta_conserva_permisos_antiguos_y_permisos_en_la_creacion() {
+        // Mezcla ambos formatos y un canal existente, desordenados a propósito.
+        let p = prop(vec![
+            acc(
+                "permiso_canal",
+                json!({"channel_id": "legacy-chat", "target_id": "Mods", "tipo": "rol", "permitir": ["SendMessages"]}),
+            ),
+            acc(
+                "crear_canal",
+                json!({"nombre": "new-chat", "categoria_id": "New", "permisos": [
+                    {"objetivo": "Mods", "tipo": "rol", "permitir": ["ViewChannel", "SendMessages"]}
+                ]}),
+            ),
+            acc(
+                "permiso_canal",
+                json!({"channel_id": "Legacy", "target_id": "Mods", "tipo": "rol", "permitir": ["ViewChannel"]}),
+            ),
+            acc(
+                "crear_canal",
+                json!({"nombre": "Legacy", "tipo": "categoria"}),
+            ),
+            acc("crear_rol", json!({"nombre": "Mods"})),
+            acc(
+                "crear_canal",
+                json!({"nombre": "New", "tipo": "categoria", "permisos": [
+                    {"objetivo": "Mods", "tipo": "rol", "permitir": ["ViewChannel"]}
+                ]}),
+            ),
+            acc(
+                "crear_canal",
+                json!({"nombre": "legacy-chat", "categoria_id": "Legacy"}),
+            ),
+            acc(
+                "permiso_canal",
+                json!({"channel_id": "reglas", "target_id": "Mods", "tipo": "rol", "denegar": ["SendMessages"]}),
+            ),
+        ]);
+        // El permiso antiguo de categoría sigue antes de sus canales; el del
+        // canal va después. Los permisos incluidos no añaden acciones.
+        assert_eq!(orden_de_ejecucion(&p), [4, 3, 5, 2, 1, 6, 0, 7]);
+        let v = validar_acciones(&p, &existentes());
+        assert!(v.errores.is_empty(), "{:?}", v.errores);
+        assert_eq!(
+            v.cambios,
+            [
+                "Roles to create: 1",
+                "Categories to create: 2",
+                "Channels to create: 2",
+                "Channel permissions to change: 3",
+                "Permissions included in creation: 2",
+            ]
+        );
+        let ordenada = ordenar_propuesta(&p);
+        assert_eq!(ordenada.acciones.len(), p.acciones.len());
+        assert_eq!(validar_acciones(&ordenada, &existentes()), v);
     }
 
     #[test]

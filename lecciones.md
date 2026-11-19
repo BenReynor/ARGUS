@@ -41,3 +41,28 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - Síntoma: El agente no cumplió el criterio tras 2 intentos.
 - Causa: revisor_fail en la iteración 4: La tarea no nombra skill, así que no cargué ninguna. El diff cumple casi todo el criterio: los tres componentes usan `t()` para la UI, los permisos pasan por `permisos.ts` con nombres oficiales, y `es.ts` cubre las claves nuevas. Un grep de acentos en los tres componentes solo encuentra comentarios. Falta un texto visible en español: `ChannelsView.tsx` sigue con `addLog('[CANALES] ' + mensaje)`, y ese log se muestra en la vista de Logs aunque la interfaz esté en inglés. `ActividadCanal` sí traduce sus etiquetas de log, así que es un descuido del mismo tipo. Corregirlo es pequeño: envolverlo en `t('[CHANNELS] {message}', { message: mensaje })` y añadir la entrada en `es.ts`.
 - Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-17 22:40 — Tarea bloqueada: Documentación de seguridad
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 11: [GATE] ✗ juez: criterio NO cumplido (Falta SECURITY.md en inglés en la raíz; la versión inglesa está en docs/SECURITY.en.md.) warning: unused variable: `state` --> src/commands.rs:2615:29 | 2615 | async fn export_all_data_en(state: State<'_, AppState>) -> Result<Vec<u8>, String> { |                             ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2627:25 2627 | async fn import_data_en(state: State<'_, AppState>, _data: Vec<u8>) -> Result<String, String> { |                         ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2639:28 2639 | async fn uninstall_wipe_en(state: State<'_, AppState>) -> Result<String, String> { |                            ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-18 18:00 — Tarea bloqueada: Actualizaciones automáticas firmadas
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 1: [GATE] ✗ juez: criterio NO cumplido (tauri.conf.json conserva una clave pública provisional sin privada disponible; el propio CI bloquea la release.) warning: unused variable: `state` --> src/commands.rs:2369:5 | 2369 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2393:5 2393 |     state: State<'_, AppState>, --> src/commands.rs:2564:5 2564 |     state: State<'_, AppState>,
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-18 18:40 — Tarea bloqueada: Guardar snapshots del servidor
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: revisor_fail en la iteración 3: La importación acepta imágenes corruptas si contienen base64 válido: `validate_image()` solo comprueba que los bytes no estén vacíos, sin validar PNG, GIF o JSON. Esto contradice la garantía documentada; los tests incluso usan `fixture-image`, que no es una imagen válida, y no detectan el problema.
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-18 19:14 — Tarea bloqueada: Restaurar manualmente
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: revisor_fail en la iteración 2: Los roles con nombres ambiguos se omiten sin reservar sus IDs; con `delete_extra`, todos esos candidatos se proponen para borrar aunque puedan corresponder al snapshot. Con `undo`, también se eliminan sus asignaciones de miembros porque no entraron en `role_map`. La ambigüedad debería conservarlos y señalar el conflicto.
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-18 19:32 — Tarea bloqueada: Detectar destrucción masiva y avisar
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: revisor_fail en la iteración 3: Restore no recupera la jerarquía cuando se elimina una categoría: recrea la categoría, pero omite reasignar los canales supervivientes, que Discord deja sin padre. La rama de canales existentes solo restaura overwrites; aplicar la propuesta deja esos canales fuera de su categoría original.
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.

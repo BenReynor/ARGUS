@@ -170,6 +170,7 @@ async fn crea_canal_con_todos_los_campos_y_actualiza_el_mapa() {
         topic: Some("Avisos".into()),
         nsfw: Some(true),
         rate_limit_per_user: Some(30),
+        permission_overwrites: None,
     };
     let canal = crear_canal(&state, "555", &datos, Some(&addr))
         .await
@@ -395,6 +396,7 @@ async fn anuncios_sin_comunidad_avisa_sin_intentar_crear() {
         topic: None,
         nsfw: None,
         rate_limit_per_user: None,
+        permission_overwrites: None,
     };
     let e = crear_canal(&state, "555", &datos, Some(&addr))
         .await
@@ -428,6 +430,7 @@ async fn un_canal_de_voz_se_crea_sin_descripcion() {
         topic: Some("Una descripción".into()),
         nsfw: None,
         rate_limit_per_user: None,
+        permission_overwrites: None,
     };
     let canal = crear_canal(&state, "555", &datos, Some(&addr))
         .await

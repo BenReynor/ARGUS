@@ -1,6 +1,9 @@
 //! Prueba de humo: lanza `argus-mcp`, hace `initialize` + `tools/list` por stdio
 //! y comprueba que aparecen las tres herramientas.
 
+// El inyector de llavero falso solo existe en binarios de desarrollo.
+#![cfg(debug_assertions)]
+
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 
@@ -9,6 +12,7 @@ fn argus_mcp_lista_las_tres_herramientas_por_stdio() {
     let dir = std::env::temp_dir().join(format!("argus-mcp-humo-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let mut hijo = Command::new(env!("CARGO_BIN_EXE_argus-mcp"))
+        .arg("--test-keyring")
         .env("ARGUS_DB", dir.join("argus.db"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

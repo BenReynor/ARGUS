@@ -184,6 +184,15 @@ Lista de herramientas, otros clientes y solución de problemas:
 - Los tokens se guardan **cifrados** (AES-256-GCM) en una base de datos local
   (`~/.config/argus/` en Linux, `%APPDATA%\argus\` en Windows). Nunca en texto
   plano, en el almacenamiento del navegador ni en los logs.
+- La clave maestra aleatoria de 32 bytes se guarda en el llavero del sistema:
+  Secret Service en Linux, Credential Manager en Windows (Keychain en macOS).
+  La app y `argus-mcp` comparten la entrada `argus` / `master-key-v2`. Los tokens
+  antiguos cifrados con la clave del machine-id se migran automáticamente en
+  una transacción, sin perder bots. Los ya migrados no se vuelven a cifrar.
+- Si el llavero no está disponible, ARGUS conserva el cifrado antiguo para
+  nuevos tokens y avisa en Ajustes. Habilita/desbloquea el llavero y reinicia
+  para migrar. Los tokens ya migrados permanecen intactos y necesitan el
+  llavero original; copiar solo la BD no permite recuperar su acceso.
 - ARGUS no tiene telemetría: solo habla con la API de Discord.
 - Nada está atado a un servidor, canal o bot concreto; sirve para cualquiera.
 
@@ -217,6 +226,12 @@ Los tests no usan la red ni tokens: el cliente de Discord apunta a un Discord
 falso local. Hay tests opcionales contra un servidor real en
 [`docs/PRUEBA_REAL.md`](docs/PRUEBA_REAL.md). El CI corre todo en Linux y
 Windows y genera el instalador de Windows.
+
+Dependabot comprueba semanalmente las dependencias de Cargo (`src-tauri/`), npm
+(raíz del repositorio) y GitHub Actions, agrupando las actualizaciones por
+ecosistema con un límite de 5 PR abiertas por ecosistema. Las PR de Dependabot
+deben pasar el mismo CI que las demás antes de fusionarse: compilación del
+frontend y tests de Rust en Linux y Windows, además del instalador de Windows.
 
 El proyecto se desarrolla con [Dédalo](https://github.com/BenReynor/dedalo):
 `plan.md` usa su formato y cada tarea pasa el mismo gate. Más documentación:

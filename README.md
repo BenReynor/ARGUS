@@ -181,6 +181,15 @@ Tool list, other clients and troubleshooting: [`docs/MCP.md`](docs/MCP.md).
 - Tokens are stored **encrypted** (AES-256-GCM) in a local database
   (`~/.config/argus/` on Linux, `%APPDATA%\argus\` on Windows). Never in plain
   text, in browser storage or in the logs.
+- The random 32-byte master key lives in the system keyring: Secret Service on
+  Linux, Credential Manager on Windows (Keychain on macOS). The app and
+  `argus-mcp` use the same entry (`argus` / `master-key-v2`). Existing tokens
+  encrypted with the machine-id key migrate automatically in one transaction,
+  preserving all bots. Restarting does not re-encrypt migrated tokens.
+- If the keyring is unavailable, ARGUS keeps the legacy machine-id encryption
+  for new tokens and shows a warning in Settings. Enable/unlock the keyring and
+  restart to migrate. Already migrated tokens remain intact and require the
+  original keyring; copying the database alone cannot restore access to them.
 - ARGUS has no telemetry: it only talks to the Discord API.
 - Nothing is tied to a specific server, channel or bot; it works for anyone.
 
@@ -214,6 +223,12 @@ Tests use neither the network nor tokens: the Discord client points to a local
 fake Discord. There are optional tests against a real server in
 [`docs/PRUEBA_REAL.md`](docs/PRUEBA_REAL.md). CI runs everything on Linux and
 Windows and builds the Windows installer.
+
+Dependabot checks Cargo (`src-tauri/`), npm (repository root) and GitHub Actions
+dependencies weekly, grouping updates by ecosystem with a limit of 5 open pull
+requests per ecosystem. Dependabot pull requests must pass the same CI as all
+other pull requests before they are merged: the frontend build and Rust tests
+on Linux and Windows, plus the Windows installer build.
 
 The project is developed with [Dédalo](https://github.com/BenReynor/dedalo):
 `plan.md` uses its format and every task passes the same gate. More

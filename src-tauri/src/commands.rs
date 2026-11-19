@@ -1910,6 +1910,7 @@ async fn save_config_en(
     state: State<'_, AppState>,
     config: Config,
 ) -> Result<String, String> {
+    config.validate_ai_time_limits()?;
     *state.config.lock().unwrap() = config;
     state
         .save_config_to_db(&app)
@@ -1934,6 +1935,7 @@ async fn save_config_full_en(
     state: State<'_, AppState>,
     config: Config,
 ) -> Result<String, String> {
+    config.validate_ai_time_limits()?;
     *state.config.lock().unwrap() = config;
     state
         .save_config_to_db(&app)

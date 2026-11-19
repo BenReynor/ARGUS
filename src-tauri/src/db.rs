@@ -687,10 +687,40 @@ pub async fn set_setting(pool: &SqlitePool, key: &str, value: &str) -> Result<()
     Ok(())
 }
 
+/// Capacidades de las órdenes de Discord; no restringen las acciones de la app.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct PermisosOrdenes {
+    pub estructura: bool,
+    pub borrar_canales_roles: bool,
+    pub silenciar: bool,
+    pub expulsar: bool,
+    pub banear: bool,
+    pub borrar_mensajes: bool,
+    pub avisos: bool,
+}
+
+impl Default for PermisosOrdenes {
+    fn default() -> Self {
+        Self {
+            estructura: true,
+            borrar_canales_roles: false,
+            silenciar: true,
+            expulsar: true,
+            banear: false,
+            borrar_mensajes: true,
+            avisos: true,
+        }
+    }
+}
+
 // Ajustes propios de cada servidor (por bot)
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct GuildSettings {
+    /// Omite la confirmación de lecturas grandes de Moderación en este servidor.
+    #[serde(default)]
+    pub moderacion_no_preguntar: bool,
     pub alias: Option<String>,
     pub notes: String,
     pub vigilance_enabled: bool,
@@ -711,6 +741,11 @@ pub struct GuildSettings {
     /// Espera mínima por usuario, en segundos.
     #[serde(default = "chat_espera_defecto")]
     pub chat_espera_s: u32,
+    /// Respuestas diarias por servidor (UTC); 0 = sin límite.
+    pub chat_max_diario: u32,
+    /// Contador informativo; se ignora al recibir o deserializar los ajustes.
+    #[serde(skip_deserializing)]
+    pub chat_respuestas_hoy: u32,
     /// Mensajes previos del canal que se le pasan (máximo 30).
     #[serde(default = "chat_contexto_defecto")]
     pub chat_contexto: u32,
@@ -726,6 +761,10 @@ pub struct GuildSettings {
     /// Pedir confirmación antes de ejecutar una orden.
     #[serde(default = "ordenes_confirmar_defecto")]
     pub chat_ordenes_confirmar: bool,
+    /// Máximo de acciones por orden de Discord (1–500).
+    #[serde(default = "ordenes_max_acciones_defecto")]
+    pub ordenes_max_acciones: u32,
+    pub ordenes_permitidas: PermisosOrdenes,
     /// Agente que ejecuta las órdenes.
     #[serde(default = "ordenes_agente_defecto")]
     pub ordenes_agente: String,
@@ -735,6 +774,10 @@ pub struct GuildSettings {
 }
 
 pub const CHAT_CONTEXTO_MAX: u32 = 30;
+
+fn ordenes_max_acciones_defecto() -> u32 {
+    50
+}
 
 fn ordenes_confirmar_defecto() -> bool {
     true
@@ -765,6 +808,7 @@ fn chat_contexto_defecto() -> u32 {
 impl Default for GuildSettings {
     fn default() -> Self {
         Self {
+            moderacion_no_preguntar: false,
             alias: None,
             notes: String::new(),
             vigilance_enabled: false,
@@ -775,11 +819,15 @@ impl Default for GuildSettings {
             chat_personalidad: String::new(),
             chat_canales: Vec::new(),
             chat_espera_s: chat_espera_defecto(),
+            chat_max_diario: 200,
+            chat_respuestas_hoy: 0,
             chat_contexto: chat_contexto_defecto(),
             chat_usuarios: Vec::new(),
             chat_ordenes: false,
             chat_ordenes_usuarios: Vec::new(),
             chat_ordenes_confirmar: ordenes_confirmar_defecto(),
+            ordenes_max_acciones: ordenes_max_acciones_defecto(),
+            ordenes_permitidas: PermisosOrdenes::default(),
             ordenes_agente: ordenes_agente_defecto(),
             ordenes_modelo: ordenes_modelo_defecto(),
         }
@@ -793,6 +841,7 @@ impl GuildSettings {
             self.chat_agente = chat_agente_defecto();
         }
         self.chat_contexto = self.chat_contexto.min(CHAT_CONTEXTO_MAX);
+        self.ordenes_max_acciones = self.ordenes_max_acciones.clamp(1, 500);
         self
     }
 }
@@ -807,15 +856,17 @@ pub async fn get_guild_settings(
         .bind(guild_id)
         .fetch_optional(pool)
         .await?;
-    match row {
+    let mut settings = match row {
         Some(r) => {
             let data: String = r.get("data");
-            Ok(serde_json::from_str::<GuildSettings>(&data)
+            serde_json::from_str::<GuildSettings>(&data)
                 .unwrap_or_default()
-                .normalizado())
+                .normalizado()
         }
-        None => Ok(GuildSettings::default()),
-    }
+        None => GuildSettings::default(),
+    };
+    settings.chat_respuestas_hoy = respuestas_del_dia(pool, bot_id, guild_id, &dia_chat()).await?;
+    Ok(settings)
 }
 
 pub async fn save_guild_settings(
@@ -837,9 +888,79 @@ pub async fn save_guild_settings(
     Ok(())
 }
 
+/// Días del presupuesto en UTC, como las fechas guardadas en la BD.
+pub fn dia_chat() -> String {
+    chrono::Utc::now().format("%Y-%m-%d").to_string()
+}
+
+pub async fn respuestas_del_dia(
+    pool: &SqlitePool,
+    bot: &str,
+    guild: &str,
+    dia: &str,
+) -> Result<u32> {
+    let n: Option<i64> = sqlx::query_scalar(
+        "SELECT respuestas FROM chat_diario WHERE bot_id = ? AND guild_id = ? AND dia = ?",
+    )
+    .bind(bot)
+    .bind(guild)
+    .bind(dia)
+    .fetch_optional(pool)
+    .await?;
+    Ok(n.unwrap_or(0) as u32)
+}
+
+/// Reserva atómica ANTES de gastar: incluso las peticiones simultáneas y los
+/// agentes fallidos consumen cupo. Los fallos no permiten reintentos sin límite.
+pub async fn reservar_respuesta(
+    pool: &SqlitePool,
+    bot: &str,
+    guild: &str,
+    dia: &str,
+    max: u32,
+) -> Result<bool> {
+    let r = sqlx::query(
+        "INSERT INTO chat_diario (bot_id, guild_id, dia, respuestas) VALUES (?, ?, ?, 1)
+         ON CONFLICT(bot_id, guild_id, dia) DO UPDATE SET respuestas = respuestas + 1
+         WHERE ? = 0 OR respuestas < ?",
+    )
+    .bind(bot)
+    .bind(guild)
+    .bind(dia)
+    .bind(max)
+    .bind(max)
+    .execute(pool)
+    .await?;
+    Ok(r.rows_affected() == 1)
+}
+
+/// Un único aviso por bot, servidor y día, también después de reiniciar la app.
+pub async fn tomar_aviso_diario(
+    pool: &SqlitePool,
+    bot: &str,
+    guild: &str,
+    dia: &str,
+    max: u32,
+) -> Result<bool> {
+    let r = sqlx::query(
+        "UPDATE chat_diario SET avisado = 1 WHERE bot_id = ? AND guild_id = ? AND dia = ?
+         AND avisado = 0 AND ? > 0 AND respuestas >= ?",
+    )
+    .bind(bot)
+    .bind(guild)
+    .bind(dia)
+    .bind(max)
+    .bind(max)
+    .execute(pool)
+    .await?;
+    Ok(r.rows_affected() == 1)
+}
+
 // Plan del servidor y conversación del asistente IA (por bot y servidor)
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ConversacionAsistente {
+    #[serde(default)]
+    pub lectura_confirmada: u32,
     pub agente: String,
     pub modelo: String,
     pub session_id: Option<String>,
@@ -913,7 +1034,7 @@ pub async fn leer_conversacion(
     agente: Option<&str>,
 ) -> Result<Option<ConversacionAsistente>> {
     let row = sqlx::query(
-        "SELECT agente, modelo, session_id, mensajes FROM conversacion_asistente
+        "SELECT agente, modelo, session_id, mensajes, lectura_confirmada FROM conversacion_asistente
          WHERE bot_id = ? AND guild_id = ? AND tipo = ?",
     )
     .bind(bot_id)
@@ -929,6 +1050,7 @@ pub async fn leer_conversacion(
     }
     let mensajes: String = r.get("mensajes");
     Ok(Some(ConversacionAsistente {
+        lectura_confirmada: r.get("lectura_confirmada"),
         agente: guardado,
         modelo: r.get("modelo"),
         session_id: r.get("session_id"),
@@ -945,11 +1067,12 @@ pub async fn guardar_conversacion(
 ) -> Result<()> {
     sqlx::query(
         "INSERT INTO conversacion_asistente
-            (bot_id, guild_id, tipo, agente, modelo, session_id, mensajes, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (bot_id, guild_id, tipo, agente, modelo, session_id, mensajes, updated_at, lectura_confirmada)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(bot_id, guild_id, tipo) DO UPDATE SET agente = excluded.agente,
             modelo = excluded.modelo, session_id = excluded.session_id,
-            mensajes = excluded.mensajes, updated_at = excluded.updated_at",
+            mensajes = excluded.mensajes, updated_at = excluded.updated_at,
+            lectura_confirmada = excluded.lectura_confirmada",
     )
     .bind(bot_id)
     .bind(guild_id)
@@ -959,6 +1082,7 @@ pub async fn guardar_conversacion(
     .bind(&c.session_id)
     .bind(serde_json::to_string(&c.mensajes)?)
     .bind(chrono::Utc::now().to_rfc3339())
+    .bind(c.lectura_confirmada)
     .execute(pool)
     .await?;
     Ok(())
@@ -1111,6 +1235,7 @@ mod asistente_datos_tests {
 
     fn conv(agente: &str, sesion: Option<&str>) -> ConversacionAsistente {
         ConversacionAsistente {
+            lectura_confirmada: 0,
             agente: agente.into(),
             modelo: "m1".into(),
             session_id: sesion.map(String::from),
@@ -1269,6 +1394,78 @@ mod guild_settings_tests {
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
 
+    #[tokio::test]
+    async fn moderacion_no_preguntar_se_recuerda_al_reabrir_y_aisla_servidores() {
+        let (pool, ruta) = pool_temporal("moderacion_confirmacion").await;
+        let antiguo: GuildSettings = serde_json::from_str(r#"{"notes":"anterior"}"#).unwrap();
+        assert!(!antiguo.moderacion_no_preguntar);
+        let mut ajustes = get_guild_settings(&pool, "b1", "g1").await.unwrap();
+        assert!(!ajustes.moderacion_no_preguntar);
+        ajustes.moderacion_no_preguntar = true;
+        ajustes.notes = "conservar ajustes".into();
+        save_guild_settings(&pool, "b1", "g1", &ajustes)
+            .await
+            .unwrap();
+        let conversacion = ConversacionAsistente {
+            agente: "codex".into(),
+            lectura_confirmada: 1000,
+            mensajes: serde_json::json!([]),
+            ..Default::default()
+        };
+        guardar_conversacion(&pool, "b1", "g1", "moderacion", &conversacion)
+            .await
+            .unwrap();
+        pool.close().await;
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect(&format!("sqlite://{}", ruta.display()))
+            .await
+            .unwrap();
+        let guardado = get_guild_settings(&pool, "b1", "g1").await.unwrap();
+        assert!(guardado.moderacion_no_preguntar);
+        assert_eq!(guardado.notes, "conservar ajustes");
+        assert!(
+            !get_guild_settings(&pool, "b1", "g2")
+                .await
+                .unwrap()
+                .moderacion_no_preguntar
+        );
+        assert!(
+            !get_guild_settings(&pool, "b2", "g1")
+                .await
+                .unwrap()
+                .moderacion_no_preguntar
+        );
+        assert_eq!(
+            leer_conversacion(&pool, "b1", "g1", "moderacion", Some("codex"))
+                .await
+                .unwrap()
+                .unwrap()
+                .lectura_confirmada,
+            1000
+        );
+        assert!(leer_conversacion(&pool, "b1", "g1", "construccion", None)
+            .await
+            .unwrap()
+            .is_none());
+        borrar_conversacion(&pool, "b1", "g1", "moderacion")
+            .await
+            .unwrap();
+        assert!(leer_conversacion(&pool, "b1", "g1", "moderacion", None)
+            .await
+            .unwrap()
+            .is_none());
+        // Reiniciar la conversación no revoca la preferencia del servidor.
+        assert!(
+            get_guild_settings(&pool, "b1", "g1")
+                .await
+                .unwrap()
+                .moderacion_no_preguntar
+        );
+        pool.close().await;
+        let _ = std::fs::remove_file(ruta);
+    }
+
     async fn pool_temporal(nombre: &str) -> (SqlitePool, std::path::PathBuf) {
         let ruta =
             std::env::temp_dir().join(format!("argus_test_{}_{}.db", nombre, std::process::id()));
@@ -1280,6 +1477,71 @@ mod guild_settings_tests {
             .expect("BD temporal");
         run_migrations(&pool).await.expect("migraciones");
         (pool, ruta)
+    }
+
+    #[tokio::test]
+    async fn permisos_ordenes_defaults_antiguos_y_persistencia() {
+        let (pool, ruta) = pool_temporal("permisos_ordenes").await;
+        let esperado = PermisosOrdenes {
+            estructura: true,
+            borrar_canales_roles: false,
+            silenciar: true,
+            expulsar: true,
+            banear: false,
+            borrar_mensajes: true,
+            avisos: true,
+        };
+        assert_eq!(PermisosOrdenes::default(), esperado);
+        assert_eq!(
+            get_guild_settings(&pool, "b1", "g1")
+                .await
+                .unwrap()
+                .ordenes_permitidas,
+            esperado
+        );
+        // Simula datos anteriores a este ajuste, ya guardados en guild_settings.
+        sqlx::query(
+            "INSERT INTO guild_settings (bot_id, guild_id, data, updated_at) VALUES (?, ?, ?, ?)",
+        )
+        .bind("b1")
+        .bind("g1")
+        .bind(r#"{"notes":"legacy","chat_ordenes":true}"#)
+        .bind("2026-01-01T00:00:00Z")
+        .execute(&pool)
+        .await
+        .unwrap();
+        let mut s = get_guild_settings(&pool, "b1", "g1").await.unwrap();
+        assert_eq!(s.ordenes_permitidas, esperado);
+        assert_eq!(s.notes, "legacy");
+        s.ordenes_permitidas = PermisosOrdenes {
+            estructura: false,
+            borrar_canales_roles: true,
+            silenciar: false,
+            expulsar: false,
+            banear: true,
+            borrar_mensajes: false,
+            avisos: false,
+        };
+        save_guild_settings(&pool, "b1", "g1", &s).await.unwrap();
+        assert_eq!(get_guild_settings(&pool, "b1", "g1").await.unwrap(), s);
+        assert_eq!(
+            get_guild_settings(&pool, "b1", "g2")
+                .await
+                .unwrap()
+                .ordenes_permitidas,
+            esperado
+        );
+        assert_eq!(
+            get_guild_settings(&pool, "b2", "g1")
+                .await
+                .unwrap()
+                .ordenes_permitidas,
+            esperado
+        );
+        let parcial: PermisosOrdenes = serde_json::from_str(r#"{"estructura":false}"#).unwrap();
+        assert!(!parcial.estructura && parcial.silenciar && !parcial.banear);
+        pool.close().await;
+        let _ = std::fs::remove_file(ruta);
     }
 
     #[tokio::test]
@@ -1329,6 +1591,18 @@ mod guild_settings_tests {
     }
 
     #[test]
+    fn limite_de_ordenes_se_normaliza() {
+        for (entrada, esperado) in [(0, 1), (1, 1), (50, 50), (500, 500), (501, 500)] {
+            let s = GuildSettings {
+                ordenes_max_acciones: entrada,
+                ..Default::default()
+            }
+            .normalizado();
+            assert_eq!(s.ordenes_max_acciones, esperado);
+        }
+    }
+
+    #[test]
     fn los_ajustes_de_chat_tienen_valores_por_defecto() {
         let s = GuildSettings::default();
         assert_eq!(s.chat_agente, "claude");
@@ -1357,6 +1631,7 @@ mod guild_settings_tests {
         assert!(!s.chat_ordenes);
         assert!(s.chat_ordenes_usuarios.is_empty());
         assert!(s.chat_ordenes_confirmar);
+        assert_eq!(s.ordenes_max_acciones, 50);
         assert_eq!(s.ordenes_agente, "claude");
         assert_eq!(s.ordenes_modelo, "sonnet");
     }
@@ -1369,6 +1644,7 @@ mod guild_settings_tests {
         assert_eq!(s.chat_contexto, 5);
         assert!(s.chat_usuarios.is_empty());
         assert!(!s.chat_ordenes && s.chat_ordenes_confirmar);
+        assert_eq!(s.ordenes_max_acciones, 50);
         assert!(s.chat_ordenes_usuarios.is_empty());
         assert_eq!(
             (s.ordenes_agente.as_str(), s.ordenes_modelo.as_str()),
@@ -1493,5 +1769,141 @@ mod abrir_bd_tests {
         assert!(!por_defecto.exists());
         pool.close().await;
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod tests_chat_diario {
+    use super::*;
+
+    async fn pool() -> SqlitePool {
+        let p = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        run_migrations(&p).await.unwrap();
+        p
+    }
+
+    #[tokio::test]
+    async fn cupo_atomico_aislado_y_aviso_unico_con_rafaga() {
+        let p = pool().await;
+        let mut tareas = Vec::new();
+        for _ in 0..50 {
+            let p = p.clone();
+            tareas.push(tokio::spawn(async move {
+                let acepta = reservar_respuesta(&p, "bot", "guild", "2026-11-17", 7)
+                    .await
+                    .unwrap();
+                let avisa = tomar_aviso_diario(&p, "bot", "guild", "2026-11-17", 7)
+                    .await
+                    .unwrap();
+                (acepta as u32, avisa as u32)
+            }));
+        }
+        let (mut aceptadas, mut avisos) = (0, 0);
+        for t in tareas {
+            let (a, v) = t.await.unwrap();
+            aceptadas += a;
+            avisos += v;
+        }
+        assert_eq!((aceptadas, avisos), (7, 1));
+        assert_eq!(
+            respuestas_del_dia(&p, "bot", "guild", "2026-11-17")
+                .await
+                .unwrap(),
+            7
+        );
+        assert!(reservar_respuesta(&p, "otro", "guild", "2026-11-17", 7)
+            .await
+            .unwrap());
+        assert!(reservar_respuesta(&p, "bot", "otro", "2026-11-17", 7)
+            .await
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn reinicio_diario_y_cero_sin_tope() {
+        let p = pool().await;
+        for dia in ["2026-11-17", "2026-11-18"] {
+            assert_eq!(
+                respuestas_del_dia(&p, "bot", "guild", dia).await.unwrap(),
+                0
+            );
+            assert!(!tomar_aviso_diario(&p, "bot", "guild", dia, 1)
+                .await
+                .unwrap());
+            assert!(reservar_respuesta(&p, "bot", "guild", dia, 1)
+                .await
+                .unwrap());
+            assert!(!reservar_respuesta(&p, "bot", "guild", dia, 1)
+                .await
+                .unwrap());
+            assert!(tomar_aviso_diario(&p, "bot", "guild", dia, 1)
+                .await
+                .unwrap());
+            assert!(!tomar_aviso_diario(&p, "bot", "guild", dia, 1)
+                .await
+                .unwrap());
+        }
+        for _ in 0..210 {
+            assert!(reservar_respuesta(&p, "bot", "guild", "2026-11-18", 0)
+                .await
+                .unwrap());
+            assert!(!tomar_aviso_diario(&p, "bot", "guild", "2026-11-18", 0)
+                .await
+                .unwrap());
+        }
+        assert_eq!(
+            respuestas_del_dia(&p, "bot", "guild", "2026-11-18")
+                .await
+                .unwrap(),
+            211
+        );
+    }
+
+    #[tokio::test]
+    async fn reiniciar_app_o_guardar_ajustes_no_borra_cupo_ni_aviso() {
+        let ruta = std::env::temp_dir()
+            .join(format!("argus-cupo-{}", uuid::Uuid::new_v4()))
+            .join("argus.db");
+        let p = abrir_bd(&ruta).await.unwrap();
+        let s: GuildSettings = serde_json::from_str("{}").unwrap();
+        assert_eq!(s.chat_max_diario, 200);
+        let s = GuildSettings {
+            chat_max_diario: 1,
+            ..s
+        };
+        save_guild_settings(&p, "bot", "guild", &s).await.unwrap();
+        assert!(reservar_respuesta(&p, "bot", "guild", &dia_chat(), 1)
+            .await
+            .unwrap());
+        assert!(tomar_aviso_diario(&p, "bot", "guild", &dia_chat(), 1)
+            .await
+            .unwrap());
+        p.close().await;
+        let p = abrir_bd(&ruta).await.unwrap();
+        let mut leida = get_guild_settings(&p, "bot", "guild").await.unwrap();
+        assert_eq!((leida.chat_max_diario, leida.chat_respuestas_hoy), (1, 1));
+        leida.chat_respuestas_hoy = 0;
+        save_guild_settings(&p, "bot", "guild", &leida)
+            .await
+            .unwrap();
+        assert_eq!(
+            get_guild_settings(&p, "bot", "guild")
+                .await
+                .unwrap()
+                .chat_respuestas_hoy,
+            1
+        );
+        assert!(!reservar_respuesta(&p, "bot", "guild", &dia_chat(), 1)
+            .await
+            .unwrap());
+        assert!(!tomar_aviso_diario(&p, "bot", "guild", &dia_chat(), 1)
+            .await
+            .unwrap());
+        p.close().await;
+        let _ = std::fs::remove_file(ruta);
     }
 }

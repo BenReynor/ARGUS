@@ -22,6 +22,30 @@ pub const MAX_DESCRIPCION: usize = 1024;
 /// Descripciones por llamada.
 pub const TANDA: usize = 40;
 
+/// Coste real tras compilar: solo las descripciones pendientes de generar.
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct CosteDescripciones {
+    pub descripciones: usize,
+    pub llamadas: usize,
+    pub confirmar: bool,
+}
+
+pub fn coste_descripciones(n: usize) -> CosteDescripciones {
+    CosteDescripciones {
+        descripciones: n,
+        llamadas: n.div_ceil(TANDA),
+        confirmar: n > 30,
+    }
+}
+
+/// Impide llamar al agente si la app aún no aprobó este volumen.
+pub fn validar_confirmacion(n: usize, confirmadas: Option<usize>) -> Result<(), String> {
+    if coste_descripciones(n).confirmar && confirmadas != Some(n) {
+        return Err("Confirm the description generation cost before continuing".into());
+    }
+    Ok(())
+}
+
 /// Prompt de una tanda. El id de cada pendiente es el índice de su acción.
 pub fn prompt_descripciones(
     contexto: &str,
@@ -199,6 +223,29 @@ mod tests {
             Duration::from_secs(20),
         )
         .await
+    }
+
+    #[test]
+    fn app_umbral_y_estimacion_antes_de_generar() {
+        for (n, llamadas) in [
+            (0, 0),
+            (29, 1),
+            (30, 1),
+            (31, 1),
+            (40, 1),
+            (41, 2),
+            (100, 3),
+        ] {
+            let coste = coste_descripciones(n);
+            assert_eq!(coste.llamadas, llamadas);
+            assert_eq!(coste.descripciones, n);
+            assert_eq!(coste.confirmar, n > 30);
+            assert_eq!(validar_confirmacion(n, None).is_err(), n > 30);
+            assert!(validar_confirmacion(n, Some(n)).is_ok());
+            if n > 30 {
+                assert!(validar_confirmacion(n, Some(n - 1)).is_err());
+            }
+        }
     }
 
     #[test]

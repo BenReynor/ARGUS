@@ -231,7 +231,28 @@ pub struct BorrarMensajesParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
+#[serde(rename_all = "lowercase")]
+pub enum TipoObjetivoCanal {
+    Rol,
+    Miembro,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct PermisosCrearCanal {
+    pub objetivo: String,
+    pub tipo: TipoObjetivoCanal,
+    #[serde(default)]
+    pub permitir: Vec<String>,
+    #[serde(default)]
+    pub denegar: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
 pub struct CrearCanalParams {
+    /// Permisos opcionales: [{objetivo: nombre o id, tipo: "rol"|"miembro", permitir: ["ViewChannel"], denegar: ["SendMessages"]}]. @everyone usa el id del servidor; admite roles creados antes en la propuesta. Se unen con los de la categoría; para el mismo objetivo gana el canal.
+    pub permisos: Option<Vec<PermisosCrearCanal>>,
     /// ID del servidor. Si se omite se usa el servidor activo.
     pub guild_id: Option<String>,
     /// Nombre del canal (1–100 caracteres).
@@ -1271,7 +1292,39 @@ impl ArgusMcp {
                 }
             },
         };
+        let mut overwrites = Vec::new();
+        if let Some(permisos) = &p.permisos {
+            let roles = commands::leer_roles(&self.state, &gid, self.url()).await?;
+            let mut nombres = Nombres::desde(&roles, &[]);
+            if permisos
+                .iter()
+                .any(|p| matches!(p.tipo, TipoObjetivoCanal::Miembro))
+            {
+                let miembros = commands::leer_miembros(&self.state, &gid, self.url()).await?;
+                nombres.registrar_miembros(&miembros);
+            }
+            for p in permisos {
+                let tipo = match p.tipo {
+                    TipoObjetivoCanal::Rol => "rol",
+                    TipoObjetivoCanal::Miembro => "miembro",
+                };
+                let id = if tipo == "rol" && p.objetivo.trim() == "@everyone" {
+                    gid.clone()
+                } else {
+                    nombres.resolver_objetivo(&p.objetivo, tipo)?
+                };
+                overwrites.push(
+                    serde_json::from_value(json!({
+                        "id": id, "type": if tipo == "rol" { 0 } else { 1 },
+                        "allow": crate::discord::bits_desde_nombres(&p.permitir)?,
+                        "deny": crate::discord::bits_desde_nombres(&p.denegar)?
+                    }))
+                    .map_err(|e| format!("Invalid permission overwrite: {e}"))?,
+                );
+            }
+        }
         let datos = DatosCanal {
+            permission_overwrites: Some(overwrites),
             name: Some(p.nombre.clone()),
             channel_type: Some(tipo),
             parent_id: p.categoria_id.clone(),
@@ -1288,6 +1341,7 @@ impl ArgusMcp {
     pub async fn editar_canal_json(&self, p: &EditarCanalParams) -> Result<String, String> {
         let gid = self.servidor_de(p.guild_id.as_deref()).await?;
         let datos = DatosCanal {
+            permission_overwrites: None,
             name: p.nombre.clone(),
             channel_type: None,
             parent_id: p.categoria_id.clone(),
@@ -1833,7 +1887,14 @@ pub fn validar_accion(nombre: &str, args: &serde_json::Value) -> Result<(), Stri
             ok::<MensajeParams>(nombre, args)
         }
         "borrar_mensajes" => ok::<BorrarMensajesParams>(nombre, args),
-        "crear_canal" => ok::<CrearCanalParams>(nombre, args),
+        "crear_canal" => {
+            let p = args_de::<CrearCanalParams>(nombre, args.clone())?;
+            for permiso in p.permisos.iter().flatten() {
+                crate::discord::bits_desde_nombres(&permiso.permitir)?;
+                crate::discord::bits_desde_nombres(&permiso.denegar)?;
+            }
+            Ok(())
+        }
         "editar_canal" => ok::<EditarCanalParams>(nombre, args),
         "borrar_canal" => ok::<CanalParams>(nombre, args),
         "ordenar_canales" | "ordenar_roles" => ok::<OrdenarParams>(nombre, args),
@@ -1998,6 +2059,18 @@ impl ArgusMcp {
         cancelar: &AtomicBool,
         avance: &mut (dyn FnMut(usize, &ResultadoAccion) + Send),
     ) -> Result<ResumenPropuesta, String> {
+        self.ejecutar_propuesta_reanudable(propuesta, cancelar, avance, &[])
+            .await
+    }
+
+    /// Reanuda la misma propuesta conservando únicamente las acciones exitosas.
+    pub async fn ejecutar_propuesta_reanudable(
+        &self,
+        propuesta: &Propuesta,
+        cancelar: &AtomicBool,
+        avance: &mut (dyn FnMut(usize, &ResultadoAccion) + Send),
+        anteriores: &[ResultadoAccion],
+    ) -> Result<ResumenPropuesta, String> {
         // El servidor de la propuesta (la app pone su `guild_id` en cada
         // acción); si no lo trae, el servidor activo del MCP.
         let de_la_propuesta = propuesta
@@ -2012,12 +2085,36 @@ impl ArgusMcp {
             .await
             .map_err(|e| self.limpiar(e))?;
         let mut nombres = Nombres::desde(&roles, &canales);
+        if propuesta.acciones.iter().any(|a| {
+            a.herramienta == "crear_canal"
+                && a.args["permisos"]
+                    .as_array()
+                    .is_some_and(|p| p.iter().any(|p| p["tipo"] == "miembro"))
+        }) {
+            let miembros = commands::leer_miembros(&self.state, &gid, self.url()).await?;
+            nombres.registrar_miembros(&miembros);
+        }
         let total = propuesta.acciones.len();
         let mut resultados = Vec::new();
+        for r in anteriores.iter().filter(|r| r.estado == EstadoAccion::Ok) {
+            if let Some(a) = propuesta.acciones.get(r.indice) {
+                if a.herramienta == r.herramienta
+                    && !resultados
+                        .iter()
+                        .any(|x: &ResultadoAccion| x.indice == r.indice)
+                {
+                    nombres.registrar_creado(&a.herramienta, &a.args, &r.mensaje);
+                    resultados.push(r.clone());
+                }
+            }
+        }
         // `indice` es la posición original de la acción: la app empareja así
         // cada resultado con su fila aunque el orden de ejecución sea otro.
         for indice in orden_de_ejecucion(propuesta) {
             let a = &propuesta.acciones[indice];
+            if resultados.iter().any(|r| r.indice == indice) {
+                continue;
+            }
             if cancelar.load(Ordering::SeqCst) {
                 break;
             }
@@ -3590,6 +3687,7 @@ mod tests {
 
     fn canal_nuevo(nombre: &str, tipo: Option<&str>) -> CrearCanalParams {
         CrearCanalParams {
+            permisos: None,
             guild_id: None,
             nombre: nombre.into(),
             tipo: tipo.map(str::to_string),
@@ -4847,6 +4945,160 @@ mod tests {
         assert!(r[3].mensaje.contains("«Fantasma»"));
     }
 
+    #[tokio::test]
+    async fn crear_canal_permisos_combina_categoria_y_rol_nuevo() {
+        let (_d, mcp, s) = mcp_con_servidor(TODO, true).await;
+        let creado = std::sync::Arc::new(AtomicBool::new(false));
+        let para_roles = creado.clone();
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .respond_with(move |_: &wiremock::Request| {
+                let mut roles = vec![
+                    rol("555", "@everyone", 0, 0),
+                    rol("600", "Bot", 5, TODO),
+                    rol("700", "Moderadores", 3, 8192),
+                ];
+                if para_roles.load(Ordering::SeqCst) {
+                    roles.push(rol("1200", "Nuevo", 1, 0));
+                }
+                ResponseTemplate::new(200).set_body_json(roles)
+            })
+            .with_priority(1)
+            .mount(&s)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .respond_with(move |_: &wiremock::Request| {
+                creado.store(true, Ordering::SeqCst);
+                ResponseTemplate::new(200).set_body_json(rol("1200", "Nuevo", 1, 0))
+            })
+            .expect(1)
+            .mount(&s)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/channels/20"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": "20", "type": 4, "guild_id": "555", "name": "Categoria",
+                "permission_overwrites": [
+                    {"id": "555", "type": 0, "allow": "0", "deny": "1024"},
+                    {"id": "700", "type": 0, "allow": "1024", "deny": "0"}
+                ]
+            })))
+            .with_priority(1)
+            .mount(&s)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .and(wiremock::matchers::body_json(
+                json!({"name": "privado", "type": 0, "parent_id": "20",
+                "permission_overwrites": [
+                    {"id": "700", "type": 0, "allow": "1024", "deny": "0"},
+                    {"id": "555", "type": 0, "allow": "1024", "deny": "0"},
+                    {"id": "1200", "type": 0, "allow": "2048", "deny": "0"}
+                ]}),
+            ))
+            .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+                "id": "50", "type": 0, "guild_id": "555", "name": "privado", "parent_id": "20"
+            })))
+            .expect(1)
+            .mount(&s)
+            .await;
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: vec![
+                accion("crear_rol", json!({"nombre": "Nuevo"})),
+                accion(
+                    "crear_canal",
+                    json!({"nombre": "privado", "categoria_id": "20", "permisos": [
+                        {"objetivo": "@everyone", "tipo": "rol", "permitir": ["ViewChannel"]},
+                        {"objetivo": "Nuevo", "tipo": "rol", "permitir": ["SendMessages"]}
+                    ]}),
+                ),
+            ],
+        };
+        assert!(crate::propuesta::validar_acciones(&p, &Nombres::default())
+            .errores
+            .is_empty());
+        let r = mcp.ejecutar_propuesta(&p).await.unwrap();
+        assert!(r.iter().all(|r| r.estado == EstadoAccion::Ok), "{r:?}");
+    }
+
+    #[tokio::test]
+    async fn crear_canal_permisos_sin_categoria_resuelve_miembro_y_rol() {
+        let (_d, mcp, s) = mcp_con_servidor(TODO, true).await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .and(wiremock::matchers::body_json(
+                json!({"name": "privado", "type": 0,
+                "permission_overwrites": [
+                    {"id": "1001", "type": 1, "allow": "1024", "deny": "2048"},
+                    {"id": "700", "type": 0, "allow": "1024", "deny": "0"}
+                ]}),
+            ))
+            .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+                "id": "50", "type": 0, "guild_id": "555", "name": "privado"
+            })))
+            .expect(2)
+            .mount(&s)
+            .await;
+        for objetivo in ["Anita", "1001"] {
+            let p = Propuesta {
+                resumen: String::new(),
+                acciones: vec![accion(
+                    "crear_canal",
+                    json!({
+                        "nombre": "privado", "permisos": [
+                            {"objetivo": objetivo, "tipo": "miembro", "permitir": ["ViewChannel"], "denegar": ["SendMessages"]},
+                            {"objetivo": "700", "tipo": "rol", "permitir": ["ViewChannel"]}
+                        ]
+                    }),
+                )],
+            };
+            let r = mcp.ejecutar_propuesta(&p).await.unwrap();
+            assert_eq!(r[0].estado, EstadoAccion::Ok, "{r:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn crear_canal_rechaza_objetivo_inexistente_y_permiso_desconocido() {
+        let (_d, mcp, s) = mcp_con_servidor(TODO, true).await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&s)
+            .await;
+        for objetivo in ["Fantasma", "999999"] {
+            let args = json!({"nombre": "privado", "permisos": [
+                {"objetivo": objetivo, "tipo": "rol", "permitir": ["ViewChannel"]}
+            ]});
+            let p = Propuesta {
+                resumen: String::new(),
+                acciones: vec![accion("crear_canal", args.clone())],
+            };
+            let v = crate::propuesta::validar_acciones(&p, &Nombres::default());
+            assert!(v.errores[0].mensaje.contains(objetivo));
+            let e = mcp
+                .crear_canal_json(&serde_json::from_value(args).unwrap())
+                .await
+                .unwrap_err();
+            assert!(e.contains(objetivo) && e.contains("does not exist"), "{e}");
+        }
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: vec![accion(
+                "crear_canal",
+                json!({
+                    "nombre": "privado", "permisos": [{"objetivo": "@everyone", "tipo": "rol", "denegar": ["ImaginaryPermission"]}]
+                }),
+            )],
+        };
+        let v = crate::propuesta::validar_acciones(&p, &Nombres::default());
+        assert!(v.errores[0]
+            .mensaje
+            .contains("Unknown permission: «ImaginaryPermission»"));
+        assert!(firmas_escritura().contains("objetivo: nombre o id"));
+    }
+
     /// El Discord falso responde a `GET roles` con los roles de siempre más estos
     /// (los que la propuesta acaba de crear).
     async fn roles_con_nuevos(s: &MockServer, nuevos: &[serde_json::Value]) {
@@ -4870,6 +5122,122 @@ mod tests {
             descripcion: format!("{h} {args}"),
             args,
         }
+    }
+
+    #[tokio::test]
+    async fn archivo_de_sitio_19_aplica_con_siete_peticiones_de_escritura_antes_25() {
+        let (_d, mcp, s) = mcp_con_servidor(TODO, true).await;
+        let creado = std::sync::Arc::new(AtomicBool::new(false));
+        let para_roles = creado.clone();
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .respond_with(move |_: &wiremock::Request| {
+                let mut roles = vec![
+                    rol("555", "@everyone", 0, 0),
+                    rol("600", "Bot", 5, TODO),
+                    rol("700", "Muteado", 1, 0),
+                ];
+                if para_roles.load(Ordering::SeqCst) {
+                    roles.push(rol("1200", "Archivista", 2, 0));
+                }
+                ResponseTemplate::new(200).set_body_json(roles)
+            })
+            .with_priority(1)
+            .mount(&s)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "Archivista"}),
+            ))
+            .respond_with(move |_: &wiremock::Request| {
+                creado.store(true, Ordering::SeqCst);
+                ResponseTemplate::new(200).set_body_json(rol("1200", "Archivista", 2, 0))
+            })
+            .expect(1)
+            .mount(&s)
+            .await;
+        let overwrites = json!([
+            {"id": "555", "type": 0, "allow": "0", "deny": "1024"},
+            {"id": "1200", "type": 0, "allow": "3072", "deny": "0"},
+            {"id": "700", "type": 0, "allow": "0", "deny": "1024"}
+        ]);
+        for i in 0..=5 {
+            let nombre = if i == 0 {
+                "Archivo".to_string()
+            } else {
+                format!("expediente-{i}")
+            };
+            let tipo = if i == 0 { 4 } else { 0 };
+            let mut cuerpo = json!({"name": nombre, "type": tipo,
+                "permission_overwrites": overwrites});
+            if i > 0 {
+                cuerpo["parent_id"] = json!("40");
+            }
+            let mut respuesta = cuerpo.clone();
+            respuesta["id"] = json!((40 + i).to_string());
+            respuesta["guild_id"] = json!("555");
+            Mock::given(method("POST"))
+                .and(path("/api/v10/guilds/555/channels"))
+                .and(wiremock::matchers::body_partial_json(cuerpo))
+                .respond_with(ResponseTemplate::new(201).set_body_json(respuesta))
+                .expect(1)
+                .mount(&s)
+                .await;
+        }
+        let roles = commands::leer_roles(&mcp.state, "555", mcp.url())
+            .await
+            .unwrap();
+        let canales = commands::leer_canales(&mcp.state, "555", mcp.url())
+            .await
+            .unwrap();
+        // Mismo contrato que el test del compilador: 1 rol, 1 categoría,
+        // 5 canales, con 3 overwrites por categoría/canal (18 en total).
+        let plan = crate::plan_estructurado::analizar(
+            "# Archivo de Sitio-19\n\
+            ## Rol: Archivista\n\
+            ## Categoría: Archivo | ver: Archivista | escribir: Archivista | ocultar a: Muteado\n\
+            - texto: expediente-{1..5}",
+        );
+        let compilado = crate::plan_compilar::compilar(
+            &plan,
+            &crate::plan_compilar::Existentes {
+                roles: &roles,
+                canales: &canales,
+            },
+        );
+        assert!(compilado.avisos.is_empty(), "{:?}", compilado.avisos);
+        let inicio = s.received_requests().await.unwrap().len();
+        let resultados = mcp.ejecutar_propuesta(&compilado.propuesta).await.unwrap();
+        assert_eq!(resultados.len(), 7);
+        assert!(
+            resultados.iter().all(|r| r.estado == EstadoAccion::Ok),
+            "{resultados:?}"
+        );
+        let recibidas = s.received_requests().await.unwrap();
+        let aplicacion = &recibidas[inicio..];
+        let escrituras: Vec<_> = aplicacion
+            .iter()
+            .filter(|r| r.method.as_str() != "GET")
+            .map(|r| format!("{} {}", r.method, r.url.path()))
+            .collect();
+        // Antes: 7 creaciones + 18 PUT de permisos = 25 escrituras.
+        // Contar HTTP real detecta también peticiones extra dentro de una acción.
+        // Las lecturas de validación/categoría siguen existiendo, fuera de este presupuesto.
+        let lecturas = aplicacion.len() - escrituras.len();
+        eprintln!(
+            "Archivo de Sitio-19: {} escrituras (antes 25), {lecturas} lecturas",
+            escrituras.len()
+        );
+        assert_eq!(
+            escrituras.len(),
+            7,
+            "Regresión del presupuesto HTTP: {escrituras:?}"
+        );
+        assert_eq!(escrituras[0], "POST /api/v10/guilds/555/roles");
+        assert!(escrituras[1..]
+            .iter()
+            .all(|r| r == "POST /api/v10/guilds/555/channels"));
     }
 
     #[tokio::test]
@@ -5090,6 +5458,78 @@ mod tests {
             .await
             .unwrap();
         assert_eq!((r.resultados.len(), r.canceladas, r.total), (1, 4, 5));
+    }
+
+    #[tokio::test]
+    async fn parar_en_peticion_termina_la_actual_y_reanudar_no_repite_hechas() {
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_CANALES, true).await;
+        let cancelar = std::sync::Arc::new(AtomicBool::new(false));
+        for (i, nombre) in ["primero", "segundo", "tercero"].iter().enumerate() {
+            let parada = cancelar.clone();
+            let nombre = nombre.to_string();
+            Mock::given(method("POST"))
+                .and(path("/api/v10/guilds/555/channels"))
+                .and(wiremock::matchers::body_partial_json(
+                    json!({"name": nombre}),
+                ))
+                .respond_with(move |_: &wiremock::Request| {
+                    // Stop llega con la petición ya en vuelo, antes de responder.
+                    if i == 0 {
+                        parada.store(true, Ordering::SeqCst);
+                    }
+                    ResponseTemplate::new(200)
+                        .set_delay(std::time::Duration::from_millis(20))
+                        .set_body_json(json!({"id": (80 + i).to_string(), "type": 0,
+                            "guild_id": "555", "name": nombre, "position": i}))
+                })
+                .expect(1)
+                .mount(&s)
+                .await;
+        }
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: ["primero", "segundo", "tercero"]
+                .iter()
+                .map(|nombre| accion("crear_canal", json!({"nombre": nombre})))
+                .collect(),
+        };
+        let mut avances = Vec::new();
+        let r = mcp
+            .ejecutar_propuesta_con(&p, &cancelar, &mut |_, r| avances.push(r.indice))
+            .await
+            .unwrap();
+        assert_eq!(
+            (r.hechas, r.fallidas, r.omitidas, r.canceladas),
+            (1, 0, 0, 2)
+        );
+        assert_eq!(avances, [0]);
+        assert_eq!(r.resultados[0].indice, 0);
+        assert_eq!(r.resultados[0].estado, EstadoAccion::Ok);
+        let peticiones = s.received_requests().await.unwrap();
+        let escrituras: Vec<_> = peticiones
+            .iter()
+            .filter(|r| r.method.as_str() == "POST")
+            .collect();
+        assert_eq!(escrituras.len(), 1, "Las restantes no se intentaron");
+        assert_eq!(
+            escrituras[0].body_json::<serde_json::Value>().unwrap()["name"],
+            "primero"
+        );
+
+        cancelar.store(false, Ordering::SeqCst);
+        avances.clear();
+        let finalizado = mcp
+            .ejecutar_propuesta_reanudable(
+                &p,
+                &cancelar,
+                &mut |_, r| avances.push(r.indice),
+                &r.resultados,
+            )
+            .await
+            .unwrap();
+        assert_eq!(avances, [1, 2]);
+        assert_eq!((finalizado.hechas, finalizado.canceladas), (3, 0));
+        s.verify().await; // Una sola petición por acción, incluso al reanudar.
     }
 
     #[tokio::test]

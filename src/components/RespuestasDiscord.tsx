@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
-import { useActiveGuildId, useShowNotification } from '../store/useStore';
+import { useStore, useActiveGuildId, useShowNotification } from '../store/useStore';
 import { listarAgentesIa, getGuildSettings, saveGuildSettings, listChannels, listMembers } from '../api/tauri';
 import type { AgenteIa, Channel, GuildSettings, Member } from '../types';
 import { Avatar, Button, Cargando, EstadoVacio, ErrorPanel, Input, Select } from './ui';
 import { t } from '../i18n';
+import { AvisoPermisosBot } from './AvisoPermisosBot';
 import './Asistente.css';
 
 const TIPOS_TEXTO = [0, 5];
@@ -15,6 +16,7 @@ const esGratis = (agente: string, modelo: string) => agente === 'opencode' && (m
 
 export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> = ({ onAbrirPersonalidad }) => {
   const guildId = useActiveGuildId();
+  const botId = useStore((s) => s.config.active_bot_id);
   const showNotification = useShowNotification();
 
   const [agentes, setAgentes] = useState<AgenteIa[] | null>(null);
@@ -23,6 +25,7 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
   const [ajustes, setAjustes] = useState<GuildSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [contador, setContador] = useState(0);
   const [sucio, setSucio] = useState(false);
 
   useEffect(() => {
@@ -36,6 +39,7 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
         const [a, s, c, m] = await Promise.all([listarAgentesIa(), getGuildSettings(guildId), listChannels(guildId), listMembers(guildId).catch(() => [] as Member[])]);
         if (!vigente) return;
         setAgentes(a);
+        setContador(s.chat_respuestas_hoy);
         // Sin modelo guardado, el más barato del agente: las respuestas en
         // Discord son para conversar sin gastar (el desplegable mostraba opus).
         const agente = a.find((x) => x.agente === s.chat_agente);
@@ -47,7 +51,20 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
       }
     })();
     return () => { vigente = false; };
-  }, [guildId]);
+  }, [guildId, botId]);
+
+  useEffect(() => {
+    if (!guildId) return;
+    let vigente = true;
+    const refrescar = async () => {
+      try {
+        const s = await getGuildSettings(guildId);
+        if (vigente) setContador(s.chat_respuestas_hoy);
+      } catch { /* La carga inicial muestra los errores; el contador conserva el último valor. */ }
+    };
+    const timer = window.setInterval(refrescar, 5000);
+    return () => { vigente = false; window.clearInterval(timer); };
+  }, [guildId, botId]);
 
   if (!guildId) {
     return <EstadoVacio titulo={t('No server selected')} descripcion={t('Pick a server in the left column to set up its Discord replies.')} />;
@@ -183,8 +200,17 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
           />
         </div>
 
+        <Input
+          etiqueta={t('Daily reply limit')}
+          ayuda={t('Default: 200. 0 = unlimited. Resets at 00:00 UTC. Orders count too; failed attempts also consume budget to prevent repeated costs.')}
+          type="number" min={0} max={4294967295} value={ajustes.chat_max_diario}
+          onChange={(e) => cambiar({ chat_max_diario: numero(e.target.value, 0, 4294967295, 200) })}
+        />
+        <p role="status">{t('Replies reserved today (UTC): {count}', { count: contador })}</p>
+
         <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
           <legend>{t('Orders from Discord')}</legend>
+          {ajustes.chat_ordenes && <AvisoPermisosBot />}
           <div className="asistente__aviso" role="note">
             <TriangleAlert size={16} />
             <span>{t('Orders really change your server and are recorded in Logs.')}</span>
@@ -210,6 +236,44 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
             <input type="checkbox" role="switch" checked={ajustes.chat_ordenes_confirmar} onChange={(e) => cambiar({ chat_ordenes_confirmar: e.target.checked })} />
             <span>{t('Ask for confirmation before applying')}</span>
           </label>
+          <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+            <legend>{t('Allow from Discord')}</legend>
+            <small>{t('These permissions only affect Discord orders. Actions in the app are unchanged.')}</small>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <input type="checkbox" checked={ajustes.ordenes_permitidas.estructura} onChange={(e) => cambiar({ ordenes_permitidas: { ...ajustes.ordenes_permitidas, estructura: e.target.checked } })} />
+              <span>{t('Create / edit structure')}</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <input type="checkbox" checked={ajustes.ordenes_permitidas.borrar_canales_roles} onChange={(e) => cambiar({ ordenes_permitidas: { ...ajustes.ordenes_permitidas, borrar_canales_roles: e.target.checked } })} />
+              <span>{t('Delete channels and roles')}</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <input type="checkbox" checked={ajustes.ordenes_permitidas.silenciar} onChange={(e) => cambiar({ ordenes_permitidas: { ...ajustes.ordenes_permitidas, silenciar: e.target.checked } })} />
+              <span>{t('Timeout members')}</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <input type="checkbox" checked={ajustes.ordenes_permitidas.expulsar} onChange={(e) => cambiar({ ordenes_permitidas: { ...ajustes.ordenes_permitidas, expulsar: e.target.checked } })} />
+              <span>{t('Kick members')}</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <input type="checkbox" checked={ajustes.ordenes_permitidas.banear} onChange={(e) => cambiar({ ordenes_permitidas: { ...ajustes.ordenes_permitidas, banear: e.target.checked } })} />
+              <span>{t('Ban / unban members')}</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <input type="checkbox" checked={ajustes.ordenes_permitidas.borrar_mensajes} onChange={(e) => cambiar({ ordenes_permitidas: { ...ajustes.ordenes_permitidas, borrar_mensajes: e.target.checked } })} />
+              <span>{t('Delete messages')}</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <input type="checkbox" checked={ajustes.ordenes_permitidas.avisos} onChange={(e) => cambiar({ ordenes_permitidas: { ...ajustes.ordenes_permitidas, avisos: e.target.checked } })} />
+              <span>{t('Warnings and messages')}</span>
+            </label>
+          </fieldset>
+          <Input
+            etiqueta={t('Maximum actions per Discord order')}
+            ayuda={t('From 1 to 500. Build and Moderation in the app have no limit.')}
+            type="number" min={1} max={500} value={ajustes.ordenes_max_acciones}
+            onChange={(e) => cambiar({ ordenes_max_acciones: numero(e.target.value, 1, 500, 50) })}
+          />
           <div className="asistente__acciones">
             <Select etiqueta={t('Builder agent')} value={ajustes.ordenes_agente} onChange={(e) => cambiarAgenteOrdenes(e.target.value)}>
               {agentes.map((a) => <option key={a.agente} value={a.agente}>{a.agente}</option>)}

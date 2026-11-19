@@ -4,6 +4,7 @@ import { getGuildSettingsDiscord, updateGuildDiscord, auditLog } from '../api/ta
 import type { AjustesServidor, EntradaAuditoria } from '../types';
 import { Button, Card, Input, Select, Cargando, EstadoVacio, ErrorPanel } from './ui';
 import { CabeceraVista } from './EstadoVista';
+import { AvisoPermisosBot } from './AvisoPermisosBot';
 import { t, idiomaActual } from '../i18n';
 import './Vistas.css';
 
@@ -149,6 +150,7 @@ export const ServidorView: React.FC = () => {
   return (
     <div className="vista servidor-view">
       <CabeceraVista titulo={t('Server')} />
+      <AvisoPermisosBot />
 
       <Card titulo={t('General settings')}>
         {cargando && <Cargando lineas={4} />}

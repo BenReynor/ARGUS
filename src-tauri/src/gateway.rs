@@ -12,9 +12,7 @@ use twilight_model::gateway::event::Event;
 
 use crate::chat::MensajeEntrante;
 use crate::mapa::{aplicar_evento, ResumenCambio};
-use crate::responder::{
-    ContextoOrdenes, Conversador, Coordinador, Entrada, LIMITE_AGENTE, LIMITE_CONSTRUCTOR,
-};
+use crate::responder::{ContextoOrdenes, Conversador, Coordinador, Entrada, LIMITE_AGENTE};
 use crate::state::ServerMap;
 
 /// Intents que ARGUS necesita: servidores/canales/roles, miembros y mensajes de
@@ -46,6 +44,7 @@ pub fn entrada_de(
         )
     };
     Some(Entrada {
+        cupo: None,
         msg: MensajeEntrante {
             autor_id: m.author.id.get(),
             autor_es_bot: m.author.bot,
@@ -88,8 +87,10 @@ fn conversador(
     pool: Option<sqlx::SqlitePool>,
     mapas: Arc<Mutex<HashMap<String, ServerMap>>>,
 ) -> Conversador {
+    let app_limite = app.clone();
     let app_idioma = app.clone();
     let app = app.clone();
+    let pool_chat = pool.clone();
     let pool_aplicar = pool.clone();
     let pool_contexto = pool.clone();
     let mapas_existentes = mapas.clone();
@@ -130,15 +131,22 @@ fn conversador(
             let mapas = mapas.lock().unwrap();
             mapas
                 .get(&guild.to_string())
-                .map(|m| crate::propuesta::Nombres::desde(&m.roles, &m.channels))
+                .map(|m| {
+                    let mut nombres = crate::propuesta::Nombres::desde(&m.roles, &m.channels);
+                    nombres.registrar_miembros(&m.members);
+                    nombres
+                })
                 .unwrap_or_default()
         }),
-        aplicar: Arc::new(move |propuesta| {
+        aplicar: Arc::new(move |propuesta, cancelar| {
             let pool = pool_aplicar.clone();
             Box::pin(async move {
                 let pool = pool.ok_or_else(|| "The database is not available".to_string())?;
                 let mcp = crate::mcp::ArgusMcp::nuevo(pool, None).await?;
-                mcp.ejecutar_propuesta(&propuesta).await
+                Ok(mcp
+                    .ejecutar_propuesta_con(&propuesta, &cancelar, &mut |_, _| {})
+                    .await?
+                    .resultados)
             })
         }),
         idioma: Arc::new(move || {
@@ -149,7 +157,13 @@ fn conversador(
         }),
     };
     Conversador {
-        limite_constructor: LIMITE_CONSTRUCTOR,
+        pool: pool_chat,
+        limite_constructor: Arc::new(move || {
+            app_limite
+                .try_state::<crate::state::AppState>()
+                .map(|s| s.config.lock().unwrap().ai_order_time_limit())
+                .unwrap_or_else(|| crate::state::Config::default().ai_order_time_limit())
+        }),
         ordenes,
         token: token.to_string(),
         base_url: None,

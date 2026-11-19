@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useStore, useConfig, useUiSettings, useSetActiveTab, useShowNotification, useActiveGuildId, useGuildSettings } from '../store/useStore';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { getConfig, saveConfig, saveGuildSettings, addBot, deleteBot, startBot, getBotStatus, inviteUrl, rutaMcp } from '../api/tauri';
+import { backupWindowPreferences, getConfig, keyringAvailable, saveConfig, saveGuildSettings, addBot, deleteBot, startBot, getBotStatus, inviteUrl, rutaMcp } from '../api/tauri';
 import { t, IDIOMAS } from '../i18n';
 import { Button, Input, Select, Card, Cargando, EstadoVacio } from './ui';
 import './Vistas.css';
+import { BackupSettings } from './BackupSettings';
 import { Save, Trash2, Plus, Server, CheckCircle, AlertCircle, Eye, EyeOff, Copy } from 'lucide-react';
 import { TEMAS, aplicarTema } from '../temas';
 
@@ -55,6 +56,10 @@ const nombreModo = (modo: string): string => {
 
 export const SettingsView: React.FC = () => {
   const config = useConfig();
+  const [keyringReady, setKeyringReady] = useState<boolean | null>(null);
+  useEffect(() => {
+    keyringAvailable().then(setKeyringReady).catch(() => setKeyringReady(false));
+  }, []);
   const setActiveTab = useSetActiveTab();
   const showNotification = useShowNotification();
   const activeGuildId = useActiveGuildId();
@@ -107,6 +112,8 @@ export const SettingsView: React.FC = () => {
     });
 
   const [formData, setFormData] = useState({
+    ai_time_limit_minutes: config.ai_time_limit_minutes,
+    ai_order_time_limit_minutes: config.ai_order_time_limit_minutes,
     server_id: config.active_guild_id ?? '',
     auto_start: uiSettings.auto_start,
     minimize_to_tray: uiSettings.minimize_to_tray,
@@ -114,6 +121,8 @@ export const SettingsView: React.FC = () => {
 
   useEffect(() => {
     setFormData({
+      ai_time_limit_minutes: config.ai_time_limit_minutes,
+      ai_order_time_limit_minutes: config.ai_order_time_limit_minutes,
       server_id: config.active_guild_id ?? '',
       auto_start: uiSettings.auto_start,
       minimize_to_tray: uiSettings.minimize_to_tray,
@@ -125,7 +134,7 @@ export const SettingsView: React.FC = () => {
   };
 
   const persist = async () => {
-    const next = { ...config, active_guild_id: formData.server_id.trim() || null };
+    const next = { ...config, ai_time_limit_minutes: formData.ai_time_limit_minutes, ai_order_time_limit_minutes: formData.ai_order_time_limit_minutes, active_guild_id: formData.server_id.trim() || null };
     await saveConfig(next);
     if (token) {
       // El backend valida el token con Discord y guarda id, nombre y avatar oficiales.
@@ -135,6 +144,7 @@ export const SettingsView: React.FC = () => {
     }
     // El backend es la fuente de verdad (ids de bots, token ya cifrado)
     setConfig(await getConfig());
+    await backupWindowPreferences({ auto_start: formData.auto_start, minimize_to_tray: formData.minimize_to_tray });
     setUiSettings({
       auto_start: formData.auto_start,
       minimize_to_tray: formData.minimize_to_tray,
@@ -154,6 +164,10 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleSave = async () => {
+    if ([formData.ai_time_limit_minutes, formData.ai_order_time_limit_minutes].some((v) => !Number.isInteger(v) || v < 1 || v > 30)) {
+      showNotification(t('AI time limits must be between 1 and 30 minutes'), 'error');
+      return;
+    }
     const id = formData.server_id.trim();
     if (id && !/^\d+$/.test(id)) {
       setServerIdError(t('The server ID contains only digits.'));
@@ -269,6 +283,10 @@ export const SettingsView: React.FC = () => {
       <div className="vista__cabecera">
         <h2 className="vista__solo-lector">{t('Settings')}</h2>
       </div>
+
+      {keyringReady === false && (
+        <p className="ajustes__aviso" role="alert">{t('The system keyring is unavailable. New tokens use the legacy machine-id key. Unlock or enable the keyring and restart ARGUS to migrate them. Previously migrated tokens require the original keyring.')}</p>
+      )}
 
       <Seccion titulo={t('Bots')} descripcion={t('Register the bots ARGUS can use and choose which one to work with.')}>
         <div className="ajustes__fila">
@@ -472,6 +490,17 @@ export const SettingsView: React.FC = () => {
           ))}
         </Select>
       </Seccion>
+
+      <Seccion ancha titulo={t('AI time limit')} descripcion={t('Maximum time per AI request, from 1 to 30 minutes.')}>
+        <Input etiqueta={t('App assistant (minutes)')} type="number" min={1} max={30} step={1}
+          value={formData.ai_time_limit_minutes}
+          onChange={(e) => handleChange('ai_time_limit_minutes', Number(e.target.value))} />
+        <Input etiqueta={t('Discord order builder (minutes)')} type="number" min={1} max={30} step={1}
+          value={formData.ai_order_time_limit_minutes}
+          onChange={(e) => handleChange('ai_order_time_limit_minutes', Number(e.target.value))} />
+        <Button onClick={handleSave} cargando={saving}>{t('Save settings')}</Button>
+      </Seccion>
+      <BackupSettings />
 
       <Seccion ancha titulo={t('General')} descripcion={t('Application behavior and the server it starts with.')}>
         <Input

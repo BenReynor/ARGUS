@@ -73,7 +73,7 @@ interface AppState {
   refreshServerMap: () => Promise<void>;
 
   // UI state
-  activeTab: 'dashboard' | 'channels' | 'members' | 'roles' | 'servidor' | 'asistente' | 'settings' | 'logs';
+  activeTab: 'backups' | 'dashboard' | 'channels' | 'members' | 'roles' | 'servidor' | 'asistente' | 'settings' | 'logs';
   setActiveTab: (tab: AppState['activeTab']) => void;
   
   selectedChannel: Channel | null;
@@ -111,6 +111,8 @@ const defaultConfig = (): Config => ({
   llm_chat_api_key_ciphertext: '',
   plan_provider: 'auto',
   ask_provider: 'auto',
+  ai_time_limit_minutes: 5,
+  ai_order_time_limit_minutes: 3,
   cli_agents: {
     opencode: { id: 'opencode', name: 'opencode', mode: 'auto', binary_path: null, model: 'auto', config: {}, enabled: true },
     codex: { id: 'codex', name: 'codex', mode: 'auto', binary_path: null, model: null, config: {}, enabled: true },

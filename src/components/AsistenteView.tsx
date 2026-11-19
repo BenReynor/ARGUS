@@ -1,20 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { confirm, open, save } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { BookOpen, Check, CircleDashed, FilePlus, Download, Hammer, Loader2, Square, TriangleAlert, Undo2, Upload, X } from 'lucide-react';
-import { useActiveGuildId, useShowNotification } from '../store/useStore';
+import { useActiveGuildId, useShowNotification, useStore } from '../store/useStore';
 import {
-  listarAgentesIa, enviarAlAsistente, leerPlanServidor, guardarPlanServidor, leerConversacion,
+  prepararLecturaModeracion, type EstimacionLectura, listarAgentesIa, enviarAlAsistente, leerPlanServidor, guardarPlanServidor, leerConversacion,
   guardarConversacion, nuevaConversacion, aplicarPropuesta, listarAvisosRecientes, listMembers,
-  type TipoAsistente, cancelarAsistente, resumirPlan, construirDesdePlan, compararPlan, onAsistentePlan,
-  onAsistenteEvento, onAsistentePropuesta, onAsistenteAccion, onAsistenteResumen,
+  type TipoAsistente, cancelarAsistente, resumirPlan, costeDescripcionesPlan, construirDesdePlan, compararPlan, onAsistentePlan,
+  onAsistenteEvento, onAsistentePropuesta, onAsistenteAccion,
 } from '../api/tauri';
 import type { AccionPropuesta, AgenteIa, AvanceAccion, AvisoReciente, Member, CambiosPlan, EstadoAccion, EventoPropuesta, ResultadoConstruccion, ResumenPlan, ResumenPropuesta } from '../types';
-import { Badge, Button, Cargando, EstadoVacio, ErrorPanel, Input, Select } from './ui';
+import { Badge, Button, Cargando, ConfirmarPeligroso, Dialogo, EstadoVacio, ErrorPanel, Input, Select } from './ui';
+import { seguridadPropuesta } from '../propuestaSeguridad';
+import { confirmarDescripciones } from '../costeDescripciones';
 import { t } from '../i18n';
 import { RespuestasDiscord } from './RespuestasDiscord';
 import { ContextoPersonalidad } from './ContextoPersonalidad';
 import './Asistente.css';
+import { DiffView } from './DiffView';
 
 type Modo = 'read' | 'plan' | 'execute';
 interface Herramienta { id: string; nombre: string; ok: boolean | null }
@@ -54,7 +57,7 @@ const grupoDe = (a: AccionPropuesta): number => {
   }
 };
 const ordenar = (acciones: AccionPropuesta[]) =>
-  acciones.map((a, i) => ({ a, g: grupoDe(a), i })).sort((x, y) => x.g - y.g || x.i - y.i).map((x) => x.a);
+  acciones.map((a, i) => ({ a, g: grupoDe(a), i })).sort((x, y) => x.g - y.g || x.i - y.i);
 
 const esErrorSinSesion = (m: string) => m.startsWith(t('The AI agent is not signed in. Sign in with its command line and try again'));
 
@@ -84,11 +87,17 @@ const argTexto = (args: unknown, claves: string[]): string => {
 const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
   const moderacion = tipo === 'moderacion';
   const guildId = useActiveGuildId();
+  const guild = useStore((s) => s.guildPanel.guild);
+  const nombreServidor = guild?.id === guildId ? guild.name : '';
   const showNotification = useShowNotification();
 
   const [miembros, setMiembros] = useState<Member[]>([]);
   const [avisos, setAvisos] = useState<AvisoReciente[]>([]);
   const [limite, setLimite] = useState(LIMITE_POR_DEFECTO);
+  const [confirmacionLectura, setConfirmacionLectura] = useState<EstimacionLectura | null>(null);
+  const [noPreguntar, setNoPreguntar] = useState(false);
+  const [preparandoLectura, setPreparandoLectura] = useState(false);
+  const preparandoRef = useRef(false);
 
   const cargarAvisos = useCallback(async (id: string) => {
     try { setAvisos(await listarAvisosRecientes(id)); } catch { setAvisos([]); }
@@ -123,7 +132,10 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
   const [sinSesion, setSinSesion] = useState(false);
 
   const [propuesta, setPropuesta] = useState<EventoPropuesta | null>(null);
+  const [confirmacionAplicar, setConfirmacionAplicar] = useState<{ propuesta: EventoPropuesta; guildId: string; nombre: string } | null>(null);
+  useEffect(() => { setConfirmacionAplicar(null); }, [propuesta, guildId, nombreServidor]);
   const [aplicando, setAplicando] = useState(false);
+  const [deteniendo, setDeteniendo] = useState(false);
   const [avances, setAvances] = useState<Record<number, AvanceAccion>>({});
   const [resumen, setResumen] = useState<ResumenPropuesta | null>(null);
   const [errorAplicar, setErrorAplicar] = useState<string | null>(null);
@@ -144,8 +156,8 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
   const finMensajes = useRef<HTMLDivElement>(null);
 
   // Referencias al último valor para los manejadores de eventos y los guardados diferidos.
-  const refs = useRef({ guildId, plan, mensajes, agente, modelo });
-  refs.current = { guildId, plan, mensajes, agente, modelo };
+  const refs = useRef({ guildId, plan, mensajes, agente, modelo, limite });
+  refs.current = { guildId, plan, mensajes, agente, modelo, limite };
   const planCargado = useRef<{ guildId: string; contenido: string } | null>(null);
   const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -267,16 +279,43 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
           .catch((err) => showNotification(mensajeError(err, t('Could not compare the plans')), 'error'));
       }),
       onAsistenteAccion((a) => setAvances((v) => ({ ...v, [a.indice]: a }))),
-      onAsistenteResumen((r) => { setResumen(r); setAplicando(false); }),
     ];
     return () => { bajas.forEach((b) => b.then((fn) => fn()).catch(() => {})); };
   }, []);
 
   useEffect(() => { finMensajes.current?.scrollIntoView({ block: 'end' }); }, [mensajes, propuesta, avances]);
 
-  const enviar = async () => {
+  useEffect(() => {
+    setConfirmacionLectura(null);
+    setNoPreguntar(false);
+  }, [guildId, agente, limite]);
+
+  const enviar = async (confirmarLectura = false) => {
     const contenido = texto.trim();
-    if (!guildId || !contenido || enviando || !agente || !modelo) return;
+    if (!guildId || !contenido || enviando || aplicando || cargandoServidor || !agente || !modelo || preparandoRef.current) return;
+    if (confirmacionLectura && !confirmarLectura) return;
+    if (moderacion && limite >= 500) {
+      preparandoRef.current = true;
+      setPreparandoLectura(true);
+      try {
+        const estimacion = await prepararLecturaModeracion(guildId, agente, modelo, limite, confirmarLectura, noPreguntar);
+        if (refs.current.guildId !== guildId || refs.current.agente !== agente || refs.current.limite !== limite) return;
+        if (estimacion.requiere_confirmacion && !confirmarLectura) {
+          setNoPreguntar(false);
+          setConfirmacionLectura(estimacion);
+          return;
+        }
+        if (confirmarLectura && noPreguntar) await useStore.getState().loadGuildSettings(guildId);
+        if (refs.current.guildId !== guildId || refs.current.agente !== agente || refs.current.limite !== limite) return;
+        setConfirmacionLectura(null);
+      } catch (e) {
+        showNotification(mensajeError(e, t('Could not prepare the message history reading')), 'error');
+        return;
+      } finally {
+        preparandoRef.current = false;
+        setPreparandoLectura(false);
+      }
+    }
     setTexto('');
     setSinSesion(false);
     setCambios(null);
@@ -365,7 +404,11 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
     setErrorAplicar(null);
     setSinSesion(false);
     try {
-      const res = await construirDesdePlan(agente, modelo, plan);
+      const coste = await costeDescripcionesPlan(plan);
+      if (!await confirmarDescripciones(coste, () => confirm(t('Generate {descriptions} descriptions with approximately {calls} AI calls? This may incur costs. Continue?', {
+        descriptions: coste.descripciones, calls: coste.llamadas,
+      }), { kind: 'warning', okLabel: t('Continue'), cancelLabel: t('Cancel') }))) return;
+      const res = await construirDesdePlan(agente, modelo, plan, coste.confirmar ? coste.descripciones : undefined);
       const ev: EventoPropuesta = { propuesta: res.propuesta, validacion: res.validacion };
       setConstruccion({ ev, res });
       setPropuesta(ev);
@@ -401,7 +444,13 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
     setPlanPrevio(null);
   };
 
-  const detener = () => { void cancelarAsistente().catch(() => {}); };
+  const detener = () => {
+    if (aplicando) setDeteniendo(true);
+    void cancelarAsistente().catch((e) => {
+      setDeteniendo(false);
+      showNotification(mensajeError(e, t('Could not stop the assistant')), 'error');
+    });
+  };
 
   const reiniciar = async (id: string) => {
     try {
@@ -425,15 +474,30 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
     if (guildId && mensajes.length > 0) void reiniciar(guildId);
   };
 
-  const aplicar = async () => {
+  const aplicar = async (confirmada = false) => {
     if (!propuesta || aplicando) return;
+    if (seguridadPropuesta(propuesta.propuesta.acciones).requiereNombre && !confirmada) {
+      if (!guildId || !nombreServidor) {
+        setErrorAplicar(t('The server name is not available. Reload the server before applying this proposal.'));
+        return;
+      }
+      setConfirmacionAplicar({ propuesta, guildId, nombre: nombreServidor });
+      return;
+    }
     setAplicando(true);
-    setAvances({});
-    setResumen(null);
+    setDeteniendo(false);
+    const anteriores = resumen?.resultados.filter((r) => r.estado === 'ok') ?? [];
+    setAvances(Object.fromEntries(anteriores.map((r) => [r.indice, { ...r, total: propuesta.propuesta.acciones.length }])));
     setErrorAplicar(null);
     try {
-      const r = await aplicarPropuesta(propuesta.propuesta);
+      const r = await aplicarPropuesta(propuesta.propuesta, anteriores);
       setResumen(r);
+      const detalle = propuesta.propuesta.acciones.map((a, i) => {
+        const resultado = r.resultados.find((x) => x.indice === i);
+        const estado = resultado ? { ok: t('Done'), error: t('Error'), omitida: t('Skipped') }[resultado.estado] : t('Cancelled');
+        return `${i + 1}. ${a.descripcion || a.herramienta}: ${estado}${resultado && resultado.estado !== 'ok' ? ` — ${resultado.mensaje}` : ''}`;
+      });
+      useStore.getState().addLog(`${t('Done: {done}, failed: {failed}, skipped: {skipped}, cancelled: {cancelled}', { done: r.hechas, failed: r.fallidas, skipped: r.omitidas, cancelled: r.canceladas })}\n${detalle.join('\n')}`);
       setAvances(Object.fromEntries(r.resultados.map((x) => [x.indice, { ...x, total: r.total }])));
     } catch (e) {
       setErrorAplicar(mensajeError(e, t('Could not apply the proposal')));
@@ -483,6 +547,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
   };
 
   const accionesOrdenadas = useMemo(() => (propuesta ? ordenar(propuesta.propuesta.acciones) : []), [propuesta]);
+  const seguridad = useMemo(() => seguridadPropuesta(propuesta?.propuesta.acciones ?? []), [propuesta]);
 
   if (!guildId) {
     return <EstadoVacio titulo={t('No server selected')} descripcion={t('Pick a server in the left column to write its plan and talk to the assistant.')} />;
@@ -633,6 +698,27 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
             <Button variante="ghost" tamano="sm" disabled={enviando || aplicando || !hayMensajes} onClick={() => { void reiniciar(guildId); }}>{t('New conversation')}</Button>
           </header>
 
+          {moderacion && limite >= 500 && (
+            <p className="asistente__aviso asistente__aviso--lectura" role="status">
+              <TriangleAlert size={18} aria-hidden="true" />
+              {t('Reading more messages takes longer, uses more tokens, and exposes more messages to the model provider.')}
+            </p>
+          )}
+          <Dialogo
+            abierto={confirmacionLectura !== null}
+            titulo={t('Confirm message history reading')}
+            descripcion={confirmacionLectura ? t('Read up to {n} messages per channel in {m} channels: ~{x} requests to Discord. Continue?', {
+              n: confirmacionLectura.limite, m: confirmacionLectura.canales, x: confirmacionLectura.peticiones,
+            }) : undefined}
+            onCerrar={() => { if (!preparandoLectura) setConfirmacionLectura(null); }}
+            pie={<>
+              <Button variante="secundario" disabled={preparandoLectura} onClick={() => setConfirmacionLectura(null)}>{t('Cancel')}</Button>
+              <Button disabled={preparandoLectura} onClick={() => { void enviar(true); }}>{t('Continue')}</Button>
+            </>}
+          >
+            <p>{t('Estimate for one history scan, using pages of 100 messages. Short histories need fewer requests; other tools and retries may add requests.')}</p>
+            <label><input type="checkbox" checked={noPreguntar} disabled={preparandoLectura} onChange={(e) => setNoPreguntar(e.target.checked)} /> {t('Do not ask again in this server')}</label>
+          </Dialogo>
           <div className="asistente__mensajes" aria-live="polite">
             {!hayMensajes && (
               <EstadoVacio
@@ -678,13 +764,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
                 {cambios.vista.anadidas + cambios.vista.quitadas === 0 ? (
                   <p>{t('The proposed plan is identical to the editor.')}</p>
                 ) : (
-                  <div className="asistente__diff" role="group" aria-label={t('Plan changes')}>
-                    {cambios.vista.lineas.map((l, i) => (
-                      <div key={i} className={l.tipo === 'added' ? 'anadida' : l.tipo === 'removed' ? 'quitada' : ''}>
-                        {l.tipo === 'added' ? '+ ' : l.tipo === 'removed' ? '− ' : '  '}{l.texto}
-                      </div>
-                    ))}
-                  </div>
+                  <DiffView lineas={cambios.vista.lineas} label={t('Plan changes')} />
                 )}
                 {cambios.vista.avisos.length > 0 && (
                   <div className="asistente__aviso" role="note">
@@ -701,7 +781,20 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
 
             {propuesta && (
               <section className="asistente__propuesta" aria-label={t('Proposal')}>
+                {seguridad.irreversibles.length > 0 && (
+                  <div className="asistente__irreversibles" role="note">
+                    <strong><TriangleAlert size={16} aria-hidden="true" /> {t('Irreversible actions — review before applying')}</strong>
+                    <ul>
+                      {seguridad.irreversibles.map(({ accion, indice }) => (
+                        <li key={indice}>{indice + 1}. {accion.descripcion || accion.herramienta} <code>{accion.herramienta}</code> <small>{JSON.stringify(accion.args)}</small></li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <h4>{t('Proposal')}</h4>
+                {seguridad.segundosEstimados !== null && (
+                  <p role="note">{t('Estimated duration: ≈{seconds} s (≈2 s per Discord request). Permission checks and rate limits may take longer.', { seconds: seguridad.segundosEstimados })}</p>
+                )}
                 {propuesta.propuesta.resumen && <p>{propuesta.propuesta.resumen}</p>}
                 {construccion && construccion.ev === propuesta && (
                   <>
@@ -735,7 +828,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
                 )}
                 {moderacion && (
                   <ul>
-                    {accionesOrdenadas.map((a, i) => {
+                    {accionesOrdenadas.map(({ a, i }) => {
                       const quien = argTexto(a.args, ['user_id', 'usuario', 'miembro', 'user']);
                       const motivo = argTexto(a.args, ['motivo', 'reason', 'razon']);
                       return (
@@ -747,37 +840,40 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
                             motivo ? t('Reason: {reason}', { reason: motivo }) : '',
                           ].filter(Boolean).join(' · ')}
                           avance={avances[i]}
-                          activa={aplicando && i === hechas}
+                          activa={aplicando && !avances[i] && i === accionesOrdenadas.find((x) => !avances[x.i])?.i}
                         />
                       );
                     })}
                   </ul>
                 )}
                 {!moderacion && GRUPOS().map((nombre, g) => {
-                  const del = accionesOrdenadas.map((a, i) => ({ a, i })).filter(({ a }) => grupoDe(a) === g);
+                  const del = accionesOrdenadas.filter(({ a }) => grupoDe(a) === g);
                   if (del.length === 0) return null;
                   return (
                     <div key={nombre} className="asistente__grupo">
                       <h5>{nombre} <span>{del.length}</span></h5>
                       <ul>
                         {del.map(({ a, i }) => (
-                          <FilaAccion key={i} texto={a.descripcion || a.herramienta} avance={avances[i]} activa={aplicando && i === hechas} />
+                          <FilaAccion key={i} texto={a.descripcion || a.herramienta} avance={avances[i]} activa={aplicando && !avances[i] && i === accionesOrdenadas.find((x) => !avances[x.i])?.i} />
                         ))}
                       </ul>
                     </div>
                   );
                 })}
-                {resumen && (
+                {resumen && !aplicando && (
                   <p className="asistente__resumen" role="status">
-                    {t('Done: {done}, failed: {failed}, skipped: {skipped}', { done: resumen.hechas, failed: resumen.fallidas, skipped: resumen.omitidas + resumen.canceladas })}
+                    {t('Done: {done}, failed: {failed}, skipped: {skipped}, cancelled: {cancelled}', { done: resumen.hechas, failed: resumen.fallidas, skipped: resumen.omitidas, cancelled: resumen.canceladas })}
                   </p>
                 )}
                 {errorAplicar && <p className="asistente__error" role="alert">{errorAplicar}</p>}
                 <div className="asistente__acciones">
                   {aplicando ? (
-                    <Button variante="peligro" onClick={detener}><Square size={14} /> {t('Stop')}</Button>
+                    <Button variante="peligro" onClick={detener} disabled={deteniendo}><Square size={14} /> {deteniendo ? t('Stopping after the current action…') : t('Stop')}</Button>
                   ) : resumen ? (
-                    <Button variante="secundario" onClick={() => { setPropuesta(null); setResumen(null); setAvances({}); }}>{t('Close')}</Button>
+                    <>
+                      <Button onClick={() => { void aplicar(); }} disabled={resumen.hechas === total}>{t('Apply')}</Button>
+                      <Button variante="secundario" onClick={() => { setPropuesta(null); setResumen(null); setAvances({}); }}>{t('Close')}</Button>
+                    </>
                   ) : (
                     <>
                       <Button onClick={() => { void aplicar(); }} disabled={total === 0}>{t('Apply')}</Button>
@@ -785,6 +881,19 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
                     </>
                   )}
                 </div>
+                <ConfirmarPeligroso
+                  abierto={confirmacionAplicar?.propuesta === propuesta && confirmacionAplicar?.guildId === guildId && confirmacionAplicar?.nombre === nombreServidor}
+                  titulo={t('Confirm destructive proposal')}
+                  descripcion={t('This proposal deletes more than 5 channels/roles or bans more than 3 members. Type the server name to apply it.')}
+                  nombre={nombreServidor}
+                  textoConfirmar={t('Apply')}
+                  onCerrar={() => setConfirmacionAplicar(null)}
+                  onConfirmar={() => {
+                    if (confirmacionAplicar?.propuesta !== propuesta || confirmacionAplicar?.guildId !== useStore.getState().activeGuildId || confirmacionAplicar?.nombre !== nombreServidor) return;
+                    setConfirmacionAplicar(null);
+                    return aplicar(true);
+                  }}
+                />
               </section>
             )}
             <div ref={finMensajes} />
@@ -808,7 +917,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
             {enviando ? (
               <Button variante="peligro" onClick={detener}><Square size={14} /> {t('Stop')}</Button>
             ) : (
-              <Button type="submit" disabled={!texto.trim() || !modelo || aplicando}>{t('Send')}</Button>
+              <Button type="submit" disabled={!texto.trim() || !modelo || aplicando || preparandoLectura || cargandoServidor}>{t('Send')}</Button>
             )}
           </form>
         </section>

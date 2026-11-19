@@ -735,6 +735,9 @@ const MAX_SLOWMODE_SEGUNDOS: u16 = 21600;
 /// `parent_id` vacío (`""`) saca el canal de su categoría.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct DatosCanal {
+    #[serde(default)]
+    pub permission_overwrites:
+        Option<Vec<twilight_model::channel::permission_overwrite::PermissionOverwrite>>,
     pub name: Option<String>,
     pub channel_type: Option<u8>,
     pub parent_id: Option<String>,
@@ -823,7 +826,7 @@ pub async fn create_guild_channel(
             );
         }
     }
-    let permisos_padre = match padre {
+    let mut permisos_padre = match padre {
         Some(pid) => client
             .channel(pid)
             .await
@@ -835,15 +838,19 @@ pub async fn create_guild_channel(
             .unwrap_or_default(),
         None => Vec::new(),
     };
+    for overwrite in datos.permission_overwrites.iter().flatten() {
+        permisos_padre.retain(|p| p.id != overwrite.id || p.kind != overwrite.kind);
+        permisos_padre.push(overwrite.clone());
+    }
     let mut peticion = client
         .create_guild_channel(gid, nombre)
         .map_err(|_| "Invalid channel name".to_string())?;
     peticion = peticion.kind(ChannelType::from(tipo));
     if let Some(pid) = padre {
         peticion = peticion.parent_id(pid);
-        if !permisos_padre.is_empty() {
-            peticion = peticion.permission_overwrites(&permisos_padre);
-        }
+    }
+    if !permisos_padre.is_empty() {
+        peticion = peticion.permission_overwrites(&permisos_padre);
     }
     // Voz (2), escenario (13) y categoría (4) no tienen descripción: Discord
     // rechaza el canal entero («word that is not allowed») si se manda una,
@@ -1775,6 +1782,20 @@ mod tests {
         assert_eq!(nombres_de_permisos(admin).len(), PERMISOS_DISCORD.len());
         let dueno = calcular_permisos("555", Some("2"), "2", &roles, &[]);
         assert_eq!(dueno, todos_los_permisos());
+    }
+
+    #[test]
+    fn aviso_administrator_solo_si_lo_conceden_los_roles_del_bot() {
+        let roles = vec![rol("555", 1 << 10), rol("600", BIT_ADMINISTRADOR)];
+        // Un rol administrador ajeno no debe disparar el aviso.
+        let sin_admin = calcular_permisos("555", None, "2", &roles, &[]);
+        assert!(!nombres_de_permisos(sin_admin).contains(&"Administrador".to_string()));
+        let con_admin = calcular_permisos("555", None, "2", &roles, &["600".to_string()]);
+        assert!(nombres_de_permisos(con_admin).contains(&"Administrador".to_string()));
+        // También se detecta si se concede desde @everyone.
+        let everyone_admin =
+            calcular_permisos("555", None, "2", &[rol("555", BIT_ADMINISTRADOR)], &[]);
+        assert!(nombres_de_permisos(everyone_admin).contains(&"Administrador".to_string()));
     }
     use wiremock::{Mock, MockServer, ResponseTemplate};
 

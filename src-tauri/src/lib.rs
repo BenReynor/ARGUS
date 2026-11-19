@@ -6,6 +6,7 @@ use tauri::{
 use tauri_plugin_log::{Target, TargetKind};
 
 pub mod asistente;
+pub mod backup;
 pub mod chat;
 pub mod commands;
 pub mod crypto;
@@ -22,6 +23,7 @@ pub mod plan_descripciones;
 pub mod plan_estructurado;
 pub mod propuesta;
 pub mod responder;
+pub mod snapshots;
 pub mod state;
 pub mod sync;
 #[cfg(test)]
@@ -65,6 +67,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
+            crypto::keyring_available,
             start_bot,
             stop_bot,
             get_bot_status,
@@ -138,6 +141,12 @@ pub fn run() {
             save_cli_agent,
             search_messages,
             cleanup_context,
+            snapshots::server_snapshots,
+            backup::export_configuration,
+            backup::preview_configuration,
+            backup::import_configuration,
+            backup::backup_schedule,
+            backup::backup_window_preferences,
             export_all_data,
             import_data,
             uninstall_wipe,
@@ -146,8 +155,10 @@ pub fn run() {
             propuesta::cancelar_asistente,
             asistente::listar_agentes_ia,
             asistente::enviar_al_asistente,
+            asistente::preparar_lectura_moderacion,
             asistente::construir_desde_plan,
             asistente::resumir_plan,
+            asistente::coste_descripciones_plan,
             asistente::comparar_plan,
             asistente::leer_plan_servidor,
             asistente::guardar_plan_servidor,
@@ -158,6 +169,7 @@ pub fn run() {
             asistente::guardar_conversacion,
             asistente::nueva_conversacion,
         ])
+        .manage(backup::Pending::default())
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -166,7 +178,10 @@ pub fn run() {
             // `ARGUS_DB` tiene prioridad sobre la ruta por defecto.
             let ruta = db::ruta_bd(&handle)?;
             let pool = tauri::async_runtime::block_on(db::abrir_bd_por_ruta(&ruta))?;
+            tauri::async_runtime::block_on(crypto::initialize(&pool))?;
             app.manage(pool);
+            backup::start_automatic(handle.clone());
+            snapshots::start_automatic(handle.clone());
 
             // Load the saved config; a failure is logged but must not abort startup
             let app_state = app.state::<AppState>();

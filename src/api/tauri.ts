@@ -172,10 +172,13 @@ export const guardarConversacion = (guildId: string, agente: string, modelo: str
   invoke<void>('guardar_conversacion', { guildId, agente, modelo, mensajes, tipo });
 export const nuevaConversacion = (guildId: string, tipo?: TipoAsistente) =>
   invoke<void>('nueva_conversacion', { guildId, tipo });
-export const aplicarPropuesta = (propuesta: Propuesta) => invoke<ResumenPropuesta>('aplicar_propuesta', { propuesta });
+export const aplicarPropuesta = (propuesta: Propuesta, anteriores: ResumenPropuesta['resultados'] = []) =>
+  invoke<ResumenPropuesta>('aplicar_propuesta', { propuesta, anteriores });
 export const resumirPlan = (plan: string) => invoke<ResumenPlan>('resumir_plan', { plan });
-export const construirDesdePlan = (agente: string, modelo: string, plan?: string) =>
-  invoke<ResultadoConstruccion>('construir_desde_plan', { agente, modelo, plan });
+export interface CosteDescripciones { descripciones: number; llamadas: number; confirmar: boolean }
+export const costeDescripcionesPlan = (plan: string) => invoke<CosteDescripciones>('coste_descripciones_plan', { plan });
+export const construirDesdePlan = (agente: string, modelo: string, plan?: string, descripcionesConfirmadas?: number) =>
+  invoke<ResultadoConstruccion>('construir_desde_plan', { agente, modelo, plan, descripcionesConfirmadas });
 export const compararPlan = (actual: string, propuesto: string) =>
   invoke<CambiosPlan>('comparar_plan', { actual, propuesto });
 export const onAsistentePlan = (cb: (e: EventoPlan) => void) =>
@@ -190,3 +193,60 @@ export const onAsistenteAccion = (cb: (a: AvanceAccion) => void) =>
   listen<AvanceAccion>('asistente-accion', (event: Event<AvanceAccion>) => cb(event.payload));
 export const onAsistenteResumen = (cb: (r: ResumenPropuesta) => void) =>
   listen<ResumenPropuesta>('asistente-resumen', (event: Event<ResumenPropuesta>) => cb(event.payload));
+
+export const keyringAvailable = () => invoke<boolean>('keyring_available');
+
+export interface EstimacionLectura {
+  limite: number; canales: number; peticiones: number; requiere_confirmacion: boolean;
+}
+export const prepararLecturaModeracion = (guildId: string, agente: string, modelo: string, limite: number, confirmar = false, noPreguntar = false) =>
+  invoke<EstimacionLectura>('preparar_lectura_moderacion', { guildId, agente, modelo, limite, confirmar, noPreguntar });
+
+export interface BackupPreview {
+  id: string; created_at: string; conversations: boolean;
+  counts: Record<string, number>; bots: string[];
+}
+export interface BackupSchedule { enabled: boolean; conversations: boolean; folder: string }
+export const exportConfiguration = (path: string, password: string, conversations: boolean) =>
+  invoke<void>('export_configuration', { path, password, conversations });
+export const previewConfiguration = (path: string, password: string) =>
+  invoke<BackupPreview>('preview_configuration', { path, password });
+export const importConfiguration = (id: string, replace: boolean) =>
+  invoke<void>('import_configuration', { id, replace, confirmed: true });
+export const backupSchedule = (enabled?: boolean, password?: string, conversations?: boolean) =>
+  invoke<BackupSchedule>('backup_schedule', { enabled: enabled ?? null, password: password ?? null, conversations: conversations ?? null });
+
+export const backupWindowPreferences = (preferences?: { auto_start: boolean; minimize_to_tray: boolean }) =>
+  invoke<{ auto_start: boolean; minimize_to_tray: boolean } | null>('backup_window_preferences', { preferences: preferences ?? null });
+
+export interface ServerSnapshotItem {
+  id: string;
+  name: string;
+  created_at: string;
+  size_bytes: number;
+  summary: { channels: number; roles: number; members: number; emojis: number; stickers: number; webhooks: number; bans: number };
+  automatic: boolean;
+}
+export interface SnapshotCounts { missing: number; changed: number; extra: number }
+export interface SnapshotComparison {
+  counts: SnapshotCounts;
+  groups: {
+    kind: 'channels' | 'roles' | 'permissions' | 'member_roles';
+    counts: SnapshotCounts;
+    entries: { id: string; label: string; status: 'missing' | 'changed' | 'extra'; lineas: import('../types').LineaDiff[] }[];
+  }[];
+}
+export interface ServerSnapshotListing {
+  comparison?: SnapshotComparison;
+  snapshots: ServerSnapshotItem[];
+  schedule: { enabled: boolean; keep_last: number; last_error: string | null };
+}
+export type ServerSnapshotRequest =
+  | { op: 'list' | 'create' }
+  | { op: 'rename'; id: string; name: string }
+  | { op: 'delete' | 'compare'; id: string }
+  | { op: 'export'; id: string; path: string }
+  | { op: 'import'; path: string }
+  | { op: 'schedule'; enabled: boolean; keep_last: number };
+export const serverSnapshots = (botId: string, guildId: string, request: ServerSnapshotRequest): Promise<ServerSnapshotListing> =>
+  invoke('server_snapshots', { botId, guildId, request });

@@ -90,6 +90,10 @@ pub struct Config {
     pub plan_provider: String,
     pub ask_provider: String,
     pub cli_agents: HashMap<String, CliAgentConfig>,
+    #[serde(default = "default_ai_time_limit_minutes")]
+    pub ai_time_limit_minutes: u32,
+    #[serde(default = "default_ai_order_time_limit_minutes")]
+    pub ai_order_time_limit_minutes: u32,
 
     // Contexto/Memoria
     pub context_limit_per_user: u32,
@@ -127,6 +131,32 @@ pub struct Config {
     /// Idioma de la interfaz: "en" (por defecto) o "es".
     #[serde(default = "default_ui_language")]
     pub ui_language: String,
+}
+
+fn default_ai_time_limit_minutes() -> u32 {
+    5
+}
+fn default_ai_order_time_limit_minutes() -> u32 {
+    3
+}
+
+impl Config {
+    pub fn ai_time_limit(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(u64::from(self.ai_time_limit_minutes.clamp(1, 30)) * 60)
+    }
+    pub fn ai_order_time_limit(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(
+            u64::from(self.ai_order_time_limit_minutes.clamp(1, 30)) * 60,
+        )
+    }
+    pub fn validate_ai_time_limits(&self) -> Result<(), String> {
+        if !(1..=30).contains(&self.ai_time_limit_minutes)
+            || !(1..=30).contains(&self.ai_order_time_limit_minutes)
+        {
+            return Err("AI time limits must be between 1 and 30 minutes".into());
+        }
+        Ok(())
+    }
 }
 
 fn default_ui_language() -> String {
@@ -203,6 +233,8 @@ impl Default for Config {
             plan_provider: "auto".to_string(),
             ask_provider: "auto".to_string(),
             cli_agents,
+            ai_time_limit_minutes: default_ai_time_limit_minutes(),
+            ai_order_time_limit_minutes: default_ai_order_time_limit_minutes(),
 
             context_limit_per_user: 10,
             context_limit_per_channel: 50,
@@ -460,6 +492,36 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ai_time_limits_defaults_legacy_validation_and_roundtrip() {
+        let mut json = serde_json::to_value(Config::default()).unwrap();
+        json.as_object_mut()
+            .unwrap()
+            .remove("ai_time_limit_minutes");
+        json.as_object_mut()
+            .unwrap()
+            .remove("ai_order_time_limit_minutes");
+        let mut config: Config = serde_json::from_value(json).unwrap();
+        assert_eq!(config.ai_time_limit().as_secs(), 300);
+        assert_eq!(config.ai_order_time_limit().as_secs(), 180);
+        for minutes in [1, 7, 30] {
+            config.ai_time_limit_minutes = minutes;
+            config.ai_order_time_limit_minutes = minutes;
+            config.validate_ai_time_limits().unwrap();
+            let restored: Config =
+                serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+            assert_eq!(restored.ai_time_limit().as_secs(), u64::from(minutes) * 60);
+            assert_eq!(restored.ai_order_time_limit(), restored.ai_time_limit());
+        }
+        for minutes in [0, 31, u32::MAX] {
+            config.ai_time_limit_minutes = minutes;
+            assert!(config.validate_ai_time_limits().is_err());
+            config.ai_time_limit_minutes = 5;
+            config.ai_order_time_limit_minutes = minutes;
+            assert!(config.validate_ai_time_limits().is_err());
+        }
+    }
 
     #[test]
     fn default_config_has_no_active_guild() {

@@ -64,6 +64,8 @@ export interface Config {
   plan_provider: string;
   ask_provider: string;
   cli_agents: Record<string, CliAgentConfig>;
+  ai_time_limit_minutes: number;
+  ai_order_time_limit_minutes: number;
 
   context_limit_per_user: number;
   context_limit_per_channel: number;
@@ -113,6 +115,7 @@ export interface BotRegistrado extends BotConfig {
 
 /** Ajustes propios de un servidor (sincronizado con `GuildSettings` de db.rs). */
 export interface GuildSettings {
+  moderacion_no_preguntar: boolean;
   alias: string | null;
   notes: string;
   vigilance_enabled: boolean;
@@ -125,6 +128,8 @@ export interface GuildSettings {
   /** IDs de canales; vacía = todos. */
   chat_canales: string[];
   chat_espera_s: number;
+  chat_max_diario: number;
+  chat_respuestas_hoy: number;
   /** Mensajes previos que se pasan al agente (máximo 30). */
   chat_contexto: number;
   /** IDs de usuarios a los que responde; vacía = todos. */
@@ -134,6 +139,16 @@ export interface GuildSettings {
   /** IDs que pueden dar órdenes; vacía = nadie. */
   chat_ordenes_usuarios: string[];
   chat_ordenes_confirmar: boolean;
+  ordenes_max_acciones: number;
+  ordenes_permitidas: {
+    estructura: boolean;
+    borrar_canales_roles: boolean;
+    silenciar: boolean;
+    expulsar: boolean;
+    banear: boolean;
+    borrar_mensajes: boolean;
+    avisos: boolean;
+  };
   ordenes_agente: 'claude' | 'opencode' | 'codex';
   ordenes_modelo: string;
 }
@@ -262,5 +277,5 @@ export type EventoAsistente =
   | { tipo: 'error'; mensaje: string }
   | { tipo: 'fin'; sesion: string | null; cancelado: boolean };
 export interface ConversacionAsistente {
-  agente: string; modelo: string; session_id: string | null; mensajes: unknown;
+  agente: string; modelo: string; session_id: string | null; mensajes: unknown; lectura_confirmada: number;
 }

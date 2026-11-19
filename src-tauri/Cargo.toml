@@ -36,7 +36,9 @@ tracing = { version = "0.1", features = ["std"] }
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "migrate", "macros", "any"] }
 aes-gcm = "0.10"
+argon2 = "0.5"
 machine-uid = "0.3"
+keyring = { version = "3.6", features = ["sync-secret-service", "crypto-rust", "windows-native", "apple-native"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 sha2 = "0.10"
 getrandom = "0.2"

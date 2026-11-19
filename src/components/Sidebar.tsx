@@ -3,7 +3,7 @@ import { useStore, useConfig, useBotStatus, useActiveTab, useSetActiveTab, useSh
 import { startBot, stopBot, setActiveBot, botAvatarUrl } from '../api/tauri';
 import {
   LayoutDashboard, Hash, Users, Shield, Terminal, Settings,
-  Power, Circle, Bot, Server, Sparkles
+  Power, Circle, Bot, Server, Sparkles, Archive
 } from 'lucide-react';
 import { Avatar } from './ui';
 import { t } from '../i18n';
@@ -31,6 +31,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ tabs }) => {
     'sparkles': Sparkles,
     'terminal': Terminal,
     'settings': Settings,
+    'archive': Archive,
   };
 
   return (

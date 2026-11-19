@@ -1,9 +1,11 @@
 import React, { useEffect } from 'react';
+import { listen } from '@tauri-apps/api/event';
 import { useStore } from './store/useStore';
 import { Sidebar } from './components/Sidebar';
 import { GuildRail } from './components/GuildRail';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
+import { BackupsView } from './components/BackupsView';
 import { ChannelsView } from './components/ChannelsView';
 import { MembersView } from './components/MembersView';
 import { RolesView } from './components/RolesView';
@@ -17,7 +19,7 @@ import { aplicarTema } from './temas';
 import { setIdioma, t } from './i18n';
 import { pasoCarga, finCarga } from './carga';
 import { useBotStatus, useShowNotification } from './store/useStore';
-import { getConfig, getBotStatus, refreshServerMap, getServerMap, onMapUpdated, onSyncProgress, onBotStatusChange, onLog } from './api/tauri';
+import { backupWindowPreferences, getConfig, getBotStatus, refreshServerMap, getServerMap, onMapUpdated, onSyncProgress, onBotStatusChange, onLog } from './api/tauri';
 
 function App() {
   const setConfig = useStore((s) => s.setConfig);
@@ -41,6 +43,8 @@ function App() {
         pasoCarga('Reading your settings…', 50);
         // El backend es la fuente de verdad (incluye tema y modo guardados).
         setConfig(await getConfig());
+        const preferences = await backupWindowPreferences();
+        if (preferences) useStore.getState().setUiSettings(preferences);
       } catch (e) {
         console.error('Config load error:', e);
       }
@@ -68,6 +72,7 @@ function App() {
       }
     };
     const desuscribir = [
+      listen('backup-error', () => showNotification(t('Automatic configuration backup failed'), 'error')),
       onMapUpdated(recargarMapa),
       onSyncProgress((p) => {
         if (p.step >= p.total) recargarMapa();
@@ -79,13 +84,14 @@ function App() {
     return () => {
       desuscribir.forEach((u) => u.then((fn) => fn()).catch(() => {}));
     };
-  }, [setBotStatus, setServerMap, setConfig]);
+  }, [setBotStatus, setServerMap, setConfig, showNotification]);
 
   const tabs: { id: string; label: string; icon: string }[] = [
     { id: 'dashboard', label: t('Dashboard'), icon: 'layout-dashboard' },
     { id: 'channels', label: t('Channels'), icon: 'hash' },
     { id: 'members', label: t('Members'), icon: 'users' },
     { id: 'roles', label: t('Roles'), icon: 'shield' },
+    { id: 'backups', label: t('Backups'), icon: 'archive' },
     { id: 'servidor', label: t('Server'), icon: 'server' },
     { id: 'asistente', label: t('AI Assistant'), icon: 'sparkles' },
     { id: 'logs', label: t('Logs'), icon: 'terminal' },
@@ -104,6 +110,7 @@ function App() {
       case 'channels': return <ChannelsView />;
       case 'members': return <MembersView />;
       case 'roles': return <RolesView />;
+      case 'backups': return <BackupsView />;
       case 'servidor': return <ServidorView />;
       case 'asistente': return <AsistenteView />;
       case 'logs': return <LogsView />;
