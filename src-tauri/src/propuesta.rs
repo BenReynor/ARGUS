@@ -19,6 +19,7 @@ const TIPO_CATEGORIA: u8 = 4;
 /// Acciones que no se pueden deshacer restaurando el estado anterior. Incluye
 /// los envíos y avisos: el destinatario ya puede haberlos recibido.
 pub const ACCIONES_DESTRUCTIVAS: &[&str] = &[
+    "aplicar_restauracion",
     "borrar_canal",
     "borrar_rol",
     "banear",
@@ -62,6 +63,7 @@ impl Propuesta {
         for accion in &self.acciones {
             let h = accion.herramienta.as_str();
             let permitido = match h {
+                "aplicar_restauracion" => permisos.estructura && permisos.borrar_canales_roles,
                 "crear_canal"
                 | "editar_canal"
                 | "ordenar_canales"

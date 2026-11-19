@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_notification::NotificationExt;
 use tokio::sync::Notify;
 use twilight_gateway::{Intents, Shard, ShardId};
 use twilight_model::gateway::event::Event;
@@ -265,7 +266,9 @@ pub fn lanzar(
                 }
             },
         )));
-        let mut shard = Shard::new(ShardId::ONE, token, intents());
+        let mut detector = crate::destruction::Detector::default();
+        let protection_token = token.clone();
+        let mut shard = Shard::new(ShardId::ONE, token.clone(), intents());
         loop {
             match shard.next_event().await {
                 Ok(evento) => {
@@ -285,6 +288,104 @@ pub fn lanzar(
                                     }
                                 }
                             });
+                        }
+                    }
+                    // Observar antes de aplicar: el primer borrado aún existe en el mapa.
+                    if let (Some((guild, _, _)), Some(pool)) =
+                        (crate::destruction::target(&evento), &pool)
+                    {
+                        match crate::db::get_guild_settings(pool, &bot_id, &guild).await {
+                            Ok(settings) => {
+                                let burst = {
+                                    let maps = mapas.lock().unwrap();
+                                    maps.get(&guild).and_then(|map| {
+                                        detector.observe(
+                                            map,
+                                            &evento,
+                                            &settings.destruction,
+                                            chrono::Utc::now().timestamp_millis(),
+                                        )
+                                    })
+                                };
+                                if let Some(burst) = burst {
+                                    let (app, pool, bot, token) = (
+                                        app_estado.clone(),
+                                        pool.clone(),
+                                        bot_id.clone(),
+                                        protection_token.clone(),
+                                    );
+                                    tokio::spawn(async move {
+                                        match crate::destruction::protect(
+                                            &pool,
+                                            &bot,
+                                            &token,
+                                            None,
+                                            burst,
+                                            |alert| crate::destruction::notify(&app, alert),
+                                        )
+                                        .await
+                                        {
+                                            Ok(alert) => {
+                                                let _ = app.emit("destruction-alert", &alert);
+                                            }
+                                            Err(e) => {
+                                                let lang = app
+                                                    .try_state::<crate::state::AppState>()
+                                                    .map(|s| crate::i18n::idioma(&s))
+                                                    .unwrap_or_else(|| "en".into());
+                                                let text = crate::i18n::tr(
+                                                    &lang,
+                                                    &format!("Emergency protection failed: {e}"),
+                                                );
+                                                tracing::error!("{text}");
+                                                let _ =
+                                                    app.emit("bot-log", format!("[ERROR] {text}"));
+                                                let _ = app
+                                                    .notification()
+                                                    .builder()
+                                                    .title(crate::i18n::tr(
+                                                        &lang,
+                                                        "Mass deletion detected",
+                                                    ))
+                                                    .body(text)
+                                                    .show();
+                                            }
+                                        }
+                                    });
+                                }
+                            }
+                            Err(e) => tracing::error!("No se pudo leer la protección: {e}"),
+                        }
+                    }
+                    if let Some(pool) = &pool {
+                        match crate::snapshots::departed::on_event(
+                            pool, &bot_id, &token, None, &evento,
+                        )
+                        .await
+                        {
+                            Ok(logs) => {
+                                let lang = app_estado
+                                    .try_state::<crate::state::AppState>()
+                                    .map(|s| crate::i18n::idioma(&s))
+                                    .unwrap_or_else(|| "en".into());
+                                for text in logs {
+                                    let _ =
+                                        app_estado.emit("bot-log", crate::i18n::tr(&lang, &text));
+                                }
+                            }
+                            Err(e) => {
+                                let lang = app_estado
+                                    .try_state::<crate::state::AppState>()
+                                    .map(|s| crate::i18n::idioma(&s))
+                                    .unwrap_or_else(|| "en".into());
+                                let _ = app_estado.emit(
+                                    "bot-log",
+                                    crate::i18n::tr(
+                                        &lang,
+                                        &format!("Returning member roles failed: {e}"),
+                                    ),
+                                );
+                            }
                         }
                     }
                     let cambios = aplicar_a_mapas(&mapas, &evento);

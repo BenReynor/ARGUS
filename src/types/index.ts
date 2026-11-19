@@ -119,6 +119,7 @@ export interface GuildSettings {
   alias: string | null;
   notes: string;
   vigilance_enabled: boolean;
+  destruction: { enabled: boolean; threshold: number; window_seconds: number; remove_roles: boolean };
   personality_enabled: boolean;
   templates_enabled: boolean;
   /** Conversación del bot: `personality_enabled` es el interruptor. */

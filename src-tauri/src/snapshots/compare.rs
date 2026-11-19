@@ -206,7 +206,7 @@ fn compare(
 }
 
 /// Solo lee las colecciones necesarias: no requiere permisos de bans, webhooks o CDN.
-pub(super) async fn compare_saved(
+pub(crate) async fn compare_saved(
     pool: &SqlitePool,
     bot: &str,
     guild: &str,

@@ -209,3 +209,24 @@ members with a role equal to or above the bot's.
 - **«No active server in ARGUS»**: pass `guild_id` or use `elegir_servidor`.
 - **Missing permission or hierarchy**: the message says which permission the bot
   needs, or which role must be moved up in the server's role list.
+
+## Snapshots y restauración con aprobación
+
+- `listar_snapshots` lista los snapshots del bot y servidor activos.
+- `crear_snapshot` guarda una captura local mediante lecturas de Discord; no cambia el servidor.
+- `comparar_snapshot({"snapshot_id":"…"})` compara la captura con el servidor actual.
+- `info_restauracion({"snapshot_id":"…","undo":false,"delete_extra":false})`
+  devuelve los pasos exactos, conflictos, elementos irrecuperables, duración y una
+  `propuesta` estructurada. Sin ID conserva la consulta de la lista.
+
+La IA debe explicar los conflictos y pedir aprobación. La propuesta se conserva
+localmente para que ARGUS ejecute exactamente lo revisado después de pulsar Apply.
+Una llamada MCP directa a `aplicar_restauracion` se rechaza: solo el ejecutor de
+propuestas aprobadas puede restaurar.
+
+En Discord, un autor autorizado puede pedir «restaura el último snapshot» o
+«restore the latest snapshot», además de `restore <snapshot-id> [undo]`.
+Se usa el mismo motor, se publican los pasos y los conflictos, y se espera el
+«sí» del mismo autor en el mismo canal durante cinco minutos, incluso si las
+órdenes normales tienen confirmación automática. Cancelar, caducar o responder
+con otro usuario no aplica cambios.

@@ -714,6 +714,31 @@ impl Default for PermisosOrdenes {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct DestructionSettings {
+    pub enabled: bool,
+    pub threshold: usize,
+    pub window_seconds: u64,
+    pub remove_roles: bool,
+}
+impl Default for DestructionSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            threshold: 5,
+            window_seconds: 60,
+            remove_roles: false,
+        }
+    }
+}
+impl DestructionSettings {
+    pub fn normalize(&mut self) {
+        self.threshold = self.threshold.clamp(2, 100);
+        self.window_seconds = self.window_seconds.clamp(1, 3600);
+    }
+}
+
 // Ajustes propios de cada servidor (por bot)
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
@@ -724,6 +749,7 @@ pub struct GuildSettings {
     pub alias: Option<String>,
     pub notes: String,
     pub vigilance_enabled: bool,
+    pub destruction: DestructionSettings,
     /// Interruptor de la conversación del bot en este servidor.
     pub personality_enabled: bool,
     pub templates_enabled: bool,
@@ -812,6 +838,7 @@ impl Default for GuildSettings {
             alias: None,
             notes: String::new(),
             vigilance_enabled: false,
+            destruction: DestructionSettings::default(),
             personality_enabled: false,
             templates_enabled: false,
             chat_agente: chat_agente_defecto(),
@@ -840,6 +867,7 @@ impl GuildSettings {
         if !matches!(self.chat_agente.as_str(), "claude" | "opencode" | "codex") {
             self.chat_agente = chat_agente_defecto();
         }
+        self.destruction.normalize();
         self.chat_contexto = self.chat_contexto.min(CHAT_CONTEXTO_MAX);
         self.ordenes_max_acciones = self.ordenes_max_acciones.clamp(1, 500);
         self

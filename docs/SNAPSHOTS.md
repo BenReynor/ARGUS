@@ -24,12 +24,17 @@ origen; no modifica Discord. Los archivos contienen datos de miembros y baneos:
 deben guardarse en un lugar privado.
 
 La programación es opcional y se persiste por bot y servidor. Mientras ARGUS
-está abierto, comprueba al arrancar y cada hora si falta la copia del día UTC.
-Conserva los N snapshots automáticos más recientes (7 por defecto, entre 1 y
-365), sin borrar copias manuales ni las de otros servidores o bots. Un fallo no
-marca el día como completado: se reintenta en la próxima comprobación y se
+está abierto, comprueba al arrancar y cada minuto si ha transcurrido el intervalo
+desde la última copia correcta: 6, 12 (por defecto) o 24 horas. Conserva los N
+snapshots automáticos más recientes (14 por defecto, una semana a intervalos de
+12 horas; entre 1 y 365), sin borrar copias manuales ni las de otros servidores o
+bots. **Create snapshot** sigue disponible en cualquier momento y no retrasa la
+próxima copia automática. Un fallo no actualiza la fecha de éxito: se reintenta en la próxima comprobación y se
 muestra el último error en Backups. No requiere mantener seleccionado ese bot o
-servidor.
+servidor. La migración `014_snapshot_intervals.sql` conserva la activación, la
+retención elegida, el último éxito y el último error de las programaciones
+existentes, con su frecuencia anterior de 24 horas. Las nuevas usan 12 horas y
+14 copias por defecto.
 
 Pruebas: `cargo test --manifest-path src-tauri/Cargo.toml snapshots::`. Se usa
 exclusivamente Discord falso local, incluidas las imágenes de CDN; también se

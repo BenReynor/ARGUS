@@ -13,6 +13,7 @@ import { SettingsView } from './components/SettingsView';
 import { LogsView } from './components/LogsView';
 import { ServidorView } from './components/ServidorView';
 import { AsistenteView } from './components/AsistenteView';
+import { DestructionAlerts } from './components/DestructionAlerts';
 import { Notification } from './components/Notification';
 import { LayoutDashboard, Hash, Users, Shield, Terminal, Settings, Server, Sparkles } from 'lucide-react';
 import { aplicarTema } from './temas';
@@ -126,6 +127,7 @@ function App() {
       <div className="main-layout">
         <Header titulo={seccion.label} icono={iconosSeccion[seccion.icon]} />
         <main className="main-content">
+          <DestructionAlerts />
           {renderView()}
         </main>
       </div>

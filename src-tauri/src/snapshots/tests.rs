@@ -4,7 +4,7 @@ use wiremock::{
     Mock, MockServer, ResponseTemplate,
 };
 
-async fn database() -> SqlitePool {
+pub(super) async fn database() -> SqlitePool {
     let p = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
         .connect("sqlite::memory:")
@@ -13,7 +13,7 @@ async fn database() -> SqlitePool {
     db::run_migrations(&p).await.unwrap();
     p
 }
-async fn fixture() -> MockServer {
+pub(super) async fn fixture() -> MockServer {
     let server = MockServer::start().await;
     let entries = [
         (
@@ -94,7 +94,7 @@ fn fake_image(path: &str) -> Vec<u8> {
     [firma, b"fixture-image"].concat()
 }
 
-async fn snapshot(server: &MockServer) -> ServerSnapshot {
+pub(super) async fn snapshot(server: &MockServer) -> ServerSnapshot {
     capture(
         "fake-token",
         Some(server.address().to_string().as_str()),
@@ -201,7 +201,7 @@ async fn sqlite_scope_rename_export_import_delete_and_corruption() {
         rows["snapshots"][0]["size_bytes"],
         serde_json::to_vec(&s).unwrap().len()
     );
-    assert_eq!(rows["schedule"]["keep_last"], 7);
+    assert_eq!(rows["schedule"]["keep_last"], 14);
     assert!(listing(&p, "other-bot", "555").await.unwrap()["snapshots"]
         .as_array()
         .unwrap()
@@ -322,17 +322,50 @@ async fn automatic_retention_is_per_scope_and_preserves_manual_snapshots() {
         "555",
         SnapshotRequest::Schedule {
             enabled: true,
-            keep_last: 7,
+            keep_last: 14,
+            interval_hours: Some(12),
         },
     )
     .await
     .unwrap();
-    for n in 1..=9 {
+    for n in 1..=16 {
         s.created_at = format!("2026-01-{n:02}T00:00:00Z");
-        finish_automatic(&p, "bot-a", "555", &s, 7).await.unwrap();
+        finish_automatic(&p, "bot-a", "555", &s, 14).await.unwrap();
     }
     let rows = listing(&p, "bot-a", "555").await.unwrap();
-    assert_eq!(rows["snapshots"].as_array().unwrap().len(), 8);
+    assert_eq!(rows["snapshots"].as_array().unwrap().len(), 15);
+    let automatic: Vec<_> = rows["snapshots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|s| s["automatic"] == true)
+        .collect();
+    assert_eq!(automatic.len(), 14);
+    assert_eq!(
+        automatic.first().unwrap()["created_at"],
+        "2026-01-16T00:00:00Z"
+    );
+    assert_eq!(
+        automatic.last().unwrap()["created_at"],
+        "2026-01-03T00:00:00Z"
+    );
+    // Guardar manualmente sigue permitido con el intervalo todavía pendiente.
+    let last_success: String = sqlx::query_scalar(
+        "SELECT last_success FROM server_snapshot_schedules WHERE bot_id='bot-a'",
+    )
+    .fetch_one(&p)
+    .await
+    .unwrap();
+    store(&p, "bot-a", "555", &s, false).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, String>(
+            "SELECT last_success FROM server_snapshot_schedules WHERE bot_id='bot-a'"
+        )
+        .fetch_one(&p)
+        .await
+        .unwrap(),
+        last_success
+    );
     assert!(load(&p, "bot-a", "555", &manual).await.is_ok());
     assert!(load(&p, "bot-b", "555", &other).await.is_ok());
     let due:i64 = sqlx::query_scalar("SELECT COUNT(*) FROM server_snapshot_schedules WHERE enabled=1 AND (last_success IS NULL OR last_success < ?)").bind(Utc::now().date_naive().to_string()).fetch_one(&p).await.unwrap();
@@ -343,7 +376,8 @@ async fn automatic_retention_is_per_scope_and_preserves_manual_snapshots() {
         "555",
         SnapshotRequest::Schedule {
             enabled: true,
-            keep_last: 0
+            keep_last: 0,
+            interval_hours: Some(12),
         }
     )
     .await
@@ -355,6 +389,7 @@ async fn automatic_retention_is_per_scope_and_preserves_manual_snapshots() {
         SnapshotRequest::Schedule {
             enabled: false,
             keep_last: 3,
+            interval_hours: Some(6),
         },
     )
     .await
@@ -724,4 +759,125 @@ async fn compare_member_roles_paginates_and_surfaces_read_failures() {
     )
     .await
     .is_err());
+}
+
+#[tokio::test]
+async fn automatic_interval_defaults_boundaries_and_validation() {
+    let p = database().await;
+    let defaults = listing(&p, "bot-a", "555").await.unwrap();
+    assert_eq!(defaults["schedule"]["interval_hours"], 12);
+    assert_eq!(defaults["schedule"]["keep_last"], 14);
+    let last = chrono::DateTime::parse_from_rfc3339("2026-01-01T23:37:19+02:00")
+        .unwrap()
+        .with_timezone(&Utc);
+    for hours in [6, 12, 24] {
+        manage(
+            &p,
+            "bot-a",
+            "555",
+            SnapshotRequest::Schedule {
+                enabled: true,
+                keep_last: 14,
+                interval_hours: Some(hours),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(due_schedules(&p, last).await.unwrap().len(), 1);
+        sqlx::query("UPDATE server_snapshot_schedules SET last_success=?")
+            .bind("2026-01-01T23:37:19+02:00")
+            .execute(&p)
+            .await
+            .unwrap();
+        let boundary = last + chrono::Duration::hours(hours.into());
+        assert!(due_schedules(&p, boundary - chrono::Duration::seconds(1))
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(due_schedules(&p, boundary).await.unwrap().len(), 1);
+        assert_eq!(
+            due_schedules(&p, boundary + chrono::Duration::hours(30))
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        sqlx::query("UPDATE server_snapshot_schedules SET enabled=0")
+            .execute(&p)
+            .await
+            .unwrap();
+        assert!(due_schedules(&p, boundary).await.unwrap().is_empty());
+        sqlx::query("UPDATE server_snapshot_schedules SET last_success=NULL")
+            .execute(&p)
+            .await
+            .unwrap();
+    }
+    for hours in [0, 1, 7, 48] {
+        assert!(manage(
+            &p,
+            "bot-a",
+            "555",
+            SnapshotRequest::Schedule {
+                enabled: true,
+                keep_last: 14,
+                interval_hours: Some(hours),
+            }
+        )
+        .await
+        .is_err());
+    }
+    // Un cliente anterior que omite el campo no cambia el intervalo elegido.
+    let old_request =
+        serde_json::from_value(json!({"op":"schedule","enabled":true,"keep_last":3})).unwrap();
+    let saved = manage(&p, "bot-a", "555", old_request).await.unwrap();
+    assert_eq!(saved["schedule"]["interval_hours"], 24);
+    let new_request =
+        serde_json::from_value(json!({"op":"schedule","enabled":true,"keep_last":14})).unwrap();
+    let saved = manage(&p, "bot-b", "555", new_request).await.unwrap();
+    assert_eq!(saved["schedule"]["interval_hours"], 12);
+}
+
+#[tokio::test]
+async fn snapshot_schedule_migration_preserves_saved_choices_and_history() {
+    let p = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::raw_sql(include_str!("../../migrations/011_server_snapshots.sql"))
+        .execute(&p)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO server_snapshot_schedules(bot_id,guild_id,enabled,keep_last,last_success,last_error) VALUES('bot-a','555',1,7,'2026-01-01','Previous error'),('bot-b','555',0,31,NULL,NULL)")
+        .execute(&p).await.unwrap();
+    sqlx::raw_sql(include_str!("../../migrations/014_snapshot_intervals.sql"))
+        .execute(&p)
+        .await
+        .unwrap();
+    let row = sqlx::query("SELECT * FROM server_snapshot_schedules WHERE bot_id='bot-a'")
+        .fetch_one(&p)
+        .await
+        .unwrap();
+    assert!(row.get::<bool, _>("enabled"));
+    assert_eq!(row.get::<u32, _>("keep_last"), 7);
+    assert_eq!(row.get::<u32, _>("interval_hours"), 24);
+    assert_eq!(row.get::<String, _>("last_success"), "2026-01-01T00:00:00Z");
+    assert_eq!(row.get::<String, _>("last_error"), "Previous error");
+    let row = sqlx::query("SELECT * FROM server_snapshot_schedules WHERE bot_id='bot-b'")
+        .fetch_one(&p)
+        .await
+        .unwrap();
+    assert!(!row.get::<bool, _>("enabled"));
+    assert_eq!(row.get::<u32, _>("keep_last"), 31);
+    assert_eq!(row.get::<Option<String>, _>("last_success"), None);
+    sqlx::query("INSERT INTO server_snapshot_schedules(bot_id,guild_id) VALUES('bot-c','555')")
+        .execute(&p)
+        .await
+        .unwrap();
+    let row = sqlx::query("SELECT * FROM server_snapshot_schedules WHERE bot_id='bot-c'")
+        .fetch_one(&p)
+        .await
+        .unwrap();
+    assert_eq!(row.get::<u32, _>("keep_last"), 14);
+    assert_eq!(row.get::<u32, _>("interval_hours"), 12);
 }

@@ -537,22 +537,22 @@ Si alguien con permisos (o un bot ajeno) borra canales y roles, hoy no hay forma
 - [x] Comparar un snapshot con el servidor actual
   criterio: «Compare» muestra lo que falta, lo que cambió y lo que sobra respecto al snapshot (canales, roles, permisos, roles de miembros), agrupado y con contadores; reutiliza el formato de diff del modo Plan; tests con canales borrados, permisos cambiados y un rol renombrado
 
-- [ ] Restaurar manualmente
+- [x] Restaurar manualmente
   criterio: «Restore» genera una propuesta (nunca se aplica sola) para volver al snapshot: recrear roles (en su orden), categorías y canales borrados con sus permisos (remapeando los ids nuevos por nombre), restaurar permisos y ajustes cambiados y volver a dar los roles a los miembros que siguen en el servidor; opciones: «solo lo que falta» (por defecto) o «también deshacer cambios», y «borrar lo que no estaba» (desactivado por defecto, con confirmación reforzada); se muestra lo que **no** se puede restaurar (mensajes, miembros expulsados o baneados que no volvieron, canales con el mismo nombre ya existentes) y la duración estimada; Apply con progreso y Stop (FASE 17); tests: servidor vaciado → restaurado igual al snapshot (mismos nombres, permisos efectivos y roles de miembros) Además, el motor de restauración es el mismo para el botón, el MCP y las órdenes de Discord, y cuando no está seguro **señala un conflicto en vez de adivinar**: cada rol del snapshot se empareja con uno actual por id y, si no existe, por nombre **solo si el nombre es único** (sin reutilizar un rol ya emparejado); con nombres ambiguos el rol se conserva, no se propone borrar ni se tocan sus asignaciones a miembros, y la propuesta lo marca como conflicto; un canal cuyo permiso no se puede resolver se recrea **cerrado** (sin acceso para @everyone) y se marca, nunca abierto; al recrear un rol borrado se reponen sus permisos también en los canales que sobrevivieron; al recrear una categoría borrada se devuelven a ella los canales que sobrevivieron; tests con el Discord falso de cada caso: dos roles con el mismo nombre y uno borrado, permiso irresoluble en un canal privado, rol borrado con canales vivos y categoría borrada con canales vivos
 
-- [ ] Detectar destrucción masiva y avisar
+- [x] Detectar destrucción masiva y avisar
   criterio: con el bot encendido, si en poco tiempo (p. ej. 5 canales o roles en 1 minuto) se borran canales o roles, ARGUS crea un snapshot de emergencia del estado anterior conocido (del mapa en vivo), muestra una alerta nativa y en Logs con quién lo hizo (registro de auditoría) y ofrece «Restore»; umbrales configurables y opción de quitar los roles al responsable automáticamente (desactivada por defecto); tests del detector con eventos simulados del Gateway; «Restore» usa el motor de restauración de la tarea anterior, sin una restauración propia
 
-- [ ] Snapshots desde el MCP y las órdenes de Discord
+- [x] Snapshots desde el MCP y las órdenes de Discord
   criterio: `argus-mcp` gana herramientas para listar snapshots, crear uno, compararlo con el servidor y pedir la propuesta de restauración (con sus conflictos); ninguna aplica cambios por sí sola: la propuesta sigue el flujo normal y necesita confirmación; desde Discord, «restaura el último snapshot» genera la misma propuesta y pide «sí»; la IA explica los conflictos y pregunta antes de aplicar; tests de cada herramienta y de que nada se aplica sin confirmar
 
-- [ ] Miembros que se fueron
+- [x] Miembros que se fueron
   criterio: a partir del snapshot, Backups muestra quién estaba y ya no está (id, nombre y roles que tenía), exportable a archivo; «Invitar» crea una invitación y la envía por DM a quienes el bot pueda escribir, e indica a quiénes no se pudo (Discord no permite a un bot volver a meter a nadie en el servidor, ni escribir a quien no comparte un servidor con él); opción **«Devolver sus roles al volver»** (activada por defecto tras una restauración): si entra alguien del snapshot, el bot le reasigna los roles que tenía y lo anota en Logs; tests con eventos simulados de entrada y con DM que falla
 
-- [ ] Expulsar a todos los miembros
+- [x] Expulsar a todos los miembros
   criterio: acción solo de la app (nunca desde el MCP, las órdenes de Discord ni la IA), en Backups o Moderation; antes de empezar crea un snapshot automático; **doble confirmación**: muestra cuántos miembros se expulsarán y pide escribir el nombre del servidor; nunca expulsa al dueño, al propio bot ni a quien la lanza, y se pueden excluir roles (por defecto, los que tienen Administrator); avanza respetando los límites de Discord con progreso «N de M» y botón Stop; los que no se pueden expulsar (rol por encima del bot) se listan al final; tests con el Discord falso: exclusiones, Stop y que el MCP y las órdenes no la ofrecen
 
-- [ ] Snapshots automáticos cada 12 horas
+- [x] Snapshots automáticos cada 12 horas
   criterio: los snapshots automáticos pasan a ser **cada 12 horas** por defecto, con el intervalo elegible (6, 12 o 24 h) y conservando los últimos 14 (una semana); «Create snapshot» sigue disponible en cualquier momento; los ajustes ya guardados se migran sin perder lo elegido; tests del intervalo y de la retención
 
 Verificación manual (en tu servidor de pruebas):

@@ -376,6 +376,10 @@ export const SettingsView: React.FC = () => {
               />
               <span className="ui-campo__ayuda">{t('Private notes; they are not sent to Discord.')}</span>
             </div>
+            <Interruptor titulo={t('Mass deletion protection')} ayuda={t('Save an emergency snapshot and alert while the bot is running.')} checked={guildSettings.destruction.enabled} onChange={(enabled) => handleGuildChange({ destruction: { ...guildSettings.destruction, enabled } })} />
+            <Input etiqueta={t('Deletion threshold')} type="number" min={2} max={100} value={guildSettings.destruction.threshold} onChange={e => handleGuildChange({ destruction: { ...guildSettings.destruction, threshold: Math.min(100, Math.max(2, Number(e.target.value))) } })} />
+            <Input etiqueta={t('Detection window (seconds)')} type="number" min={1} max={3600} value={guildSettings.destruction.window_seconds} onChange={e => handleGuildChange({ destruction: { ...guildSettings.destruction, window_seconds: Math.min(3600, Math.max(1, Number(e.target.value))) } })} />
+            <Interruptor titulo={t('Automatically remove actor roles')} ayuda={t('Off by default. Requires audit log access and Manage Roles; Discord role hierarchy still applies.')} checked={guildSettings.destruction.remove_roles} onChange={(remove_roles) => handleGuildChange({ destruction: { ...guildSettings.destruction, remove_roles } })} />
             <Interruptor titulo={t('Surveillance')} ayuda={t('Record server events.')} checked={guildSettings.vigilance_enabled} onChange={(v) => handleGuildChange({ vigilance_enabled: v })} />
             <Interruptor titulo={t('Personality')} ayuda={t('Let the bot reply with its personality.')} checked={guildSettings.personality_enabled} onChange={(v) => handleGuildChange({ personality_enabled: v })} />
             <Interruptor titulo={t('Templates')} ayuda={t('Allow applying structure templates.')} checked={guildSettings.templates_enabled} onChange={(v) => handleGuildChange({ templates_enabled: v })} />

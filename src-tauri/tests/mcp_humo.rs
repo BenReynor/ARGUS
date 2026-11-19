@@ -56,7 +56,15 @@ fn argus_mcp_lista_las_tres_herramientas_por_stdio() {
         .iter()
         .map(|t| t["name"].as_str().unwrap())
         .collect();
-    for n in ["estado", "listar_servidores", "elegir_servidor"] {
+    for n in [
+        "estado",
+        "listar_servidores",
+        "elegir_servidor",
+        "listar_snapshots",
+        "crear_snapshot",
+        "comparar_snapshot",
+        "info_restauracion",
+    ] {
         assert!(nombres.contains(&n), "falta {n} en {nombres:?}");
     }
 
