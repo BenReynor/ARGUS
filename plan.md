@@ -629,7 +629,7 @@ Verificación manual:
 - [B] Aplicar una plantilla mediante el motor de propuestas
   criterio: elegir una plantilla y un servidor autorizado muestra árbol, diferencias, conflictos y acciones antes de Apply; compila con el motor de planes/propuestas existente y remapea @everyone, categorías y roles al servidor destino; no sobrescribe recursos solo por compartir nombre ni borra lo existente por defecto; aplica en orden con validación de permisos/jerarquía, Stop y verificación visual de la fase 20; no se reintroduce el antiguo apply_template ficticio; tests de aplicar a dos servidores distintos, roles ambiguos, recursos existentes y cancelación
 
-- [ ] Usar la biblioteca desde la IA
+- [B] Usar la biblioteca desde la IA
   criterio: el asistente puede listar y consultar las plantillas autorizadas y preparar un plan/propuesta basada en una elegida, mostrando cuál usó y sus cambios; guardar una versión sugerida por IA requiere que el usuario la acepte y nunca sustituye silenciosamente su plantilla original; no aplica la estructura directamente; tests con agente falso y aprobación/descartar
 
 Verificación manual:
