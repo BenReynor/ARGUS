@@ -422,9 +422,9 @@ pub(crate) async fn listing(pool: &SqlitePool, bot: &str, guild: &str) -> Result
     .await?;
     let rows = sqlx::query("SELECT id,name,created_at,size_bytes,summary,automatic FROM server_snapshots WHERE bot_id=? AND guild_id=? ORDER BY created_at DESC,rowid DESC").bind(bot).bind(guild).fetch_all(pool).await?;
     let rows: Vec<Value> = rows.iter().map(|r| Ok(json!({"id":r.get::<String,_>("id"), "name":r.get::<String,_>("name"), "created_at":r.get::<String,_>("created_at"), "size_bytes":r.get::<i64,_>("size_bytes"), "summary":serde_json::from_str::<Value>(r.get("summary"))?, "automatic":r.get::<bool,_>("automatic")}))).collect::<Result<_>>()?;
-    let schedule = sqlx::query("SELECT enabled,keep_last,last_error FROM server_snapshot_schedules WHERE bot_id=? AND guild_id=?").bind(bot).bind(guild).fetch_optional(pool).await?;
+    let schedule = sqlx::query("SELECT enabled,keep_last,interval_hours,last_error FROM server_snapshot_schedules WHERE bot_id=? AND guild_id=?").bind(bot).bind(guild).fetch_optional(pool).await?;
     Ok(
-        json!({"return_roles_ready":return_roles_ready,"return_roles":return_roles,"snapshots":rows, "schedule":schedule.map(|r| json!({"enabled":r.get::<bool,_>("enabled"), "keep_last":r.get::<u32,_>("keep_last"), "last_error":r.get::<Option<String>,_>("last_error")})).unwrap_or(json!({"enabled":false,"keep_last":7,"last_error":null}))}),
+        json!({"return_roles_ready":return_roles_ready,"return_roles":return_roles,"snapshots":rows, "schedule":schedule.map(|r| json!({"enabled":r.get::<bool,_>("enabled"), "keep_last":r.get::<u32,_>("keep_last"), "interval_hours":r.get::<u32,_>("interval_hours"), "last_error":r.get::<Option<String>,_>("last_error")})).unwrap_or(json!({"enabled":false,"keep_last":14,"interval_hours":12,"last_error":null}))}),
     )
 }
 
@@ -474,6 +474,8 @@ pub enum SnapshotRequest {
     Schedule {
         enabled: bool,
         keep_last: u32,
+        #[serde(default)]
+        interval_hours: Option<u32>,
     },
 }
 async fn manage(
@@ -607,12 +609,19 @@ async fn manage(
                 .context("Invalid snapshot file or different server")?;
             store(pool, bot, guild, &s, false).await?;
         }
-        SnapshotRequest::Schedule { enabled, keep_last } => {
+        SnapshotRequest::Schedule {
+            enabled,
+            keep_last,
+            interval_hours,
+        } => {
+            if interval_hours.is_some_and(|hours| !matches!(hours, 6 | 12 | 24)) {
+                bail!("Choose a snapshot interval of 6, 12 or 24 hours");
+            }
             if !(1..=365).contains(&keep_last) {
                 bail!("Keep between 1 and 365 snapshots");
             }
-            sqlx::query("INSERT INTO server_snapshot_schedules(bot_id,guild_id,enabled,keep_last) VALUES(?,?,?,?) ON CONFLICT(bot_id,guild_id) DO UPDATE SET enabled=excluded.enabled,keep_last=excluded.keep_last")
-                .bind(bot).bind(guild).bind(enabled).bind(keep_last).execute(pool).await?;
+            sqlx::query("INSERT INTO server_snapshot_schedules(bot_id,guild_id,enabled,keep_last,interval_hours) VALUES(?,?,?,?,COALESCE(?,12)) ON CONFLICT(bot_id,guild_id) DO UPDATE SET enabled=excluded.enabled,keep_last=excluded.keep_last,interval_hours=COALESCE(?,server_snapshot_schedules.interval_hours)")
+                .bind(bot).bind(guild).bind(enabled).bind(keep_last).bind(interval_hours).bind(interval_hours).execute(pool).await?;
         }
     }
     listing(pool, bot, guild).await
@@ -672,14 +681,23 @@ async fn finish_automatic(
     let mut tx = pool.begin().await?;
     insert(&mut tx, bot, guild, s, true).await?;
     sqlx::query("DELETE FROM server_snapshots WHERE id IN (SELECT id FROM server_snapshots WHERE bot_id=? AND guild_id=? AND automatic=1 ORDER BY created_at DESC,rowid DESC LIMIT -1 OFFSET ?)").bind(bot).bind(guild).bind(keep).execute(&mut *tx).await?;
-    sqlx::query("UPDATE server_snapshot_schedules SET last_success=?,last_error=NULL WHERE bot_id=? AND guild_id=?").bind(Utc::now().date_naive().to_string()).bind(bot).bind(guild).execute(&mut *tx).await?;
+    sqlx::query("UPDATE server_snapshot_schedules SET last_success=?,last_error=NULL WHERE bot_id=? AND guild_id=?").bind(Utc::now().to_rfc3339()).bind(bot).bind(guild).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(())
 }
 
+// SQLite normaliza offsets y el formato antiguo de fecha al comparar instantes.
+async fn due_schedules(
+    pool: &SqlitePool,
+    now: chrono::DateTime<Utc>,
+) -> Result<Vec<sqlx::sqlite::SqliteRow>> {
+    Ok(sqlx::query("SELECT bot_id,guild_id,keep_last FROM server_snapshot_schedules WHERE enabled=1 AND (last_success IS NULL OR julianday(last_success) + interval_hours / 24.0 <= julianday(?))")
+        .bind(now.to_rfc3339()).fetch_all(pool).await?)
+}
+
 pub fn start_automatic(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let mut timer = tokio::time::interval(std::time::Duration::from_secs(3600));
+        let mut timer = tokio::time::interval(std::time::Duration::from_secs(60));
         loop {
             timer.tick().await;
             if let Err(e) = automatic_tick(&app).await {
@@ -690,8 +708,7 @@ pub fn start_automatic(app: AppHandle) {
 }
 async fn automatic_tick(app: &AppHandle) -> Result<()> {
     let pool = db::get_pool(app).await?;
-    let today = Utc::now().date_naive().to_string();
-    let rows = sqlx::query("SELECT bot_id,guild_id,keep_last FROM server_snapshot_schedules WHERE enabled=1 AND (last_success IS NULL OR last_success < ?)").bind(today).fetch_all(&pool).await?;
+    let rows = due_schedules(&pool, Utc::now()).await?;
     for row in rows {
         let bot: String = row.get("bot_id");
         let guild: String = row.get("guild_id");

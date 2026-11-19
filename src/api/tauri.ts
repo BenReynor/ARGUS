@@ -251,7 +251,7 @@ export interface ServerSnapshotListing {
   restore?: RestorePreview;
   comparison?: SnapshotComparison;
   snapshots: ServerSnapshotItem[];
-  schedule: { enabled: boolean; keep_last: number; last_error: string | null };
+  schedule: { enabled: boolean; keep_last: number; interval_hours: 6 | 12 | 24; last_error: string | null };
 }
 export type ServerSnapshotRequest =
   | { op: 'list' | 'create' }
@@ -264,7 +264,7 @@ export type ServerSnapshotRequest =
   | { op: 'restore'; id: string; undo: boolean; delete_extra: boolean }
   | { op: 'export'; id: string; path: string }
   | { op: 'import'; path: string }
-  | { op: 'schedule'; enabled: boolean; keep_last: number };
+  | { op: 'schedule'; enabled: boolean; keep_last: number; interval_hours: 6 | 12 | 24 };
 export const serverSnapshots = (botId: string, guildId: string, request: ServerSnapshotRequest): Promise<ServerSnapshotListing> =>
   invoke('server_snapshots', { botId, guildId, request });
 

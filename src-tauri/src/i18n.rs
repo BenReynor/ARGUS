@@ -111,6 +111,7 @@ const CATALOGO_ES: &[(&str, &str)] = &[
     ("Invalid snapshot file or different server", "Archivo de snapshot no válido o de otro servidor"),
     ("Snapshot file is too large", "El archivo de snapshot es demasiado grande"),
     ("Snapshot not found", "Snapshot no encontrado"),
+    ("Choose a snapshot interval of 6, 12 or 24 hours", "Elige un intervalo de snapshots de 6, 12 o 24 horas"),
     ("Keep between 1 and 365 snapshots", "Conserva entre 1 y 365 snapshots"),
     ("Invalid response from Discord", "Respuesta de Discord no válida"),
 

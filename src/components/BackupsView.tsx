@@ -3,7 +3,7 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
 import { serverSnapshots, type ServerSnapshotItem, type ServerSnapshotListing, type ServerSnapshotRequest } from '../api/tauri';
 import { useActiveGuildId, useConfig } from '../store/useStore';
-import { Button, Card, Cargando, Dialogo, ErrorPanel, EstadoVacio, Input } from './ui';
+import { Button, Card, Cargando, Dialogo, ErrorPanel, EstadoVacio, Input, Select } from './ui';
 import { t } from '../i18n';
 import './Vistas.css';
 import { DiffView } from './DiffView';
@@ -26,7 +26,8 @@ const ServerBackups: React.FC<{ botId: string; guildId: string }> = ({ botId, gu
   const [compared, setCompared] = useState<ServerSnapshotItem | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [keep, setKeep] = useState(7);
+  const [keep, setKeep] = useState(14);
+  const [intervalHours, setIntervalHours] = useState<6 | 12 | 24>(12);
   const [rename, setRename] = useState<ServerSnapshotItem | null>(null);
   const [name, setName] = useState('');
   const [deleting, setDeleting] = useState<ServerSnapshotItem | null>(null);
@@ -38,7 +39,7 @@ const ServerBackups: React.FC<{ botId: string; guildId: string }> = ({ botId, gu
     const refresh = () => {
       if (lock.current) return;
       serverSnapshots(botId, guildId, { op: 'list' }).then(value => {
-        if (mounted.current) { setData(value); setKeep(value.schedule.keep_last); }
+        if (mounted.current) { setData(value); setKeep(value.schedule.keep_last); setIntervalHours(value.schedule.interval_hours); }
       }).catch(e => { if (mounted.current) setError(String(e)); });
     };
     refresh();
@@ -57,7 +58,7 @@ const ServerBackups: React.FC<{ botId: string; guildId: string }> = ({ botId, gu
       const result = await serverSnapshots(botId, guildId, request);
       if (mounted.current) {
         setCompared(request.op === 'compare' ? data?.snapshots.find(s => s.id === request.id) ?? null : null);
-        setData(result); setKeep(result.schedule.keep_last); setRename(null); setDeleting(null);
+        setData(result); setKeep(result.schedule.keep_last); setIntervalHours(result.schedule.interval_hours); setRename(null); setDeleting(null);
       }
     } catch (e) { if (mounted.current) setError(String(e)); }
     finally { lock.current = false; if (mounted.current) setBusy(false); }
@@ -78,10 +79,11 @@ const ServerBackups: React.FC<{ botId: string; guildId: string }> = ({ botId, gu
         <Button variante="secundario" disabled={busy} onClick={importFile}>{t('Import snapshot')}</Button>
       </div>
       <p>{t('Snapshots include member information and bans. Store exported files securely.')}</p>
-      <label className="ajustes__interruptor"><input type="checkbox" checked={data?.schedule.enabled ?? false} disabled={busy || !data} onChange={e => { const enabled = e.target.checked; void run(async () => ({ op: 'schedule', enabled, keep_last: keep })); }} /><span>{t('Daily automatic snapshots')}<small>{t('Runs while ARGUS is open. Retention applies only to automatic snapshots for this server.')}</small></span></label>
+      <label className="ajustes__interruptor"><input type="checkbox" checked={data?.schedule.enabled ?? false} disabled={busy || !data} onChange={e => { const enabled = e.target.checked; void run(async () => ({ op: 'schedule', enabled, keep_last: keep, interval_hours: intervalHours })); }} /><span>{t('Automatic snapshots')}<small>{t('Runs while ARGUS is open. Retention applies only to automatic snapshots for this server.')}</small></span></label>
       <div className="ajustes__fila">
+        <Select etiqueta={t('Snapshot interval')} value={intervalHours} disabled={busy || !data} onChange={e => setIntervalHours(Number(e.target.value) as 6 | 12 | 24)}><option value={6}>{t('Every 6 hours')}</option><option value={12}>{t('Every 12 hours')}</option><option value={24}>{t('Every 24 hours')}</option></Select>
         <Input type="number" min={1} max={365} etiqueta={t('Automatic snapshots to keep')} value={keep} disabled={busy || !data} onChange={e => setKeep(Number(e.target.value))} />
-        <Button variante="secundario" disabled={busy || !data || !Number.isInteger(keep) || keep < 1 || keep > 365} onClick={() => run(async () => ({ op: 'schedule', enabled: data?.schedule.enabled ?? false, keep_last: keep }))}>{t('Save schedule')}</Button>
+        <Button variante="secundario" disabled={busy || !data || !Number.isInteger(keep) || keep < 1 || keep > 365} onClick={() => run(async () => ({ op: 'schedule', enabled: data?.schedule.enabled ?? false, keep_last: keep, interval_hours: intervalHours }))}>{t('Save schedule')}</Button>
       </div>
       {data?.schedule.last_error && <p role="alert">{t('Last automatic snapshot failed: {error}', { error: data.schedule.last_error })}</p>}
     </Card>
