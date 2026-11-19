@@ -16,6 +16,7 @@ pub mod discord;
 pub mod gateway;
 pub mod i18n;
 pub mod mapa;
+mod mass_kick;
 pub mod mcp;
 pub mod mensajes;
 pub mod persistencia;
@@ -144,6 +145,7 @@ pub fn run() {
             cleanup_context,
             destruction::destruction_alerts,
             snapshots::server_snapshots,
+            mass_kick::app_mass_kick,
             snapshots::restore::apply_snapshot_restore,
             snapshots::restore::stop_snapshot_restore,
             backup::export_configuration,

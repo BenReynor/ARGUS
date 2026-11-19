@@ -8,6 +8,7 @@ import { t } from '../i18n';
 import './Vistas.css';
 import { DiffView } from './DiffView';
 import { DepartedMembers } from './DepartedMembers';
+import { MassKick } from './MassKick';
 import { SnapshotRestore } from './SnapshotRestore';
 
 export const BackupsView: React.FC = () => {
@@ -84,6 +85,7 @@ const ServerBackups: React.FC<{ botId: string; guildId: string }> = ({ botId, gu
       </div>
       {data?.schedule.last_error && <p role="alert">{t('Last automatic snapshot failed: {error}', { error: data.schedule.last_error })}</p>}
     </Card>
+    <MassKick botId={botId} guildId={guildId} />
     {busy && <p role="status">{t('Processing snapshot…')}</p>}
     {error && <ErrorPanel mensaje={error} onReintentar={() => run(async () => ({ op: 'list' }))} />}
     {!data && !error && <Cargando />}

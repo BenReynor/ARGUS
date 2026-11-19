@@ -267,3 +267,16 @@ export type ServerSnapshotRequest =
   | { op: 'schedule'; enabled: boolean; keep_last: number };
 export const serverSnapshots = (botId: string, guildId: string, request: ServerSnapshotRequest): Promise<ServerSnapshotListing> =>
   invoke('server_snapshots', { botId, guildId, request });
+
+// Destructive bulk removal is deliberately exclusive to the desktop app.
+export interface MassKickStatus {
+  phase: 'verification' | 'preparing' | 'ready' | 'running' | 'completed' | 'stopped' | 'failed';
+  key?: string;
+  preview?: { guild_name: string; targets: { id: string; name: string }[]; skipped: { id: string; name: string; error: string }[]; roles: { id: string; name: string }[]; excluded_roles: string[] };
+  done?: number;
+  total?: number;
+  results?: { id: string; name: string; ok: boolean; error: string | null }[];
+  snapshot_id?: string;
+  error?: string;
+}
+export const appMassKick = (botId: string, guildId: string, request: { op: 'identify' | 'prepare' | 'start' | 'stop' | 'status'; actor?: string; identity_key?: string; identity_code?: string; excluded_roles?: string[]; key?: string; confirmation?: string; count?: number }) => invoke<MassKickStatus | null>('app_mass_kick', { botId, guildId, request });
