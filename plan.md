@@ -593,7 +593,7 @@ resultados por acción y notificaciones existentes.
 - [x] Inventariar las operaciones y sus avisos reales
   criterio: documento en docs con las operaciones de construcción, edición, planes, plantillas, backups, snapshots, agentes, MCP y ajustes; para cada una identifica el comando real, dónde muestra progreso/éxito/fallo, si permite comprobar el resultado y qué falta; rastrea respuestas reales del backend, no solo textos de notificación; identifica funciones que fallan en silencio o muestran éxito antes de terminar; comprobación automatizada de que los comandos literales invocados por la interfaz están registrados y los cuatro comandos ficticios retirados no reaparecen
 
-- [ ] Historial de operaciones con estados compartidos
+- [B] Historial de operaciones con estados compartidos
   criterio: cada operación tiene un ID propio y captura bot/servidor/destino al comenzar; guarda en SQLite sus pasos, tiempos y estados de pendiente, en curso, verificando, correcto, parcial, fallo, cancelado, omitido o no verificado, con motivos legibles y sin secretos; el registro continúa siendo del servidor original si el usuario cambia de servidor; se reabre tras reiniciar y marca como interrumpida una operación que no terminó, sin repetirla automáticamente; estado común para ejecución desde la app y desde órdenes autorizadas; tests con BD temporal de aislamiento por bot/servidor y recuperación tras interrupción
 
 - [ ] Panel visual de resultados y avisos consistentes

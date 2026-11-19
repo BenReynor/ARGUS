@@ -98,3 +98,8 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
   implementar el comportamiento real y la confirmación que corresponda.
 - Para copias portátiles usar la API de `backup.rs`, que exige contraseña,
   vista previa y confirmación. No reactivar los antiguos endpoints ZIP.
+
+## 2026-11-19 13:50 — Tarea bloqueada: Historial de operaciones con estados compartidos
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 2: [GATE] ✗ juez: criterio NO cumplido (Nunca se registran los estados verificando ni correcto; todas las acciones aceptadas quedan como no verificadas.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
