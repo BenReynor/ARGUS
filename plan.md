@@ -637,7 +637,7 @@ Verificación manual:
 
 ## FASE 23 — Auditoría de permisos del servidor
 
-- [ ] Calcular accesos efectivos y detectar hallazgos comprobables
+- [B] Calcular accesos efectivos y detectar hallazgos comprobables
   criterio: auditoría de solo lectura que reutiliza el cálculo de permisos, jerarquía y overwrites para explicar quién puede ver, escribir o administrar y qué permisos le faltan al bot para una construcción; resalta Administrator y permisos de gestión sensibles; solo declara una discrepancia de privacidad frente a una expectativa explícita del usuario, su plan o un snapshot, sin inferirla por el nombre del canal; cada hallazgo cita sus datos y muestra cuándo se comprobaron; si no puede leer una parte, marca la auditoría como incompleta; tests de herencia, overwrites de rol/miembro, Administrator, expectativas privadas y lectura parcial
 
 - [ ] Informe visual y correcciones aprobadas
