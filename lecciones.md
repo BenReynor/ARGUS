@@ -188,3 +188,8 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - Síntoma: El agente no cumplió el criterio tras 2 intentos.
 - Causa: gate_fail en la iteración 16: [GATE] ✗ juez: criterio NO cumplido (No existe el adaptador ni el flujo de propuestas, ejecución aprobada y verificación para otros bots.) warning: unused variable: `state` --> src/commands.rs:2346:5 | 2346 |     state: State<'_, AppState>, |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state` --> src/commands.rs:2369:5 2369 |     state: State<'_, AppState>, --> src/commands.rs:2532:5 2532 |     state: State<'_, AppState>,
 - Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-19 16:31 — Tarea bloqueada: Motor de servicio opcional y una sola conexión por bot
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 19: [GATE] ✗ juez: criterio NO cumplido (No existe servicio independiente ni canal local; la interfaz indica que aún no está disponible.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.

@@ -672,7 +672,7 @@ Verificación manual:
 - [x] Comportamiento explícito al cerrar y salir
   criterio: conservar el uso normal de escritorio y explicar en Settings si cerrar oculta en la bandeja o termina la interfaz; respetar la preferencia minimize_to_tray, que el handler actual no consulta, y mostrar claramente si el bot sigue funcionando; «Quit» en el modo normal detiene el proceso; si el servicio opcional está activo, distinguir cerrar la interfaz de detener el servicio y ofrecer acciones claras para ambos; pruebas con eventos falsos de cierre y ambas preferencias, sin parar un bot real
 
-- [ ] Motor de servicio opcional y una sola conexión por bot
+- [B] Motor de servicio opcional y una sola conexión por bot
   criterio: modo sin ventana separado de la interfaz, desactivado por defecto, que solo se inicia/instala al habilitarlo explícitamente; interfaz y servicio comparten estado mediante un canal local autenticado y con permisos del usuario, sin enviar tokens por el canal; un bloqueo/registro de propietario impide conexiones duplicadas al Gateway por el mismo bot; abrir/cerrar la interfaz no pierde ni repite operaciones ni sus avisos; el servicio mantiene los límites, confirmaciones y resultados de las fases anteriores y no añade tareas programadas genéricas ni módulos de otros bots; pruebas con servicio/Gateway falsos de doble arranque, reconexión de la interfaz y parada ordenada
 
 - [ ] Arranque opcional y diagnóstico del servicio
