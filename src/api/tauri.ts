@@ -280,3 +280,5 @@ export interface MassKickStatus {
   error?: string;
 }
 export const appMassKick = (botId: string, guildId: string, request: { op: 'identify' | 'prepare' | 'start' | 'stop' | 'status'; actor?: string; identity_key?: string; identity_code?: string; excluded_roles?: string[]; key?: string; confirmation?: string; count?: number }) => invoke<MassKickStatus | null>('app_mass_kick', { botId, guildId, request });
+
+export const listOperations = () => invoke<import('../activity').Operation[]>('listar_operaciones', { guildId: null });

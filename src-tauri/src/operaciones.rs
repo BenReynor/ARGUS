@@ -214,10 +214,19 @@ pub async fn listar(
     bot: &str,
     guild: &str,
 ) -> Result<Vec<Operacion>, sqlx::Error> {
+    listar_filtrado(pool, bot, Some(guild)).await
+}
+
+pub async fn listar_filtrado(
+    pool: &SqlitePool,
+    bot: &str,
+    guild: Option<&str>,
+) -> Result<Vec<Operacion>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT * FROM operations WHERE bot_id=? AND guild_id=? ORDER BY started_at DESC",
+        "SELECT * FROM operations WHERE bot_id=? AND (? IS NULL OR guild_id=?) ORDER BY started_at DESC, id DESC",
     )
     .bind(bot)
+    .bind(guild)
     .bind(guild)
     .fetch_all(pool)
     .await?;
@@ -259,13 +268,13 @@ pub async fn listar(
 pub async fn listar_operaciones(
     app: tauri::AppHandle,
     state: tauri::State<'_, crate::state::AppState>,
-    guild_id: String,
+    guild_id: Option<String>,
 ) -> Result<Vec<Operacion>, String> {
     let bot = state
         .get_active_bot()
         .ok_or_else(|| "No bot selected".to_string())?;
     let pool = crate::db::get_pool(&app).await.map_err(|e| e.to_string())?;
-    listar(&pool, &bot.id, &guild_id)
+    listar_filtrado(&pool, &bot.id, guild_id.as_deref())
         .await
         .map_err(|e| e.to_string())
 }
@@ -416,6 +425,9 @@ mod tests {
         pool.close().await;
         let pool = crate::db::abrir_bd(&path).await.unwrap();
         recuperar(&pool).await.unwrap();
+        let todos = listar_filtrado(&pool, "bot-a", None).await.unwrap();
+        assert_eq!(todos.len(), 2);
+        assert!(todos.iter().all(|op| op.bot_id == "bot-a"));
         let lista = listar(&pool, "bot-a", "guild-a").await.unwrap();
         assert_eq!(lista.len(), 1);
         assert_eq!(lista[0].id, id);
