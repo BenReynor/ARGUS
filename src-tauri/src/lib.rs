@@ -145,6 +145,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             diagnostico::diagnostico_local,
             diagnostico::diagnostico_discord,
+            diagnostico::diagnostico_agentes,
             diagnostico::cancelar_diagnostico_discord,
             operaciones::listar_operaciones,
             crypto::keyring_available,
