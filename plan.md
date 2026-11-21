@@ -644,7 +644,7 @@ Verificación manual:
 - [B] Aplicar una plantilla: ejecutar con el motor de propuestas
   criterio: la plantilla se compila con el motor de planes y propuestas existente y se aplica en orden, con validación de permisos y jerarquía, Stop y la verificación de la FASE 20; no vuelve el antiguo apply_template ficticio; tests de cancelación y de recursos que ya existían; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Usar la biblioteca desde la IA
+- [x] Usar la biblioteca desde la IA
   criterio: el asistente puede listar y consultar por sí mismo las plantillas disponibles y preparar un plan basado en una, diciendo cuál usó; guardar una versión sugerida por la IA requiere que el usuario la acepte y nunca sustituye la original; no aplica la estructura directamente; tests con agente falso, aceptar y descartar; Lo no especificado NO es motivo de rechazo.
 
 - [x] Importar y exportar plantillas de la biblioteca
