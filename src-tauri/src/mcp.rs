@@ -548,6 +548,7 @@ pub struct ArgusMcp {
     state: Arc<AppState>,
     /// URL base de Discord; solo los tests la cambian (Discord falso).
     base_url: Option<String>,
+    contexto_fijado: bool,
 }
 
 impl ArgusMcp {
@@ -558,12 +559,29 @@ impl ArgusMcp {
             pool,
             state: Arc::new(AppState::new()),
             base_url,
+            contexto_fijado: false,
         };
         servidor.recargar().await?;
         if servidor.state.get_active_bot().is_some() {
             token_del_bot_activo(&servidor.state)?;
         }
         Ok(servidor)
+    }
+
+    /// Ejecuta usando una copia del contexto capturada por el llamador.
+    pub fn con_contexto(
+        pool: SqlitePool,
+        base_url: Option<String>,
+        config: crate::state::Config,
+    ) -> Self {
+        let state = AppState::new();
+        *state.config.lock().unwrap() = config;
+        Self {
+            pool,
+            state: Arc::new(state),
+            base_url,
+            contexto_fijado: true,
+        }
     }
 
     /// Relee la configuración de la base: la app puede haber cambiado de bot o
@@ -577,7 +595,9 @@ impl ArgusMcp {
 
     /// Recarga y exige un bot activo.
     async fn preparar(&self) -> Result<(), String> {
-        self.recargar().await?;
+        if !self.contexto_fijado {
+            self.recargar().await?;
+        }
         if self.state.get_active_bot().is_none() {
             return Err(SIN_BOT.to_string());
         }
@@ -2271,7 +2291,86 @@ impl ArgusMcp {
             .acciones
             .iter()
             .find_map(|a| a.args.get("guild_id").and_then(serde_json::Value::as_str));
-        let gid = self.servidor_de(de_la_propuesta).await?;
+        self.preparar().await?;
+        let mut config = { self.state.config.lock().unwrap().clone() };
+        let gid = de_la_propuesta
+            .map(str::trim)
+            .filter(|g| !g.is_empty())
+            .map(str::to_owned)
+            .or_else(|| config.active_guild_id.clone())
+            .ok_or_else(|| SIN_SERVIDOR.to_string())?;
+        if self.contexto_fijado && config.active_guild_id.as_deref() != Some(gid.as_str()) {
+            return Err("The proposal does not match the selected server".to_string());
+        }
+        if propuesta.acciones.iter().any(|a| {
+            a.args
+                .get("guild_id")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|g| g != gid)
+        }) {
+            return Err("All actions must target the same server".to_string());
+        }
+        if propuesta
+            .acciones
+            .iter()
+            .any(|a| a.herramienta == "elegir_servidor")
+        {
+            return Err("A proposal cannot change its server".to_string());
+        }
+        config.active_guild_id = Some(gid.clone());
+        let estado_fijado = AppState::new();
+        *estado_fijado.config.lock().unwrap() = config;
+        let bot = estado_fijado
+            .get_active_bot()
+            .ok_or_else(|| SIN_BOT.to_string())?;
+        let id = crate::operaciones::iniciar(&self.pool, &bot.id, &gid, propuesta)
+            .await
+            .map_err(|e| e.to_string())?;
+        let fijado = Self {
+            pool: self.pool.clone(),
+            state: Arc::new(estado_fijado),
+            base_url: self.base_url.clone(),
+            contexto_fijado: true,
+        };
+        let resultado = fijado
+            .ejecutar_propuesta_registrada(propuesta, cancelar, avance, anteriores, &gid, &id)
+            .await;
+        let preparacion = resultado
+            .as_ref()
+            .err()
+            .map(|e| crate::operaciones::motivo_seguro(e));
+        let (estado, razon) = match &resultado {
+            Err(_) => ("failed", preparacion.as_deref().unwrap()),
+            Ok(r) if r.hechas > 0 && (r.fallidas > 0 || r.omitidas > 0 || r.canceladas > 0) => (
+                "partial",
+                "Some actions were accepted; others were not completed",
+            ),
+            Ok(r) if r.fallidas > 0 => ("failed", "No actions were accepted; at least one failed"),
+            Ok(r) if r.canceladas > 0 => (
+                "cancelled",
+                "Operation stopped before all steps were attempted",
+            ),
+            Ok(r) if r.omitidas > 0 => ("skipped", "No actions could be attempted"),
+            Ok(_) => (
+                "unverified",
+                "Discord accepted the steps; the result has not been verified",
+            ),
+        };
+        crate::operaciones::terminar(&self.pool, &id, estado, razon)
+            .await
+            .map_err(|e| e.to_string())?;
+        resultado
+    }
+
+    async fn ejecutar_propuesta_registrada(
+        &self,
+        propuesta: &Propuesta,
+        cancelar: &AtomicBool,
+        avance: &mut (dyn FnMut(usize, &ResultadoAccion) + Send),
+        anteriores: &[ResultadoAccion],
+        gid: &str,
+        id: &str,
+    ) -> Result<ResumenPropuesta, String> {
         let roles = commands::leer_roles(&self.state, &gid, self.url())
             .await
             .map_err(|e| self.limpiar(e))?;
@@ -2298,6 +2397,15 @@ impl ArgusMcp {
                         .any(|x: &ResultadoAccion| x.indice == r.indice)
                 {
                     nombres.registrar_creado(&a.herramienta, &a.args, &r.mensaje);
+                    crate::operaciones::paso(
+                        &self.pool,
+                        id,
+                        r.indice,
+                        "unverified",
+                        Some("Previously accepted; the result has not been verified"),
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
                     resultados.push(r.clone());
                 }
             }
@@ -2312,6 +2420,9 @@ impl ArgusMcp {
             if cancelar.load(Ordering::SeqCst) {
                 break;
             }
+            crate::operaciones::paso(&self.pool, id, indice, "in_progress", None)
+                .await
+                .map_err(|e| e.to_string())?;
             let (estado, mensaje) = match nombres.resolver_args(&a.herramienta, &a.args) {
                 Err(e) => (EstadoAccion::Omitida, e),
                 Ok(args) => match if a.herramienta == "aplicar_restauracion" {
@@ -2339,6 +2450,18 @@ impl ArgusMcp {
                 estado,
                 mensaje,
             };
+            let motivo = crate::operaciones::motivo_seguro(&r.mensaje);
+            let (status, reason) = match r.estado {
+                EstadoAccion::Ok => (
+                    "unverified",
+                    "Discord accepted the action; the result has not been verified",
+                ),
+                EstadoAccion::Error => ("failed", motivo.as_str()),
+                EstadoAccion::Omitida => ("skipped", "A required reference could not be resolved"),
+            };
+            crate::operaciones::paso(&self.pool, id, indice, status, Some(reason))
+                .await
+                .map_err(|e| e.to_string())?;
             avance(total, &r);
             resultados.push(r);
         }
@@ -5393,6 +5516,83 @@ mod tests {
         assert!(r[3].mensaje.contains("«Fantasma»"));
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cambio_de_servidor_durante_propuesta_sin_guild_id() {
+        let (_dir, mcp, discord) = mcp_con_servidor(GESTIONAR_CANALES, true).await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id":"31", "type":0, "guild_id":"555", "name":"test", "position":1
+            })))
+            .expect(2)
+            .mount(&discord)
+            .await;
+        let propuesta = Propuesta {
+            resumen: String::new(),
+            acciones: vec![
+                accion("crear_canal", json!({"nombre":"uno"})),
+                accion("crear_canal", json!({"nombre":"dos"})),
+            ],
+        };
+        let state = mcp.state.clone();
+        let pool = mcp.pool.clone();
+        let config = state.config.lock().unwrap().clone();
+        let bot_original = config.active_bot_id.clone().unwrap();
+        assert_eq!(config.active_guild_id.as_deref(), Some("555"));
+        let mut cambiado = false;
+        let resultado = mcp
+            .ejecutar_propuesta_con(
+                &propuesta,
+                &AtomicBool::new(false),
+                &mut |total, resultado| {
+                    if !cambiado {
+                        assert_eq!(total, 2);
+                        assert_eq!(resultado.indice, 0);
+                        assert_eq!(resultado.estado, EstadoAccion::Ok);
+                        cambiado = true;
+                        assert_eq!(state.get_active_guild().as_deref(), Some("555"));
+                        state.set_active_guild("556");
+                        let state = state.clone();
+                        let pool = pool.clone();
+                        std::thread::spawn(move || {
+                            tokio::runtime::Builder::new_current_thread()
+                                .enable_all()
+                                .build()
+                                .unwrap()
+                                .block_on(state.save_config_to_pool(&pool))
+                                .unwrap();
+                        })
+                        .join()
+                        .unwrap();
+                    }
+                },
+            )
+            .await
+            .unwrap();
+        assert!(cambiado);
+        assert_eq!(state.get_active_guild().as_deref(), Some("556"));
+        assert_eq!(resultado.hechas, 2);
+        let writes: Vec<_> = discord
+            .received_requests()
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|r| r.method.as_str() == "POST")
+            .map(|r| r.url.path().to_string())
+            .collect();
+        assert_eq!(writes, vec!["/api/v10/guilds/555/channels"; 2]);
+        let history = crate::operaciones::listar(&mcp.pool, &bot_original, "555")
+            .await
+            .unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].status, "unverified");
+        assert!(history[0].steps.iter().all(|s| s.status == "unverified"));
+        assert!(crate::operaciones::listar(&mcp.pool, &bot_original, "556")
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
     #[tokio::test]
     async fn crear_canal_permisos_combina_categoria_y_rol_nuevo() {
         let (_d, mcp, s) = mcp_con_servidor(TODO, true).await;
@@ -5896,6 +6096,29 @@ mod tests {
             (r.hechas, r.fallidas, r.omitidas, r.canceladas),
             (3, 1, 1, 0)
         );
+        let bot = mcp.state.get_active_bot().unwrap();
+        let historial = crate::operaciones::listar(&mcp.pool, &bot.id, "555")
+            .await
+            .unwrap();
+        assert_eq!(historial[0].status, "partial");
+
+        let fallida = Propuesta {
+            resumen: String::new(),
+            acciones: vec![accion("crear_rol", json!({"nombre":"Roto"}))],
+        };
+        let resultado = mcp
+            .ejecutar_propuesta_con(&fallida, &AtomicBool::new(false), &mut |_, _| {})
+            .await
+            .unwrap();
+        assert_eq!((resultado.hechas, resultado.fallidas), (0, 1));
+        let historial = crate::operaciones::listar(&mcp.pool, &bot.id, "555")
+            .await
+            .unwrap();
+        assert!(historial.iter().any(|op| op.status == "failed"
+            && op.steps.len() == 1
+            && op.steps[0].status == "failed"
+            && op.steps[0].reason.as_deref()
+                == Some("Discord returned an unreadable response; the outcome may be unknown")));
 
         // Cancelar tras la primera acción: el resto no se intenta.
         let cancelar = AtomicBool::new(false);

@@ -22,6 +22,7 @@ pub mod mapa;
 mod mass_kick;
 pub mod mcp;
 pub mod mensajes;
+pub mod operaciones;
 pub mod persistencia;
 pub mod plan_compilar;
 pub mod plan_descripciones;
@@ -141,6 +142,7 @@ pub fn run() {
         .manage(app_state)
         .manage(ClosePreference::default())
         .invoke_handler(tauri::generate_handler![
+            operaciones::listar_operaciones,
             crypto::keyring_available,
             actualizaciones::updater_install_supported,
             start_bot,
@@ -257,6 +259,7 @@ pub fn run() {
             let ruta = db::ruta_bd(&handle)?;
             let pool = tauri::async_runtime::block_on(db::abrir_bd_por_ruta(&ruta))?;
             tauri::async_runtime::block_on(crypto::initialize(&pool))?;
+            tauri::async_runtime::block_on(operaciones::recuperar(&pool))?;
             let preferences =
                 tauri::async_runtime::block_on(db::get_setting(&pool, "window_preferences"));
             match preferences {

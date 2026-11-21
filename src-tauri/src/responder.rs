@@ -360,7 +360,7 @@ pub struct ContextoOrdenes {
     pub existentes:
         Arc<dyn Fn(u64) -> (Vec<crate::state::Role>, Vec<crate::state::Channel>) + Send + Sync>,
     /// Aplica la propuesta (ya con el servidor puesto): `ejecutar_propuesta`.
-    pub aplicar: Arc<dyn Fn(Propuesta, Arc<AtomicBool>) -> FuturoAplicar + Send + Sync>,
+    pub aplicar: Arc<dyn Fn(Propuesta, Arc<AtomicBool>, u64) -> FuturoAplicar + Send + Sync>,
     /// Idioma de la interfaz.
     pub idioma: Arc<dyn Fn() -> String + Send + Sync>,
 }
@@ -743,7 +743,9 @@ impl Conversador {
             e.autor_nombre, e.servidor, e.canal, total
         ));
         let inicio = Instant::now();
-        let texto = match (self.ordenes.aplicar)(propuesta, parada.cancelar.clone()).await {
+        let texto = match (self.ordenes.aplicar)(propuesta, parada.cancelar.clone(), e.guild_id)
+            .await
+        {
             Ok(resultados) => {
                 let r = ResumenPropuesta::de(total, resultados);
                 self.log(format!(
@@ -1640,7 +1642,7 @@ mod tests {
                 }),
                 nombres: Arc::new(|_| crate::propuesta::Nombres::default()),
                 existentes: Arc::new(|_| (Vec::new(), Vec::new())),
-                aplicar: Arc::new(|_, _| Box::pin(async { Ok(Vec::new()) })),
+                aplicar: Arc::new(|_, _, _| Box::pin(async { Ok(Vec::new()) })),
                 idioma: Arc::new(|| "en".to_string()),
             },
         };
@@ -1722,7 +1724,7 @@ mod tests {
         // Solo el autor puede aprobar; repetir el sí no repite la aplicación.
         let applied = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let counter = applied.clone();
-        c.ordenes.aplicar = Arc::new(move |_, _| {
+        c.ordenes.aplicar = Arc::new(move |_, _, _| {
             counter.fetch_add(1, Ordering::SeqCst);
             Box::pin(async { Ok(Vec::new()) })
         });
@@ -2701,7 +2703,7 @@ EOF"#;
     fn aplicador_falso(c: &mut Conversador) -> Aplicadas {
         let aplicadas: Aplicadas = Arc::new(Mutex::new(Vec::new()));
         let a = aplicadas.clone();
-        c.ordenes.aplicar = Arc::new(move |p, _| {
+        c.ordenes.aplicar = Arc::new(move |p, _, _| {
             a.lock().unwrap().push(p.clone());
             Box::pin(async move {
                 Ok(p.acciones
@@ -2962,7 +2964,7 @@ EOF"#;
             let terminar = Arc::new(tokio::sync::Notify::new());
             let realizadas = Arc::new(AtomicUsize::new(0));
             let (i, t, r) = (iniciada.clone(), terminar.clone(), realizadas.clone());
-            c.ordenes.aplicar = Arc::new(move |p, cancelar| {
+            c.ordenes.aplicar = Arc::new(move |p, cancelar, _| {
                 let (i, t, r) = (i.clone(), t.clone(), r.clone());
                 Box::pin(async move {
                     let mut resultados = Vec::new();

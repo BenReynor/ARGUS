@@ -2324,7 +2324,7 @@ pub async fn list_templates(
 
 async fn list_templates_en(
     app: AppHandle,
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
 ) -> Result<Vec<db::Template>, String> {
     let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
     db::list_templates(&pool).await.map_err(|e| e.to_string())
@@ -2343,7 +2343,7 @@ pub async fn save_template(
 
 async fn save_template_en(
     app: AppHandle,
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
     template: db::Template,
 ) -> Result<String, String> {
     let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
@@ -2366,7 +2366,7 @@ pub async fn delete_template(
 
 async fn delete_template_en(
     app: AppHandle,
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
     template_id: String,
 ) -> Result<String, String> {
     let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
@@ -2529,7 +2529,7 @@ pub async fn search_messages(
 
 async fn search_messages_en(
     app: AppHandle,
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
     query: String,
     guild_id: Option<String>,
     channel_id: Option<String>,

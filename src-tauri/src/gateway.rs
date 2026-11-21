@@ -90,6 +90,7 @@ fn conversador(
 ) -> Conversador {
     let app_limite = app.clone();
     let app_idioma = app.clone();
+    let app_aplicar = app.clone();
     let app = app.clone();
     let pool_chat = pool.clone();
     let pool_aplicar = pool.clone();
@@ -139,11 +140,21 @@ fn conversador(
                 })
                 .unwrap_or_default()
         }),
-        aplicar: Arc::new(move |propuesta, cancelar| {
+        aplicar: Arc::new(move |propuesta, cancelar, guild| {
             let pool = pool_aplicar.clone();
+            let config = app_aplicar
+                .try_state::<crate::state::AppState>()
+                .map(|state| {
+                    let mut config = state.config.lock().unwrap().clone();
+                    config.active_bot_id = Some(bot_id.to_string());
+                    config.active_guild_id = Some(guild.to_string());
+                    config
+                });
             Box::pin(async move {
                 let pool = pool.ok_or_else(|| "The database is not available".to_string())?;
-                let mcp = crate::mcp::ArgusMcp::nuevo(pool, None).await?;
+                let config =
+                    config.ok_or_else(|| "Application state is unavailable".to_string())?;
+                let mcp = crate::mcp::ArgusMcp::con_contexto(pool, None, config);
                 Ok(mcp
                     .ejecutar_propuesta_con(&propuesta, &cancelar, &mut |_, _| {})
                     .await?

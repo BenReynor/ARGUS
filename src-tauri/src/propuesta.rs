@@ -194,12 +194,14 @@ pub async fn aplicar_propuesta(
     CANCELAR.store(false, Ordering::SeqCst);
     // El servidor es el elegido en la app, no el «servidor activo» del MCP
     // (que la app nunca fija): sin esto, aplicar fallaba con «No active server».
-    let guild_id = state
-        .get_active_guild()
+    let config = { state.config.lock().unwrap().clone() };
+    let guild_id = config
+        .active_guild_id
+        .clone()
         .ok_or_else(|| "No server selected: pick one in the left column".to_string())?;
     let propuesta = con_servidor(&propuesta, &guild_id);
     let pool = crate::db::get_pool(&app).await.map_err(|e| e.to_string())?;
-    let mcp = crate::mcp::ArgusMcp::nuevo(pool, None).await?;
+    let mcp = crate::mcp::ArgusMcp::con_contexto(pool, None, config);
     let emisor = app.clone();
     let mut avance = move |total: usize, r: &ResultadoAccion| {
         if let Err(e) = emisor.emit(EVENTO_ACCION, AvanceAccion::de(total, r)) {
