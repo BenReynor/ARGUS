@@ -261,6 +261,7 @@ pub fn lanzar(
     estado: Arc<Mutex<crate::state::BotStatus>>,
     pool: Option<sqlx::SqlitePool>,
     bot_id: String,
+    health: Arc<Mutex<Option<(String, bool)>>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let conversador = bot_id
@@ -283,6 +284,25 @@ pub fn lanzar(
         loop {
             match shard.next_event().await {
                 Ok(evento) => {
+                    if matches!(&evento, Event::Ready(_) | Event::Resumed) {
+                        if let Some((id, connected)) = health.lock().unwrap().as_mut() {
+                            if id == &bot_id {
+                                *connected = true;
+                            }
+                        }
+                    }
+                    if matches!(
+                        &evento,
+                        Event::GatewayClose(_)
+                            | Event::GatewayInvalidateSession(_)
+                            | Event::GatewayReconnect
+                    ) {
+                        if let Some((id, connected)) = health.lock().unwrap().as_mut() {
+                            if id == &bot_id {
+                                *connected = false;
+                            }
+                        }
+                    }
                     if let (Event::MessageCreate(m), Some(conv), Some(pool)) =
                         (&evento, &conversador, &pool)
                     {
@@ -415,6 +435,11 @@ pub fn lanzar(
                     }
                 }
                 Err(e) => {
+                    if let Some((id, connected)) = health.lock().unwrap().as_mut() {
+                        if id == &bot_id {
+                            *connected = false;
+                        }
+                    }
                     tracing::warn!("Gateway error: {e}");
                     if e.is_fatal() {
                         let nuevo = {

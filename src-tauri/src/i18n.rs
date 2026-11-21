@@ -12,6 +12,17 @@ pub const IDIOMA_DEFECTO: &str = "en";
 
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
+    ("The active bot Gateway is connected.", "El Gateway del bot activo está conectado."),
+    ("The active bot Gateway is disconnected. Start or reconnect the bot.", "El Gateway del bot activo está desconectado. Inicia o reconecta el bot."),
+    ("Permission check cancelled.", "Comprobación de permisos cancelada."),
+    ("The bot has the server permissions required to build.", "El bot tiene los permisos de servidor necesarios para construir."),
+    ("Missing building permissions. Grant the bot:", "Faltan permisos para construir. Concede al bot:"),
+    ("View Channels", "Ver canales"),
+    ("Manage Channels", "Gestionar canales"),
+    ("Manage Roles", "Gestionar roles"),
+    ("Could not read bot permissions. Check the network and server access.", "No se pudieron leer los permisos del bot. Comprueba la red y el acceso al servidor."),
+    ("Permission check timed out. Check the network and retry.", "La comprobación de permisos agotó el tiempo. Comprueba la red y vuelve a intentarlo."),
+    ("Could not access the bot credential. Check the keyring.", "No se pudo acceder a la credencial del bot. Comprueba el llavero."),
     ("Database is accessible.", "Se puede acceder a la base de datos."),
     ("Database is unavailable. Check access to the application database and restart ARGUS.", "La base de datos no está disponible. Comprueba el acceso a la base de datos de la aplicación y reinicia ARGUS."),
     ("Configuration could not be checked because the database is unavailable.", "No se pudo comprobar la configuración porque la base de datos no está disponible."),

@@ -144,6 +144,8 @@ pub fn run() {
         .manage(ClosePreference::default())
         .invoke_handler(tauri::generate_handler![
             diagnostico::diagnostico_local,
+            diagnostico::diagnostico_discord,
+            diagnostico::cancelar_diagnostico_discord,
             operaciones::listar_operaciones,
             crypto::keyring_available,
             actualizaciones::updater_install_supported,

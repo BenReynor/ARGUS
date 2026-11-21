@@ -106,6 +106,10 @@ async fn conectar_bot(
     // Los tests pasan una URL base falsa: sin red real no hay Gateway.
     if let (true, true, Some(app)) = (resultado.is_ok(), base_url.is_none(), app) {
         let pool = db::get_pool(app).await.ok();
+        if let Some(previous) = state.gateway_task.lock().unwrap().take() {
+            previous.abort();
+        }
+        *state.gateway_health.lock().unwrap() = Some((active_bot.id.clone(), false));
         let tarea = crate::gateway::lanzar(
             app.clone(),
             token,
@@ -113,6 +117,7 @@ async fn conectar_bot(
             state.bot_status.clone(),
             pool,
             active_bot.id.clone(),
+            state.gateway_health.clone(),
         );
         let anterior = state.gateway_task.lock().unwrap().replace(tarea);
         if let Some(anterior) = anterior {
@@ -155,6 +160,7 @@ pub async fn stop_bot(app: AppHandle, state: State<'_, AppState>) -> Result<BotS
 
 async fn stop_bot_en(app: AppHandle, state: State<'_, AppState>) -> Result<BotStatus, String> {
     let tarea = state.gateway_task.lock().unwrap().take();
+    *state.gateway_health.lock().unwrap() = None;
     if let Some(tarea) = tarea {
         tarea.abort();
     }

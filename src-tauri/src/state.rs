@@ -390,17 +390,22 @@ pub struct AppState {
     pub bot_core_tx: Arc<Mutex<Option<broadcast::Sender<BotCoreEvent>>>>,
     /// Tarea tokio del Gateway mientras el bot está activo.
     pub gateway_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    pub gateway_health: Arc<Mutex<Option<(String, bool)>>>,
+    pub diagnostic_cancel: broadcast::Sender<()>,
 }
 
 impl AppState {
     pub fn new() -> Self {
         let (tx, _rx) = broadcast::channel(100);
+        let (diagnostic_cancel, _) = broadcast::channel(16);
         Self {
             config: Arc::new(Mutex::new(Config::default())),
             bot_status: Arc::new(Mutex::new(BotStatus::default())),
             server_maps: Arc::new(Mutex::new(HashMap::new())),
             bot_core_tx: Arc::new(Mutex::new(Some(tx))),
             gateway_task: Arc::new(Mutex::new(None)),
+            gateway_health: Arc::new(Mutex::new(None)),
+            diagnostic_cancel,
         }
     }
 
