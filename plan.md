@@ -618,7 +618,7 @@ Verificación manual:
 - [x] Diagnóstico local: configuración, base de datos y llavero
   criterio: comando de diagnóstico que comprueba la configuración, el acceso a la base de datos y el llavero; cada comprobación devuelve correcto, advertencia, fallo o no comprobado, con explicación y fecha; no devuelve tokens, contraseñas ni contenido de archivos de autenticación; tests con base de datos inaccesible y sin llavero; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Diagnóstico de Discord: Gateway y permisos para construir
+- [x] Diagnóstico de Discord: Gateway y permisos para construir
   criterio: comprobación de solo lectura del estado del Gateway del bot activo y de los permisos que necesita para construir en el servidor elegido; no conecta bots nuevos ni escribe en Discord; timeout y cancelación; tests con el Discord falso: Gateway caído, permiso ausente y sin red; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Diagnóstico de agentes y MCP
