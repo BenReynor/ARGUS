@@ -593,7 +593,7 @@ resultados por acción y notificaciones existentes.
 - [x] Inventariar las operaciones y sus avisos reales
   criterio: documento en docs con las operaciones de construcción, edición, planes, plantillas, backups, snapshots, agentes, MCP y ajustes; para cada una identifica el comando real, dónde muestra progreso/éxito/fallo, si permite comprobar el resultado y qué falta; rastrea respuestas reales del backend, no solo textos de notificación; identifica funciones que fallan en silencio o muestran éxito antes de terminar; comprobación automatizada de que los comandos literales invocados por la interfaz están registrados y los cuatro comandos ficticios retirados no reaparecen
 
-- [ ] Historial de operaciones: terminar el último intento
+- [x] Historial de operaciones: terminar el último intento
   criterio: aplicar con `git cherry-pick -n 7303703 && git checkout HEAD -- plan.md lecciones.md` el último intento bloqueado (ya tiene ID por operación, bot/servidor/destino capturados al empezar, pasos, tiempos y estados en SQLite, recuperación tras reinicio y destinos múltiples como message_ids) sobre la base actual, resolviendo colisiones de migración; corregir solo lo que señaló el juez: la regresión debe cambiar de servidor **durante** una propuesta con acciones sin guild_id (después de empezar y antes de terminar) y comprobar que las rutas escritas y el historial siguen siendo del servidor original; una acción solo aceptada por Discord queda «no verificada» (conectarla a la lectura es la tarea siguiente); pasan todos los tests del historial; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Verificar canales y categorías tras crearlos o editarlos
