@@ -675,7 +675,7 @@ Verificación manual:
 - [B] Conectores: catálogo y vista
   criterio: archivo versionado con el catálogo de conectores (servicio, método oficial MCP o API, requisitos, permisos, herramientas de lectura y escritura y limitaciones) y una vista que lo muestra; los conectores no implementados o no probados aparecen como tales; se pueden habilitar varios por servidor y probar cada uno desde el diagnóstico; no promete que todos los bots tengan MCP; tests con catálogo y conector falsos; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Conectores: credenciales en el llavero
+- [B] Conectores: credenciales en el llavero
   criterio: el usuario activa un conector y su credencial (clave de API o token del propio servicio) se guarda cifrada con el llavero, asociada al servicio, cuenta y servidor; desconectar la borra y deja de ofrecer sus herramientas; nunca pide el token privado de un bot ajeno ni automatiza cuentas personales; ninguna credencial aparece en diagnósticos, logs ni prompts; OAuth queda para más adelante; tests con autorización falsa, expiración y revocación; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Conectores: lectura de varios MCP con aislamiento
