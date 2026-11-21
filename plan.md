@@ -658,7 +658,7 @@ Verificación manual:
 - [x] Auditoría: accesos efectivos
   criterio: cálculo de solo lectura que reutiliza el de permisos, jerarquía y overwrites para explicar quién puede ver, escribir o administrar cada canal y qué permisos le faltan al bot para una construcción; resalta Administrator y los permisos sensibles (Manage Messages, Manage Channels, Manage Roles, Manage Webhooks, Kick, Ban, Mention Everyone), también cuando los concede un overwrite de canal; si no puede leer una parte, la auditoría queda incompleta; tests de herencia, overwrites de rol y miembro, Administrator y lectura parcial; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Auditoría: hallazgos frente a lo esperado
+- [x] Auditoría: hallazgos frente a lo esperado
   criterio: solo se declara una discrepancia de privacidad frente a una expectativa explícita del usuario, su plan o un snapshot, nunca por el nombre del canal; cada hallazgo cita sus datos y cuándo se comprobó; tests con expectativa privada cumplida, incumplida y sin expectativa; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Auditoría: vista de hallazgos
