@@ -5,8 +5,14 @@ import { t } from '../i18n';
 
 type Template = { id: string; name: string; description: string; tags: string; data: string; version: number; created_at: string; updated_at: string };
 type Document = { name: string; description: string; roles: { key: string; name: string }[]; channels: { key: string; name: string; kind: string; parent: string | null; overwrites: { role: string }[] }[] };
+type TargetPreview = { document: Document; guild_id: string; differences: string[]; conflicts: string[]; actions: Record<string, unknown>[] };
+type Guild = { id: string; name: string };
 type Preview = { document: Document; name_exists: boolean };
 export function TemplateTransfer() {
+  const [guilds, setGuilds] = useState<Guild[]>([]);
+  const [guildId, setGuildId] = useState('');
+  const [target, setTarget] = useState<TargetPreview | null>(null);
+  const [selected, setSelected] = useState('');
   const [items, setItems] = useState<Template[]>([]);
   const [data, setData] = useState('');
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -16,6 +22,15 @@ export function TemplateTransfer() {
   const [editing, setEditing] = useState<Template | null>(null);
   const refresh = async () => setItems(await invoke<Template[]>('list_templates'));
   useEffect(() => { refresh().catch(() => setError(t('Could not load templates.'))); }, []);
+  const selectTarget = async (id: string) => {
+    setSelected(id); setTarget(null); setGuildId(''); setError('');
+    try { setGuilds(await invoke<Guild[]>('list_guilds')); } catch { setError(t('Could not load servers.')); }
+  };
+  const previewTarget = async () => {
+    setBusy(true); setTarget(null); setError('');
+    try { setTarget(await invoke<TargetPreview>('preview_template_target', { templateId: selected, guildId })); }
+    catch { setError(t('Could not preview this template for the selected server.')); } finally { setBusy(false); }
+  };
   const choose = async (file: File | undefined) => {
     setPreview(null); setData(''); setError('');
     if (!file) return;
@@ -68,7 +83,14 @@ export function TemplateTransfer() {
   return <Card><h3>{t('Template library')}</h3><p>{t('Import and export portable templates.')}</p>
     {error && <p role="alert">{error}</p>}
     <label>{t('Search by name or tag')} <input value={query} onChange={e => setQuery(e.target.value)} /></label>
-    {items.filter(item => [item.name, item.tags].some(value => value.toLocaleLowerCase().includes(query.toLocaleLowerCase().trim()))).map(item => <p key={item.id}>{item.name} {item.tags && <small>({item.tags})</small>} <Button variante="secundario" disabled={busy} onClick={() => setEditing({ ...item })}>{t('Edit')}</Button> <Button variante="secundario" disabled={busy} onClick={() => void duplicate(item)}>{t('Duplicate')}</Button> <Button variante="secundario" disabled={busy} onClick={() => void remove(item)}>{t('Delete')}</Button> <Button variante="secundario" disabled={busy} onClick={() => void download(item.id)}>{t('Export')}</Button></p>)}
+    {items.filter(item => [item.name, item.tags].some(value => value.toLocaleLowerCase().includes(query.toLocaleLowerCase().trim()))).map(item => <p key={item.id}>{item.name} <Button variante="secundario" disabled={busy} onClick={() => void selectTarget(item.id)}>{t('Preview for server')}</Button> {item.tags && <small>({item.tags})</small>} <Button variante="secundario" disabled={busy} onClick={() => setEditing({ ...item })}>{t('Edit')}</Button> <Button variante="secundario" disabled={busy} onClick={() => void duplicate(item)}>{t('Duplicate')}</Button> <Button variante="secundario" disabled={busy} onClick={() => void remove(item)}>{t('Delete')}</Button> <Button variante="secundario" disabled={busy} onClick={() => void download(item.id)}>{t('Export')}</Button></p>)}
+    {selected && <div><h4>{t('Preview for server')}</h4>
+      <label>{t('Server')} <select value={guildId} onChange={e => { setGuildId(e.target.value); setTarget(null); }}><option value="">{t('Select a server')}</option>{guilds.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></label>
+      <Button disabled={!guildId || busy} onClick={() => void previewTarget()}>{t('Preview')}</Button>
+      {target && <div><h5>{t('Template tree')}</h5><ul>{target.document.roles.map(r => <li key={r.key}>{r.name}</li>)}{target.document.channels.filter(c => !c.parent).map(c => <li key={c.key}>{c.name} ({c.kind})<ul>{target.document.channels.filter(child => child.parent === c.key).map(child => <li key={child.key}>{child.name} ({child.kind})</li>)}</ul></li>)}</ul>
+      <h5>{t('Differences')}</h5><ul>{target.differences.map((d, i) => <li key={i}>{d}</li>)}</ul>
+      <h5>{t('Conflicts')}</h5>{target.conflicts.length ? <ul>{target.conflicts.map((c, i) => <li key={i}>{c}</li>)}</ul> : <p>{t('No conflicts')}</p>}
+      <h5>{t('Planned actions')}</h5><pre>{JSON.stringify(target.actions, null, 2)}</pre></div>}</div>}
     {editing && <div>
       <label>{t('Name')} <input value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} /></label>
       <label>{t('Description')} <input value={editing.description} onChange={e => setEditing({ ...editing, description: e.target.value })} /></label>

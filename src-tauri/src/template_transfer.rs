@@ -257,3 +257,150 @@ mod tests {
         assert_eq!(parse(&copies[0].data).unwrap(), original);
     }
 }
+
+/// Read-only plan. New objects use template keys as references until created.
+#[derive(Debug, Serialize)]
+pub struct TargetPreview {
+    pub document: Document,
+    pub guild_id: String,
+    pub differences: Vec<String>,
+    pub conflicts: Vec<String>,
+    pub actions: Vec<serde_json::Value>,
+}
+
+pub fn target_preview(
+    document: Document,
+    guild_id: &str,
+    roles: &[crate::state::Role],
+    channels: &[crate::state::Channel],
+) -> Result<TargetPreview, String> {
+    use serde_json::json;
+    use std::collections::HashMap;
+    let mut differences = Vec::new();
+    let mut conflicts = Vec::new();
+    let mut actions = Vec::new();
+    let mut refs = HashMap::new();
+    for role in &document.roles {
+        if role.name.eq_ignore_ascii_case("@everyone") {
+            if !roles.iter().any(|r| r.id == guild_id) {
+                return Err("Server everyone role not found".into());
+            }
+            refs.insert(role.key.clone(), json!({"id": guild_id}));
+        } else {
+            let matches = roles
+                .iter()
+                .filter(|r| r.name.eq_ignore_ascii_case(&role.name))
+                .count();
+            if matches > 0 {
+                conflicts.push(format!(
+                    "Role ‘{}’ has {} existing name match(es); a new role is planned",
+                    role.name, matches
+                ));
+            }
+            refs.insert(role.key.clone(), json!({"new_role": role.key}));
+            differences.push(format!("Create role: {}", role.name));
+            actions.push(json!({"action":"create_role", "key":role.key, "name":role.name, "color":role.color, "permissions":role.permissions}));
+        }
+    }
+    for channel in document
+        .channels
+        .iter()
+        .filter(|c| c.kind == "category")
+        .chain(document.channels.iter().filter(|c| c.kind != "category"))
+    {
+        let count = channels
+            .iter()
+            .filter(|c| c.name.eq_ignore_ascii_case(&channel.name))
+            .count();
+        if count > 0 {
+            conflicts.push(format!(
+                "Channel ‘{}’ has {} existing name match(es); a new channel is planned",
+                channel.name, count
+            ));
+        }
+        differences.push(format!("Create {}: {}", channel.kind, channel.name));
+        let overwrites: Vec<_> = channel
+            .overwrites
+            .iter()
+            .map(|o| json!({"role": refs[&o.role], "allow":o.allow, "deny":o.deny}))
+            .collect();
+        actions.push(json!({"action":"create_channel", "key":channel.key, "name":channel.name, "kind":channel.kind, "parent":channel.parent.as_ref().map(|p| json!({"new_category":p})), "overwrites":overwrites}));
+    }
+    Ok(TargetPreview {
+        document,
+        guild_id: guild_id.into(),
+        differences,
+        conflicts,
+        actions,
+    })
+}
+
+#[tauri::command]
+pub async fn preview_template_target(
+    app: AppHandle,
+    state: tauri::State<'_, crate::state::AppState>,
+    template_id: String,
+    guild_id: String,
+) -> Result<TargetPreview, String> {
+    let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
+    let bot_id = state.get_active_bot().ok_or("No bot selected")?.id;
+    let guilds = crate::commands::sincronizar_guilds(&pool, &state, None).await?;
+    if !guilds.iter().any(|g| g.id == guild_id) {
+        return Err("Server is not available to the active bot".into());
+    }
+    let template = db::get_template(&pool, &template_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(invalid)?;
+    let document = parse(&template.data)?;
+    let roles = crate::commands::leer_roles(&state, &guild_id, None).await?;
+    let channels = crate::commands::leer_canales(&state, &guild_id, None).await?;
+    if state.get_active_bot().map(|b| b.id) != Some(bot_id) {
+        return Err("Active bot changed; retry the preview".into());
+    }
+    target_preview(document, &guild_id, &roles, &channels)
+}
+
+#[cfg(test)]
+mod target_tests {
+    use super::*;
+    fn role(id: &str, name: &str) -> crate::state::Role {
+        crate::state::Role {
+            id: id.into(),
+            name: name.into(),
+            color: 0,
+            position: 0,
+            permissions: "0".into(),
+            permissions_bitfield: None,
+            member_count: 0,
+            mentionable: false,
+            hoist: false,
+        }
+    }
+    #[test]
+    fn preview_remaps_two_servers_and_preserves_ambiguous_roles() {
+        let document = parse(r#"{"format":"argus-template","version":1,"name":"Example","description":"","roles":[{"key":"everyone","name":"@everyone","color":0,"permissions":0},{"key":"staff","name":"Staff","color":12,"permissions":8}],"channels":[{"key":"chat","name":"chat","kind":"text","parent":"group","overwrites":[{"role":"everyone","allow":1,"deny":0},{"role":"staff","allow":2,"deny":0}]},{"key":"group","name":"Group","kind":"category","parent":null,"overwrites":[]}]}"#).unwrap();
+        for guild in ["100", "200"] {
+            let roles = vec![
+                role(guild, "@everyone"),
+                role("301", "Staff"),
+                role("302", "Staff"),
+            ];
+            let preview = target_preview(document.clone(), guild, &roles, &[]).unwrap();
+            assert_eq!(preview.conflicts.len(), 1);
+            assert_eq!(preview.actions.len(), 3);
+            assert_eq!(preview.actions[1]["key"], "group");
+            assert_eq!(preview.actions[2]["parent"]["new_category"], "group");
+            assert_eq!(preview.actions[2]["overwrites"][0]["role"]["id"], guild);
+            assert_eq!(
+                preview.actions[2]["overwrites"][1]["role"]["new_role"],
+                "staff"
+            );
+            assert!(preview
+                .actions
+                .iter()
+                .all(|a| a["action"] == "create_role" || a["action"] == "create_channel"));
+        }
+        assert!(target_preview(document, "999", &[role("100", "@everyone")], &[]).is_err());
+    }
+}

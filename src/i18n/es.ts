@@ -3,6 +3,16 @@
 export const NOMBRE_ES = 'Español';
 
 export const es: Record<string, string> = {
+  "Could not load servers.": "No se pudieron cargar los servidores.",
+  "Could not preview this template for the selected server.": "No se pudo preparar la vista previa para el servidor seleccionado.",
+  "Preview": "Vista previa",
+  "Preview for server": "Vista previa para el servidor",
+  "Select a server": "Selecciona un servidor",
+  "Template tree": "Árbol de la plantilla",
+  "Differences": "Diferencias",
+  "Conflicts": "Conflictos",
+  "No conflicts": "Sin conflictos",
+  "Planned actions": "Acciones previstas",
   "Search by name or tag": "Buscar por nombre o etiqueta",
   "Tags (comma separated)": "Etiquetas (separadas por comas)",
   "Structure (portable JSON)": "Estructura (JSON portátil)",

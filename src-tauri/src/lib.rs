@@ -212,6 +212,7 @@ pub fn run() {
             invite_url,
             ruta_mcp,
             template_transfer::preview_template_file,
+            template_transfer::preview_template_target,
             template_transfer::import_template_file,
             template_transfer::export_template_file,
             list_templates,
