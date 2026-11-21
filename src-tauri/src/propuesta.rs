@@ -127,6 +127,10 @@ pub struct ResultadoAccion {
 /// Resumen final de aplicar una propuesta.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResumenPropuesta {
+    #[serde(default)]
+    pub operation_id: Option<String>,
+    #[serde(default)]
+    pub operation_status: Option<String>,
     pub total: usize,
     pub hechas: usize,
     pub fallidas: usize,
@@ -140,6 +144,8 @@ impl ResumenPropuesta {
     pub fn de(total: usize, resultados: Vec<ResultadoAccion>) -> Self {
         let cuenta = |e: EstadoAccion| resultados.iter().filter(|r| r.estado == e).count();
         Self {
+            operation_id: None,
+            operation_status: None,
             total,
             hechas: cuenta(EstadoAccion::Ok),
             fallidas: cuenta(EstadoAccion::Error),

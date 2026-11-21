@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle, Clock, HelpCircle, Loader, MinusCircle, XCircle } from 'lucide-react';
 import { listOperations } from '../api/tauri';
-import { emptyFilters, filterOperations, readFilters, saveFilters } from '../activity';
+import { emptyFilters, filterOperations, operationProgress, readFilters, saveFilters } from '../activity';
 import type { ActivityFilters, Operation } from '../activity';
 import { useStore } from '../store/useStore';
 import { t } from '../i18n';
@@ -33,6 +33,8 @@ export function ActivityView() {
   const [filters, setFilters] = useState<ActivityFilters>(emptyFilters);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const selectedId = useStore(s => s.activityOperationId);
+  const selectOperation = useStore(s => s.openActivityOperation);
   const [reload, setReload] = useState(0);
   useEffect(() => {
     setFilters(bot ? readFilters(localStorage, bot) : emptyFilters);
@@ -43,6 +45,15 @@ export function ActivityView() {
     listOperations().then(data => { if (active) setOperations(data); }).catch(() => { if (active) setError(true); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [bot, reload]);
+  useEffect(() => {
+    if (!bot) return;
+    let active = true;
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') listOperations().then(data => { if (active) setOperations(data); }).catch(() => {});
+    }, 3000);
+    return () => { active = false; clearInterval(timer); };
+  }, [bot]);
+  const selected = operations.find(op => op.id === selectedId);
   const update = (key: keyof ActivityFilters, value: string) => {
     const next = { ...filters, [key]: value }; setFilters(next);
     if (bot) { try { saveFilters(localStorage, bot, next); } catch { /* Storage may be unavailable. */ } }
@@ -60,12 +71,70 @@ export function ActivityView() {
         <Button onClick={() => setReload(n => n + 1)}>{t('Refresh')}</Button>
       </div>
       {loading ? <p>{t('Loading activity…')}</p> : error ? <p role="alert">{t('Could not load activity.')}</p> : filterOperations(operations, filters).length === 0 ? <p>{t('No activity matches these filters.')}</p> : <ul>{filterOperations(operations, filters).map(op => <li key={op.id}>
-        <p><Status status={op.status} /> · {guilds.find(g => g.id === op.guild_id)?.name ?? op.guild_id} · <time dateTime={op.started_at}>{new Date(op.started_at).toLocaleString()}</time></p>
-        <ul>{op.steps.map(step => <li key={step.step_index}>{actionLabel(step.action)} — <Status status={step.status} /></li>)}</ul>
+        <p><Status status={op.status} /> · {guilds.find(g => g.id === op.guild_id)?.name ?? op.guild_id} · <time dateTime={op.started_at}>{new Date(op.started_at).toLocaleString()}</time> · <button onClick={() => selectOperation(op.id)} aria-expanded={selectedId === op.id}>{t('View operation')}</button></p>
       </li>)}</ul>}
+      {selectedId && !loading && !selected && <p role="status">{t('Operation not found for the selected bot.')}</p>}
+      {selected && <OperationDetail operation={selected} />}
     </>}
   </div>;
 }
+function OperationDetail({ operation }: { operation: Operation }) {
+  const { done, total } = operationProgress(operation.steps);
+  const detail = useRef<HTMLElement>(null);
+  useEffect(() => { detail.current?.focus(); }, [operation.id]);
+  return <section ref={detail} aria-label={t('Operation details')} tabIndex={-1}>
+    <h3>{t('Operation details')}</h3>
+    <div role="status"><Status status={operation.status} /> {operation.reason && <p>{reasonText(operation.reason)}</p>}</div>
+    <label>{t('Progress')} <progress value={done} max={total || 1} /> {t('{done} of {total}', { done, total })}</label>
+    <ol>{operation.steps.map(step => <li key={step.step_index}>
+      {actionLabel(step.action)} — <Status status={step.status} />
+      {step.reason && <p role={step.status === 'failed' ? 'alert' : undefined}>{reasonText(step.reason)}</p>}
+      {['failed', 'skipped', 'cancelled', 'unverified', 'interrupted'].includes(step.status) && <p>{suggestion(step.reason)}</p>}
+    </li>)}</ol>
+  </section>;
+}
+function reasonText(reason: string): string {
+  if (reason.startsWith('Discord rejected the request (HTTP ')) return t('Discord rejected the request ({code})', { code: reason.slice('Discord rejected the request ('.length, -1) });
+  switch (reason) {
+    case 'The bot lacks permission for this action': return t('The bot lacks permission for this action');
+    case 'The requested resource was not found or is inaccessible': return t('The requested resource was not found or is inaccessible');
+    case 'The request timed out; its outcome may be unknown': return t('The request timed out; its outcome may be unknown');
+    case 'A required reference could not be resolved': return t('A required reference could not be resolved');
+    case "Discord returned an unreadable response; the outcome may be unknown": return t("Discord returned an unreadable response; the outcome may be unknown");
+    case "Could not reach Discord; the outcome may be unknown": return t("Could not reach Discord; the outcome may be unknown");
+    case "Discord rate limited the request": return t("Discord rate limited the request");
+    case "Discord rejected the bot credential": return t("Discord rejected the bot credential");
+    case "The action contains invalid parameters": return t("The action contains invalid parameters");
+    case "The bot's role hierarchy does not allow this action": return t("The bot's role hierarchy does not allow this action");
+    case "The action failed; its cause could not be safely recorded": return t("The action failed; its cause could not be safely recorded");
+    case "Outcome was not recorded": return t("Outcome was not recorded");
+    case "Not attempted because the operation stopped": return t("Not attempted because the operation stopped");
+    case "Verification in progress": return t("Verification in progress");
+    case "Result verified": return t("Result verified");
+    case "All results verified": return t("All results verified");
+    case "Some steps failed or were skipped": return t("Some steps failed or were skipped");
+    case "Some results have not been verified": return t("Some results have not been verified");
+    case "Interrupted before the outcome was recorded": return t("Interrupted before the outcome was recorded");
+    case "Not attempted before interruption": return t("Not attempted before interruption");
+    case "Interrupted before completion; it was not restarted": return t("Interrupted before completion; it was not restarted");
+    case "Some actions were accepted; others were not completed": return t("Some actions were accepted; others were not completed");
+    case "No actions were accepted; at least one failed": return t("No actions were accepted; at least one failed");
+    case "Operation stopped before all steps were attempted": return t("Operation stopped before all steps were attempted");
+    case "No actions could be attempted": return t("No actions could be attempted");
+    case "Previously accepted; the result has not been verified": return t("Previously accepted; the result has not been verified");
+    case "Discord accepted the action; the result has not been verified": return t("Discord accepted the action; the result has not been verified");
+    case "The outcome of a timed-out creation is unknown": return t("The outcome of a timed-out creation is unknown");
+    default: return reason;
+  }
+}
+function suggestion(reason?: string | null): string {
+  const value = (reason ?? '').toLowerCase();
+  if (value.includes('permission') || value.includes('hierarchy') || value.includes('403')) return t('Check the bot permissions and role hierarchy, then review the operation before retrying.');
+  if (value.includes('not found') || value.includes('reference') || value.includes('404')) return t('Check that the referenced resource exists and is accessible, then review the operation before retrying.');
+  if (value.includes('timeout') || value.includes('timed out') || value.includes('unknown') || value.includes('unverified')) return t('Inspect the server to check what changed before retrying.');
+  return t('Review the step and server state, correct the cause, and retry only the remaining changes.');
+}
+
 function statusLabel(status: string): string {
   switch (status) {
     case 'pending': return t('Pending'); case 'in_progress': return t('In progress');

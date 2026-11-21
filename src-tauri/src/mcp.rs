@@ -2373,7 +2373,11 @@ impl ArgusMcp {
         crate::operaciones::terminar(&self.pool, &id, estado, razon)
             .await
             .map_err(|e| e.to_string())?;
-        resultado
+        resultado.map(|mut resumen| {
+            resumen.operation_id = Some(id);
+            resumen.operation_status = Some(estado.to_string());
+            resumen
+        })
     }
 
     async fn ejecutar_propuesta_registrada(
@@ -6301,6 +6305,8 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(historial[0].status, "partial");
+        assert_eq!(r.operation_id.as_deref(), Some(historial[0].id.as_str()));
+        assert_eq!(r.operation_status.as_deref(), Some("partial"));
 
         let fallida = Propuesta {
             resumen: String::new(),

@@ -1,3 +1,4 @@
+import { operationNotice } from '../activity';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { confirm, open, save } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
@@ -485,6 +486,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
       setConfirmacionAplicar({ propuesta, guildId, nombre: nombreServidor });
       return;
     }
+    const operationBot = useStore.getState().config.active_bot_id;
     setAplicando(true);
     setDeteniendo(false);
     const anteriores = resumen?.resultados.filter((r) => r.estado === 'ok') ?? [];
@@ -493,6 +495,11 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
     try {
       const r = await aplicarPropuesta(propuesta.propuesta, anteriores);
       setResumen(r);
+      if (r.operation_id) {
+        const status = r.operation_status ?? 'unverified';
+        const message = status === 'correct' ? t('Operation verified') : status === 'partial' ? t('Operation partially completed') : status === 'failed' ? t('Operation failed') : t('Operation completed with unresolved steps');
+        showNotification(message, operationNotice(status), r.operation_id, operationBot ?? undefined);
+      }
       const detalle = propuesta.propuesta.acciones.map((a, i) => {
         const resultado = r.resultados.find((x) => x.indice === i);
         const estado = resultado ? { ok: t('Done'), error: t('Error'), omitida: t('Skipped') }[resultado.estado] : t('Cancelled');
