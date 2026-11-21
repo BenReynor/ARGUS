@@ -45,6 +45,13 @@ const FRAGMENTO_MAX: usize = 160;
 const MIEMBROS_DEFECTO: usize = 25;
 const MIEMBROS_MAX: usize = 100;
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct PlantillaParams {
+    /// Identifier returned by listar_plantillas.
+    pub id: String,
+}
+
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 pub struct ServidorParams {
@@ -2006,6 +2013,8 @@ fn miembro_json(m: &Member, roles: &[Role]) -> serde_json::Value {
 /// Herramientas que solo leen (no cambian nada en Discord ni en la BD). Son las
 /// únicas que se le dan a un agente de IA; el resto va por propuesta aprobada.
 pub const HERRAMIENTAS_LECTURA: &[&str] = &[
+    "listar_plantillas",
+    "consultar_plantilla",
     "informe_permisos",
     "info_restauracion",
     "listar_snapshots",
@@ -2689,6 +2698,32 @@ impl ArgusMcp {
 
 #[tool_router]
 impl ArgusMcp {
+    #[tool(
+        name = "listar_plantillas",
+        description = "Lists the user's local template library, without modifying it."
+    )]
+    async fn listar_plantillas(&self) -> Result<String, String> {
+        let items = crate::db::list_templates(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(json!(items.into_iter().map(|t| json!({"id": t.id, "name": t.name, "description": t.description, "tags": t.tags})).collect::<Vec<_>>()).to_string())
+    }
+
+    #[tool(
+        name = "consultar_plantilla",
+        description = "Reads one template by its library ID. Never applies or modifies it."
+    )]
+    async fn consultar_plantilla(
+        &self,
+        Parameters(p): Parameters<PlantillaParams>,
+    ) -> Result<String, String> {
+        let item = crate::db::get_template(&self.pool, &p.id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or("Template not found")?;
+        serde_json::to_string(&item).map_err(|e| e.to_string())
+    }
+
     #[tool(
         name = "listar_snapshots",
         description = "Lists local snapshots for the active bot and server. Does not modify Discord."
@@ -5072,6 +5107,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn agente_consulta_biblioteca_sin_modificarla() {
+        let (_dir, pool) = bd_temporal().await;
+        let data = r#"{"format":"argus-template","version":1,"name":"Example","description":"","roles":[],"channels":[]}"#;
+        crate::template_transfer::import(&pool, data, false)
+            .await
+            .unwrap();
+        let mcp = ArgusMcp::nuevo(pool.clone(), None).await.unwrap();
+        let list: serde_json::Value =
+            serde_json::from_str(&mcp.listar_plantillas().await.unwrap()).unwrap();
+        let id = list[0]["id"].as_str().unwrap().to_string();
+        let detail = mcp
+            .consultar_plantilla(Parameters(PlantillaParams { id }))
+            .await
+            .unwrap();
+        assert!(detail.contains("Example"));
+        assert_eq!(crate::db::list_templates(&pool).await.unwrap().len(), 1);
+        assert!(HERRAMIENTAS_LECTURA.contains(&"listar_plantillas"));
+        assert!(HERRAMIENTAS_LECTURA.contains(&"consultar_plantilla"));
+    }
+
+    #[tokio::test]
     async fn las_herramientas_de_escritura_estan_registradas() {
         let tools = ArgusMcp::tool_router().list_all();
         let nombres: Vec<_> = tools.iter().map(|t| t.name.to_string()).collect();
@@ -5134,6 +5190,7 @@ mod tests {
                 || *n == "leer_mensajes"
                 || *n == "buscar_mensajes"
                 || *n == "comparar_snapshot"
+                || *n == "consultar_plantilla"
                 || n.starts_with("listar_")
                 || n.starts_with("info_");
             assert!(ok, "{n} no es una herramienta de lectura conocida");

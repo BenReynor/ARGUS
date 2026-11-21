@@ -20,6 +20,7 @@ import { ContextoPersonalidad } from './ContextoPersonalidad';
 import './Asistente.css';
 import { DiffView } from './DiffView';
 import { TemplateTransfer } from './TemplateTransfer';
+import { SugerenciaPlantilla } from './SugerenciaPlantilla';
 
 type Modo = 'read' | 'plan' | 'execute';
 interface Herramienta { id: string; nombre: string; ok: boolean | null }
@@ -762,6 +763,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
                 )}
                 {!m.texto && !m.error && m.rol === 'assistant' && enviando && <span className="ui-skeleton" style={{ width: '40%' }} />}
                 {m.error && <p className="asistente__error" role="alert">{m.error}</p>}
+                {!moderacion && !enviando && !m.error && m.rol === 'assistant' && <SugerenciaPlantilla texto={m.texto} />}
               </article>
             ))}
 

@@ -3,6 +3,10 @@
 export const NOMBRE_ES = 'Español';
 
 export const es: Record<string, string> = {
+  "Suggested template": "Plantilla sugerida",
+  "Accepting saves a new copy in the library.": "Al aceptar se guarda una copia nueva en la biblioteca.",
+  "Accept and save copy": "Aceptar y guardar copia",
+  "Review suggestion": "Revisar sugerencia",
   "Could not load servers.": "No se pudieron cargar los servidores.",
   "Could not preview this template for the selected server.": "No se pudo preparar la vista previa para el servidor seleccionado.",
   "Preview": "Vista previa",
