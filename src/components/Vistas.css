@@ -242,3 +242,7 @@
 .mensaje__texto { margin: 0; color: var(--text); white-space: pre-wrap; }
 .mensaje__adjunto { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--accent); font-size: var(--fs-sm); }
 .mensaje__acciones { display: flex; gap: var(--sp-1); }
+
+.audit-findings { display: grid; gap: var(--sp-3); }
+.audit-findings__filters { display: flex; gap: var(--sp-3); flex-wrap: wrap; }
+.audit-findings .ui-card p { overflow-wrap: anywhere; }

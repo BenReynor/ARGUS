@@ -14,6 +14,7 @@ import { RolesView } from './components/RolesView';
 import { SettingsView } from './components/SettingsView';
 import { ActivityView } from './components/ActivityView';
 import { LogsView } from './components/LogsView';
+import { AuditFindingsView } from './components/AuditFindingsView';
 import { ServidorView } from './components/ServidorView';
 import { AsistenteView } from './components/AsistenteView';
 import { DestructionAlerts } from './components/DestructionAlerts';
@@ -98,6 +99,7 @@ function App() {
     { id: 'members', label: t('Members'), icon: 'users' },
     { id: 'roles', label: t('Roles'), icon: 'shield' },
     { id: 'backups', label: t('Backups'), icon: 'archive' },
+    { id: 'permission-audit', label: t('Permission audit'), icon: 'shield' },
     { id: 'servidor', label: t('Server'), icon: 'server' },
     { id: 'asistente', label: t('AI Assistant'), icon: 'sparkles' },
     { id: 'activity', label: t('Activity'), icon: 'activity' },
@@ -118,6 +120,7 @@ function App() {
       case 'members': return <MembersView />;
       case 'roles': return <RolesView />;
       case 'backups': return <BackupsView />;
+      case 'permission-audit': return <AuditFindingsView />;
       case 'servidor': return <ServidorView />;
       case 'asistente': return <AsistenteView />;
       case 'activity': return <ActivityView />;

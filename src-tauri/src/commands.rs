@@ -850,6 +850,20 @@ pub async fn guardar_ajustes_servidor(
 }
 
 #[tauri::command]
+pub async fn permission_audit(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<serde_json::Value, String> {
+    let config = { state.config.lock().map_err(|e| e.to_string())?.clone() };
+    let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
+    let report = crate::mcp::ArgusMcp::con_contexto(pool, None, config)
+        .informe_permisos_json(Some(&guild_id))
+        .await?;
+    serde_json::from_str(&report).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn audit_log(
     state: State<'_, AppState>,
     guild_id: String,
