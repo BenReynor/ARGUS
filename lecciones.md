@@ -218,3 +218,8 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - Síntoma: El gate falló antes de pasar: [GATE] ✗ juez: criterio NO cumplido (La sesión de MCP siempre queda sin comprobar; no se determina si está disponible.); [GATE] ✗ criterio: 98_criterio.sh falló
 - Causa: [GATE] ✗ juez: criterio NO cumplido (La sesión de MCP siempre queda sin comprobar; no se determina si está disponible.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                          
 - Prevención: Evita exactamente ese fallo y compruébalo con `.dedalo/estado/gate --solo 98_criterio.sh` antes de terminar (98_criterio.sh).
+
+## 2026-11-20 23:01 — Tarea bloqueada: Pantalla de diagnóstico
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: revisor_fail en la iteración 7: Los cambios cubren diagnóstico accesible, estados compartidos, progreso, reintentos y pruebas de resultados y cancelación; no veo secretos ni cambios ajenos evidentes. Hay un error en la vista: al fallar el diagnóstico global, los estados se marcan `unverified`, pero el botón de cada comprobación solo llama a `diagnostico_agentes`; reintentar comprobaciones de configuración, base de datos, keyring, Gateway o permisos las consulta al grupo incorrecto y no las actualiza.
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.

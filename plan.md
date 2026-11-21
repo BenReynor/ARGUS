@@ -624,7 +624,7 @@ Verificación manual:
 - [x] Diagnóstico de agentes y MCP
   criterio: para Claude, Codex, OpenCode y el MCP distingue «binario encontrado», «sesión disponible» y «responde» como comprobaciones separadas; no abre login ni llama a modelos de pago; cada proceso tiene timeout y cancelación; tests con agentes falsos: sin sesión, sin binario y proceso que se cuelga; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Pantalla de diagnóstico
+- [B] Pantalla de diagnóstico
   criterio: botón «Run diagnostics» en Settings y acceso desde un fallo de construcción; lista por componente con progreso, última comprobación y sugerencia de solución, **usando los estados compartidos del historial de la FASE 20** (sin estados propios); se puede repetir una comprobación suelta; no hay un «todo funciona» si algo quedó sin comprobar; textos con t(); tests de resultado parcial, cancelación y reintento; Lo no especificado NO es motivo de rechazo.
 
 - [x] Informe de diagnóstico exportable sin secretos
