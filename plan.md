@@ -664,7 +664,7 @@ Verificación manual:
 - [x] Auditoría: vista de hallazgos
   criterio: vista con filtros por canal, rol y gravedad, con los datos que sustentan cada hallazgo y su impacto explicado; textos con t(); tests de los filtros; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Auditoría: preparar y aplicar correcciones
+- [B] Auditoría: preparar y aplicar correcciones
   criterio: «Prepare correction» genera una propuesta con el motor existente, muestra el antes y el después y pide aprobación; nunca ofrece acciones que superen la jerarquía del bot; tras aplicar vuelve a comprobar los hallazgos y muestra resultado parcial si no puede; tests de propuesta, descarte y permisos insuficientes; Lo no especificado NO es motivo de rechazo.
 
 - [x] Explicar la auditoría a la IA sin concederle escrituras
