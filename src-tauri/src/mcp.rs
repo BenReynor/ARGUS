@@ -59,6 +59,37 @@ pub struct ServidorParams {
     pub guild_id: Option<String>,
 }
 
+/// Explicit privacy expectation for one member and channel, supplied by the caller.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct ExpectativaPrivacidad {
+    pub channel_id: String,
+    pub member_id: String,
+    /// Whether this member is expected to be able to view the channel.
+    pub can_view: bool,
+    /// Source of the expectation: user, plan, or snapshot.
+    pub source: FuenteExpectativa,
+    /// Identifies the statement, plan passage, or snapshot used as evidence.
+    pub evidence: String,
+}
+
+#[derive(Debug, Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+#[schemars(crate = "rmcp::schemars")]
+pub enum FuenteExpectativa {
+    User,
+    Plan,
+    Snapshot,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct InformePermisosParams {
+    pub guild_id: Option<String>,
+    /// Only explicit expectations; channel names do not imply privacy.
+    pub expectations: Option<Vec<ExpectativaPrivacidad>>,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 pub struct ListarMiembrosParams {
@@ -1073,6 +1104,15 @@ impl ArgusMcp {
 
     /// Point-in-time, read-only permission audit. Missing inputs remain explicitly unknown.
     pub async fn informe_permisos_json(&self, guild_id: Option<&str>) -> Result<String, String> {
+        self.informe_permisos_con_expectativas_json(guild_id, &[])
+            .await
+    }
+
+    pub async fn informe_permisos_con_expectativas_json(
+        &self,
+        guild_id: Option<&str>,
+        expectations: &[ExpectativaPrivacidad],
+    ) -> Result<String, String> {
         let gid = self.servidor_de(guild_id).await?;
         let mut missing = Vec::new();
         let roles = commands::leer_roles(&self.state, &gid, self.url())
@@ -1125,6 +1165,7 @@ impl ArgusMcp {
         {
             missing.push("member roles");
         }
+        let checked_at = chrono::Utc::now().to_rfc3339();
         let sensibles = [
             (3, "Administrator"),
             (13, "ManageMessages"),
@@ -1171,6 +1212,22 @@ impl ArgusMcp {
                     access.push(json!({"channel_id":channel.id,"channel_name":channel.name,"parent_id":channel.parent_id,"member_id":member.user_id,"member_name":member.username,"view":view,"write":view && bits & (1 << 11) != 0,"manage":view && bits & ((1 << 4)|(1 << 28)|(1 << 29)|(1 << 13)) != 0,"permissions_bits":bits.to_string(),"sensitive_permissions":sensitive}));
                 }
             }
+        }
+        for expected in expectations {
+            if expected.evidence.trim().is_empty() {
+                continue;
+            }
+            if let Some(observed) = access.iter().find(|a| {
+                a["channel_id"] == expected.channel_id && a["member_id"] == expected.member_id
+            }) {
+                let actual = observed["view"].as_bool().unwrap_or(false);
+                if actual != expected.can_view {
+                    findings.push(json!({"tipo":"privacy_discrepancy", "channel_id":expected.channel_id, "member_id":expected.member_id, "expected_can_view":expected.can_view, "actual_can_view":actual, "expectation_source":expected.source, "expectation_evidence":expected.evidence, "permissions_bits":observed["permissions_bits"], "checked_at":checked_at}));
+                }
+            }
+        }
+        for finding in &mut findings {
+            finding["checked_at"] = json!(checked_at);
         }
         let bot = self.state.get_active_bot();
         let bot_member = bot
@@ -1231,8 +1288,8 @@ impl ArgusMcp {
         if bot_missing.is_none() {
             missing.push("bot permissions");
         }
-        Ok(json!({"guild_id":gid,"status":"partial","incomplete":!missing.is_empty(),"missing_data":missing,"findings":findings,"channel_overwrites":overwrites,"channel_access":access,"bot_missing_build_permissions":bot_missing,"bot_channel_missing_permissions":bot_channel_missing,"bot_role_hierarchy":role_hierarchy,
-            "limits":["Data is a point-in-time observation; threads and user intent are not assessed, and absence of findings does not establish security."],
+        Ok(json!({"guild_id":gid,"checked_at":checked_at,"status":"partial","incomplete":!missing.is_empty(),"missing_data":missing,"findings":findings,"channel_overwrites":overwrites,"channel_access":access,"bot_missing_build_permissions":bot_missing,"bot_channel_missing_permissions":bot_channel_missing,"bot_role_hierarchy":role_hierarchy,
+            "limits":["Data is a point-in-time observation; threads and expectations not supplied are not assessed, and absence of findings does not establish security."],
             "correction_workflow":"Explain evidence and prepare a proposal; the user must review and Apply it in ARGUS, including any destructive confirmations."}).to_string())
     }
 
@@ -3061,9 +3118,14 @@ impl ArgusMcp {
     )]
     async fn informe_permisos(
         &self,
-        Parameters(p): Parameters<ServidorParams>,
+        Parameters(p): Parameters<InformePermisosParams>,
     ) -> Result<String, String> {
-        let r = self.informe_permisos_json(p.guild_id.as_deref()).await;
+        let r = self
+            .informe_permisos_con_expectativas_json(
+                p.guild_id.as_deref(),
+                p.expectations.as_deref().unwrap_or(&[]),
+            )
+            .await;
         self.salida(r)
     }
 
@@ -5447,6 +5509,64 @@ mod tests {
             .iter()
             .all(|r| r.method.as_str() == "GET"));
         assert_eq!(mcp.state.get_active_guild().as_deref(), Some("555"));
+    }
+
+    #[tokio::test]
+    async fn auditoria_compara_solo_expectativas_explicitas() {
+        let (_dir, mcp, server) = mcp_con_servidor(TODO, true).await;
+        prohibir_cambios(&server).await;
+        let expectation = |member: &str| ExpectativaPrivacidad {
+            channel_id: "11".into(),
+            member_id: member.into(),
+            can_view: false,
+            source: FuenteExpectativa::Plan,
+            evidence: "Plan: restricted access".into(),
+        };
+        let fulfilled = v(mcp
+            .informe_permisos_con_expectativas_json(None, &[expectation("1002")])
+            .await
+            .unwrap());
+        assert!(!fulfilled["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["tipo"] == "privacy_discrepancy"));
+        let violated = v(mcp
+            .informe_permisos_con_expectativas_json(None, &[expectation("1001")])
+            .await
+            .unwrap());
+        let findings = violated["findings"].as_array().unwrap();
+        let finding = findings
+            .iter()
+            .find(|f| f["tipo"] == "privacy_discrepancy")
+            .unwrap();
+        assert_eq!(finding["channel_id"], "11");
+        assert_eq!(finding["member_id"], "1001");
+        assert_eq!(finding["expectation_source"], "plan");
+        assert_eq!(finding["expectation_evidence"], "Plan: restricted access");
+        assert_eq!(finding["actual_can_view"], true);
+        assert_eq!(finding["expected_can_view"], false);
+        assert!(finding["permissions_bits"].as_str().is_some());
+        assert!(
+            chrono::DateTime::parse_from_rfc3339(finding["checked_at"].as_str().unwrap()).is_ok()
+        );
+        assert!(findings
+            .iter()
+            .all(|f| f["checked_at"] == violated["checked_at"]));
+        Mock::given(method("GET")).and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([{"id":"11","type":0,"name":"private","position":0,"permission_overwrites":[{"id":"700","type":0,"allow":"1024","deny":"0"}]}])))
+            .with_priority(1).mount(&server).await;
+        let no_expectation = v(mcp.informe_permisos_json(None).await.unwrap());
+        assert!(no_expectation["channel_access"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["member_id"] == "1001" && a["view"] == true));
+        assert!(!no_expectation["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["tipo"] == "privacy_discrepancy"));
     }
 
     #[tokio::test]
