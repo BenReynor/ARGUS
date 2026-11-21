@@ -641,7 +641,7 @@ Verificación manual:
 - [x] Aplicar una plantilla: vista previa
   criterio: al elegir una plantilla y un servidor autorizado se muestra el árbol, las diferencias, los conflictos y las acciones antes de aplicar; @everyone, categorías y roles se remapean al servidor destino; nada se sobrescribe solo por compartir nombre ni se borra lo existente; tests con dos servidores distintos y roles ambiguos; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Aplicar una plantilla: ejecutar con el motor de propuestas
+- [B] Aplicar una plantilla: ejecutar con el motor de propuestas
   criterio: la plantilla se compila con el motor de planes y propuestas existente y se aplica en orden, con validación de permisos y jerarquía, Stop y la verificación de la FASE 20; no vuelve el antiguo apply_template ficticio; tests de cancelación y de recursos que ya existían; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Usar la biblioteca desde la IA
