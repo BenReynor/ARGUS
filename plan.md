@@ -635,7 +635,7 @@ Verificación manual:
 - [B] Plantillas propias: guardar desde el plan o desde un snapshot
   criterio: biblioteca local con nombre, descripción, etiquetas, fecha y esquema versionado; se crea una plantilla desde el editor del plan o desde un snapshot elegido; guarda canales, categorías, roles, descripciones y permisos con referencias portátiles, sin tokens, mensajes ni datos de miembros; migración compatible con la tabla templates existente; tests de persistencia y del esquema antiguo; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Plantillas propias: editar, buscar, duplicar y borrar
+- [x] Plantillas propias: editar, buscar, duplicar y borrar
   criterio: se pueden editar los metadatos **y la estructura** de una plantilla guardada, buscar por nombre o etiqueta, duplicar y borrar con confirmación; las plantillas siguen separadas de los snapshots de recuperación; tests de edición de estructura, duplicado y borrado; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Aplicar una plantilla: vista previa
