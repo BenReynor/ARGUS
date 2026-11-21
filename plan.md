@@ -596,7 +596,7 @@ resultados por acción y notificaciones existentes.
 - [x] Historial de operaciones: terminar el último intento
   criterio: aplicar con `git cherry-pick -n 7303703 && git checkout HEAD -- plan.md lecciones.md` el último intento bloqueado (ya tiene ID por operación, bot/servidor/destino capturados al empezar, pasos, tiempos y estados en SQLite, recuperación tras reinicio y destinos múltiples como message_ids) sobre la base actual, resolviendo colisiones de migración; corregir solo lo que señaló el juez: la regresión debe cambiar de servidor **durante** una propuesta con acciones sin guild_id (después de empezar y antes de terminar) y comprobar que las rutas escritas y el historial siguen siendo del servidor original; una acción solo aceptada por Discord queda «no verificada» (conectarla a la lectura es la tarea siguiente); pasan todos los tests del historial; Lo no especificado NO es motivo de rechazo.
 
-- [B] Verificar canales y categorías tras crearlos o editarlos
+- [x] Verificar canales y categorías tras crearlos o editarlos
   criterio: después de que Discord acepte crear o editar un canal o una categoría, se lee por el ID devuelto (de la operación original, nunca del servidor activo) y se marca «verificado» si coincide nombre, tipo, categoría, descripción y posición, o «no verificado» con el motivo si falta permiso o la API no lo refleja; un timeout tras crear no reintenta a ciegas: primero busca el recurso; tests con el Discord falso: canal creado y leído, API que acepta pero no refleja, timeout tras crear y evento tardío; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Verificar roles, posiciones y permisos

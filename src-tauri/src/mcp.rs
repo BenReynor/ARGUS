@@ -1480,22 +1480,7 @@ impl ArgusMcp {
 
     pub async fn crear_canal_json(&self, p: &CrearCanalParams) -> Result<String, String> {
         let gid = self.servidor_de(p.guild_id.as_deref()).await?;
-        let tipo = match p.tipo.as_deref().map(normalizar) {
-            None => 0,
-            Some(t) => match t.as_str() {
-                "texto" | "text" => 0,
-                "voz" | "voice" => 2,
-                "categoria" | "category" => 4,
-                "anuncios" | "announcement" => 5,
-                "foro" | "forum" => 15,
-                _ => {
-                    return Err(
-                        "Unsupported channel type: use texto, voz, categoria, anuncios or foro"
-                            .to_string(),
-                    )
-                }
-            },
-        };
+        let tipo = codigo_tipo_canal(p.tipo.as_deref())?;
         let mut overwrites = Vec::new();
         if let Some(permisos) = &p.permisos {
             let roles = commands::leer_roles(&self.state, &gid, self.url()).await?;
@@ -1962,6 +1947,24 @@ fn rol_json(r: &Role) -> serde_json::Value {
     })
 }
 
+/// Discord's channel type code for a requested type («texto» by default).
+/// Shared by creation and by its verification, so both read the type the same way.
+fn codigo_tipo_canal(tipo: Option<&str>) -> Result<u8, String> {
+    match tipo.map(normalizar) {
+        None => Ok(0),
+        Some(t) => match t.as_str() {
+            "texto" | "text" => Ok(0),
+            "voz" | "voice" => Ok(2),
+            "categoria" | "category" => Ok(4),
+            "anuncios" | "announcement" => Ok(5),
+            "foro" | "forum" => Ok(15),
+            _ => Err(
+                "Unsupported channel type: use texto, voz, categoria, anuncios or foro".to_string(),
+            ),
+        },
+    }
+}
+
 fn tipo_de_canal(t: u8) -> &'static str {
     match t {
         0 => "texto",
@@ -1977,7 +1980,7 @@ fn tipo_de_canal(t: u8) -> &'static str {
 }
 
 fn canal_json(c: &Channel) -> serde_json::Value {
-    json!({ "id": c.id, "nombre": c.name, "tipo": tipo_de_canal(c.channel_type), "posicion": c.position })
+    json!({ "id": c.id, "nombre": c.name, "tipo": tipo_de_canal(c.channel_type), "posicion": c.position, "categoria_id": c.parent_id, "tema": c.topic })
 }
 
 fn miembro_json(m: &Member, roles: &[Role]) -> serde_json::Value {
@@ -2339,8 +2342,14 @@ impl ArgusMcp {
             .as_ref()
             .err()
             .map(|e| crate::operaciones::motivo_seguro(e));
+        let inciertas: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM operation_steps WHERE operation_id=? AND status = 'unverified' AND reason LIKE '%timed out%'")
+            .bind(&id).fetch_one(&self.pool).await.map_err(|e| e.to_string())?;
         let (estado, razon) = match &resultado {
             Err(_) => ("failed", preparacion.as_deref().unwrap()),
+            Ok(r) if inciertas > 0 && r.hechas == 0 => (
+                "unverified",
+                "The outcome of a timed-out creation is unknown",
+            ),
             Ok(r) if r.hechas > 0 && (r.fallidas > 0 || r.omitidas > 0 || r.canceladas > 0) => (
                 "partial",
                 "Some actions were accepted; others were not completed",
@@ -2351,10 +2360,15 @@ impl ArgusMcp {
                 "Operation stopped before all steps were attempted",
             ),
             Ok(r) if r.omitidas > 0 => ("skipped", "No actions could be attempted"),
-            Ok(_) => (
-                "unverified",
-                "Discord accepted the steps; the result has not been verified",
-            ),
+            Ok(_) => {
+                let pendientes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM operation_steps WHERE operation_id=? AND status != 'correct'")
+                    .bind(&id).fetch_one(&self.pool).await.map_err(|e| e.to_string())?;
+                if pendientes == 0 {
+                    ("correct", "All results verified")
+                } else {
+                    ("unverified", "Some results have not been verified")
+                }
+            }
         };
         crate::operaciones::terminar(&self.pool, &id, estado, razon)
             .await
@@ -2423,25 +2437,29 @@ impl ArgusMcp {
             crate::operaciones::paso(&self.pool, id, indice, "in_progress", None)
                 .await
                 .map_err(|e| e.to_string())?;
+            let mut argumentos_resueltos = None;
             let (estado, mensaje) = match nombres.resolver_args(&a.herramienta, &a.args) {
                 Err(e) => (EstadoAccion::Omitida, e),
-                Ok(args) => match if a.herramienta == "aplicar_restauracion" {
-                    match args_de::<ApplyRestoreParams>(&a.herramienta, args.clone()) {
-                        Ok(p) => self
-                            .aplicar_restauracion_con(&p, cancelar)
-                            .await
-                            .and_then(|s| serde_json::to_string(&s).map_err(|e| e.to_string())),
-                        Err(e) => Err(e),
+                Ok(args) => {
+                    argumentos_resueltos = Some(args.clone());
+                    match if a.herramienta == "aplicar_restauracion" {
+                        match args_de::<ApplyRestoreParams>(&a.herramienta, args.clone()) {
+                            Ok(p) => self
+                                .aplicar_restauracion_con(&p, cancelar)
+                                .await
+                                .and_then(|s| serde_json::to_string(&s).map_err(|e| e.to_string())),
+                            Err(e) => Err(e),
+                        }
+                    } else {
+                        self.ejecutar_accion(&a.herramienta, args.clone()).await
+                    } {
+                        Ok(salida) => {
+                            nombres.registrar_creado(&a.herramienta, &args, &salida);
+                            (EstadoAccion::Ok, salida)
+                        }
+                        Err(e) => (EstadoAccion::Error, e),
                     }
-                } else {
-                    self.ejecutar_accion(&a.herramienta, args.clone()).await
-                } {
-                    Ok(salida) => {
-                        nombres.registrar_creado(&a.herramienta, &args, &salida);
-                        (EstadoAccion::Ok, salida)
-                    }
-                    Err(e) => (EstadoAccion::Error, e),
-                },
+                }
             };
             let r = ResultadoAccion {
                 indice,
@@ -2456,12 +2474,95 @@ impl ArgusMcp {
                     "unverified",
                     "Discord accepted the action; the result has not been verified",
                 ),
+                EstadoAccion::Error
+                    if a.herramienta == "crear_canal"
+                        && r.mensaje.contains("create request timed out") =>
+                {
+                    ("unverified", motivo.as_str())
+                }
                 EstadoAccion::Error => ("failed", motivo.as_str()),
                 EstadoAccion::Omitida => ("skipped", "A required reference could not be resolved"),
             };
             crate::operaciones::paso(&self.pool, id, indice, status, Some(reason))
                 .await
                 .map_err(|e| e.to_string())?;
+            if r.estado == EstadoAccion::Ok
+                && matches!(a.herramienta.as_str(), "crear_canal" | "editar_canal")
+            {
+                crate::operaciones::iniciar_verificacion(&self.pool, id, indice)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let verification = async {
+                    let output: serde_json::Value = serde_json::from_str(&r.mensaje)
+                        .map_err(|_| "Discord returned an unreadable channel".to_string())?;
+                    let expected = &output["canal"];
+                    let channel_id = expected["id"]
+                        .as_str()
+                        .ok_or("Discord did not return a channel ID")?;
+                    let token = commands::token_del_bot_activo(&self.state)?;
+                    let actual =
+                        crate::discord::read_channel(&token, self.url(), channel_id).await?;
+                    let actual = canal_json(&actual);
+                    if let Some(args) = &argumentos_resueltos {
+                        for (argument, field) in [
+                            ("nombre", "nombre"),
+                            ("categoria_id", "categoria_id"),
+                            ("tema", "tema"),
+                        ] {
+                            if let Some(value) = args.get(argument).filter(|v| !v.is_null()) {
+                                let desired =
+                                    if argument == "categoria_id" && value.as_str() == Some("") {
+                                        &serde_json::Value::Null
+                                    } else {
+                                        value
+                                    };
+                                if &actual[field] != desired {
+                                    return Err(format!(
+                                        "Discord does not reflect the requested field: {field}"
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    if a.herramienta == "crear_canal" {
+                        // The created channel must be of the requested type, not
+                        // only match what Discord said it accepted.
+                        let pedido = argumentos_resueltos
+                            .as_ref()
+                            .and_then(|args| args.get("tipo"))
+                            .and_then(|v| v.as_str());
+                        let codigo = codigo_tipo_canal(pedido)?;
+                        if actual["tipo"] != tipo_de_canal(codigo) {
+                            return Err(
+                                "Discord does not reflect the requested field: tipo".to_string()
+                            );
+                        }
+                    }
+                    for field in ["id", "nombre", "tipo", "categoria_id", "tema", "posicion"] {
+                        if actual[field] != expected[field] {
+                            return Err(format!(
+                                "Discord does not reflect the channel field: {field}"
+                            ));
+                        }
+                    }
+                    Ok::<(), String>(())
+                }
+                .await;
+                match verification {
+                    Ok(()) => crate::operaciones::confirmar_verificacion(&self.pool, id, indice)
+                        .await
+                        .map_err(|e| e.to_string())?,
+                    Err(e) => crate::operaciones::paso(
+                        &self.pool,
+                        id,
+                        indice,
+                        "unverified",
+                        Some(&self.limpiar(e)),
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?,
+                }
+            }
             avance(total, &r);
             resultados.push(r);
         }
@@ -4542,6 +4643,105 @@ mod tests {
         let ids = [snowflake_hace_dias(1), snowflake_hace_dias(2)];
         let e = mcp.borrar_mensajes_json(None, "11", &ids).await;
         assert_eq!(e.unwrap_err(), falta);
+    }
+
+    #[tokio::test]
+    async fn propuesta_verifica_canal_por_id_devuelto() {
+        let (_d, mcp, server) = mcp_con_servidor(GESTIONAR_CANALES, true).await;
+        let channel = json!({"id":"801", "type":0, "guild_id":"555", "name":"nuevo", "position":1});
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(channel.clone()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/channels/801"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(channel))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: vec![accion("crear_canal", json!({"nombre":"nuevo"}))],
+        };
+        mcp.ejecutar_propuesta(&p).await.unwrap();
+        let bot = mcp.state.get_active_bot().unwrap();
+        let history = crate::operaciones::listar(&mcp.pool, &bot.id, "555")
+            .await
+            .unwrap();
+        assert_eq!(history[0].status, "correct");
+    }
+
+    #[tokio::test]
+    async fn propuesta_canal_no_reflejado_queda_sin_verificar() {
+        let (_d, mcp, server) = mcp_con_servidor(GESTIONAR_CANALES, true).await;
+        let accepted =
+            json!({"id":"802", "type":0, "guild_id":"555", "name":"nuevo", "position":1});
+        let stale =
+            json!({"id":"802", "type":0, "guild_id":"555", "name":"anterior", "position":1});
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(accepted))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/channels/802"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(stale))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: vec![accion("crear_canal", json!({"nombre":"nuevo"}))],
+        };
+        mcp.ejecutar_propuesta(&p).await.unwrap();
+        let bot = mcp.state.get_active_bot().unwrap();
+        let history = crate::operaciones::listar(&mcp.pool, &bot.id, "555")
+            .await
+            .unwrap();
+        assert_eq!(history[0].status, "unverified");
+        assert!(history[0].steps[0]
+            .reason
+            .as_ref()
+            .unwrap()
+            .contains("nombre"));
+    }
+
+    #[tokio::test]
+    async fn canal_creado_con_otro_tipo_queda_sin_verificar() {
+        let (_d, mcp, server) = mcp_con_servidor(GESTIONAR_CANALES, true).await;
+        // Discord answers with a text channel although a voice one was requested.
+        let texto = json!({"id":"803", "type":0, "guild_id":"555", "name":"sala", "position":1});
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(texto.clone()))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/channels/803"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(texto))
+            .mount(&server)
+            .await;
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: vec![accion(
+                "crear_canal",
+                json!({"nombre":"sala", "tipo":"voz"}),
+            )],
+        };
+        mcp.ejecutar_propuesta(&p).await.unwrap();
+        let bot = mcp.state.get_active_bot().unwrap();
+        let history = crate::operaciones::listar(&mcp.pool, &bot.id, "555")
+            .await
+            .unwrap();
+        assert_eq!(history[0].status, "unverified");
+        assert!(history[0].steps[0]
+            .reason
+            .as_ref()
+            .unwrap()
+            .contains("tipo"));
     }
 
     #[tokio::test]

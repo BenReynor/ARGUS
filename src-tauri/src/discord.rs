@@ -774,6 +774,23 @@ fn validar_datos_canal(datos: &DatosCanal) -> Result<(), String> {
     Ok(())
 }
 
+/// Lee el recurso por el ID recibido de Discord, independientemente del servidor activo.
+pub async fn read_channel(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+) -> Result<crate::state::Channel, String> {
+    let id = parse_id(channel_id, "channel")?;
+    let channel = build_client(token, base_url)
+        .channel(id)
+        .await
+        .map_err(traducir_error)?
+        .model()
+        .await
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
+    Ok(convertir_canal(channel))
+}
+
 /// Crea un canal o categoría (`POST /guilds/{id}/channels`).
 pub async fn create_guild_channel(
     token: &str,
@@ -869,12 +886,42 @@ pub async fn create_guild_channel(
             .rate_limit_per_user(segundos)
             .map_err(|_| "Invalid slowmode".to_string())?;
     }
-    let canal = peticion
-        .await
-        .map_err(traducir_error)?
-        .model()
-        .await
-        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
+    // A cancelled request may still be processed by Discord. Never repeat POST.
+    let espera = if cfg!(test) { 100 } else { 15_000 };
+    let respuesta = tokio::time::timeout(std::time::Duration::from_millis(espera), async {
+        peticion
+            .await
+            .map_err(traducir_error)?
+            .model()
+            .await
+            .map_err(|e| format!("Invalid response from Discord: {e}"))
+    })
+    .await;
+    let canal = match respuesta {
+        Ok(result) => result?,
+        Err(_) => {
+            // Search twice: the gateway/REST view may lag behind the timed-out POST.
+            // A matching name is not proof of ownership, so do not claim success.
+            for intento in 0..2 {
+                if intento > 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(if cfg!(test) {
+                        100
+                    } else {
+                        1000
+                    }))
+                    .await;
+                }
+                match fetch_guild_channels(token, base_url, guild_id).await {
+                    Ok(channels) if channels.iter().any(|c| c.name == nombre && c.channel_type == tipo && c.parent_id.as_deref() == datos.parent_id.as_deref().filter(|s| !s.is_empty())) => {
+                        return Err("The create request timed out; a matching channel exists but its origin cannot be verified; inspect it before retrying".into());
+                    }
+                    Err(_) => return Err("The create request timed out; channel search failed; inspect the server before retrying".into()),
+                    _ => {}
+                }
+            }
+            return Err("The create request timed out; no matching channel was found yet; inspect the server before retrying".into());
+        }
+    };
     Ok(convertir_canal(canal))
 }
 

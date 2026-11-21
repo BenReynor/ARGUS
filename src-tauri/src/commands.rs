@@ -346,7 +346,9 @@ pub async fn crear_canal(
     exigir_permiso(state, guild_id, PERMISO_GESTIONAR_CANALES, base_url).await?;
     let token = token_del_bot_activo(state)?;
     let canal = crate::discord::create_guild_channel(&token, base_url, guild_id, datos).await?;
-    refrescar_canales_del_mapa(state, guild_id, base_url).await?;
+    if let Err(e) = refrescar_canales_del_mapa(state, guild_id, base_url).await {
+        tracing::warn!("Could not refresh channels after accepted change: {}", e);
+    }
     Ok(canal)
 }
 
@@ -385,7 +387,9 @@ pub async fn editar_canal(
     exigir_permiso(state, guild_id, PERMISO_GESTIONAR_CANALES, base_url).await?;
     let token = token_del_bot_activo(state)?;
     let canal = crate::discord::update_channel(&token, base_url, channel_id, datos).await?;
-    refrescar_canales_del_mapa(state, guild_id, base_url).await?;
+    if let Err(e) = refrescar_canales_del_mapa(state, guild_id, base_url).await {
+        tracing::warn!("Could not refresh channels after accepted change: {}", e);
+    }
     Ok(canal)
 }
 
