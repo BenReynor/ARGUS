@@ -593,14 +593,20 @@ resultados por acción y notificaciones existentes.
 - [x] Inventariar las operaciones y sus avisos reales
   criterio: documento en docs con las operaciones de construcción, edición, planes, plantillas, backups, snapshots, agentes, MCP y ajustes; para cada una identifica el comando real, dónde muestra progreso/éxito/fallo, si permite comprobar el resultado y qué falta; rastrea respuestas reales del backend, no solo textos de notificación; identifica funciones que fallan en silencio o muestran éxito antes de terminar; comprobación automatizada de que los comandos literales invocados por la interfaz están registrados y los cuatro comandos ficticios retirados no reaparecen
 
-- [B] Historial de operaciones con estados compartidos
-  criterio: cada operación tiene un ID propio y captura bot/servidor/destino al comenzar; guarda en SQLite sus pasos, tiempos y estados de pendiente, en curso, verificando, correcto, parcial, fallo, cancelado, omitido o no verificado, con motivos legibles y sin secretos; el registro continúa siendo del servidor original si el usuario cambia de servidor; se reabre tras reiniciar y marca como interrumpida una operación que no terminó, sin repetirla automáticamente; estado común para ejecución desde la app y desde órdenes autorizadas; tests con BD temporal de aislamiento por bot/servidor y recuperación tras interrupción; el historial debe poder guardar y recuperar «verificando» y «correcto» cuando recibe una verificación efectiva, con pruebas que cubran ambas transiciones; conectar esas transiciones a la lectura de Discord pertenece a la tarea siguiente, así que una acción únicamente aceptada permanece «no verificada»; recuperar solo los cambios del último intento guardado d65a340, aplicar sobre la base actual y resolver posibles colisiones de migración; fijar el bot y servidor en la capa que ejecuta realmente cada acción, también cuando la acción no trae guild_id; si cambia el contexto, conservar el destino original o cancelar antes de escribir, y nunca ejecutar sobre el nuevo servidor; añadir una regresión que cambie de servidor durante una propuesta con acciones sin guild_id y compruebe las rutas escritas y el historial; probar que una operación con todos sus pasos fallidos termina en fallo y que parcial exige resultados mixtos con algún avance real; registrar destinos múltiples como message_ids en acciones por lote, sin guardar el cuerpo de mensajes ni credenciales
+- [ ] Historial de operaciones: terminar el último intento
+  criterio: aplicar con `git cherry-pick -n 7303703 && git checkout HEAD -- plan.md lecciones.md` el último intento bloqueado (ya tiene ID por operación, bot/servidor/destino capturados al empezar, pasos, tiempos y estados en SQLite, recuperación tras reinicio y destinos múltiples como message_ids) sobre la base actual, resolviendo colisiones de migración; corregir solo lo que señaló el juez: la regresión debe cambiar de servidor **durante** una propuesta con acciones sin guild_id (después de empezar y antes de terminar) y comprobar que las rutas escritas y el historial siguen siendo del servidor original; una acción solo aceptada por Discord queda «no verificada» (conectarla a la lectura es la tarea siguiente); pasan todos los tests del historial; Lo no especificado NO es motivo de rechazo.
 
-- [B] Comprobar el resultado tras construir o modificar el servidor
-  criterio: después de que Discord acepte la acción, el motor comprueba por lectura o evento correlacionado los canales, roles, posiciones, descripciones y permisos que realmente puedan verificarse; usa los IDs devueltos y la operación original, nunca el servidor activo actual ni solo una coincidencia de nombre; distingue «aceptado por Discord» de «verificado» y marca no verificado si falta permiso, llega tarde el evento o la API no permite comprobarlo, explicando el motivo; ningún timeout ambiguo provoca reintentar una escritura a ciegas; al reintentar se reconcilian los recursos ya creados y no se repiten los pasos correctos; Stop y las confirmaciones existentes se conservan; tests con eventos tardíos, API que acepta pero no refleja, nombres repetidos, cambio de servidor y timeout tras crear un canal
+- [ ] Verificar canales y categorías tras crearlos o editarlos
+  criterio: después de que Discord acepte crear o editar un canal o una categoría, se lee por el ID devuelto (de la operación original, nunca del servidor activo) y se marca «verificado» si coincide nombre, tipo, categoría, descripción y posición, o «no verificado» con el motivo si falta permiso o la API no lo refleja; un timeout tras crear no reintenta a ciegas: primero busca el recurso; tests con el Discord falso: canal creado y leído, API que acepta pero no refleja, timeout tras crear y evento tardío; Lo no especificado NO es motivo de rechazo.
 
-- [B] Panel visual de resultados y avisos consistentes
-  criterio: panel de actividad con filtros por operación, servidor y estado, resumen de pasos realizados/fallidos/omitidos/cancelados y acceso desde el aviso; estados con icono y texto además de color, barra de progreso y detalles del fallo con sugerencia concreta; los avisos temporales no son el único lugar donde queda el resultado; los fallos y los resultados parciales nunca muestran éxito total; cada operación del inventario muestra al menos un resultado visible y coherente con el backend; estados accesibles con teclado, role status/alert y textos EN/ES; pruebas de transiciones, resultado parcial y reapertura del historial
+- [ ] Verificar roles, posiciones y permisos
+  criterio: igual que la tarea anterior para roles (nombre, color, permisos, posición) y para los permisos de canal (overwrites); al reintentar una operación se reconcilian los recursos ya creados y no se repiten los pasos verificados; tests con nombres repetidos, cambio de servidor a mitad y reintento sin duplicar; Lo no especificado NO es motivo de rechazo.
+
+- [ ] Panel de actividad: lista e historial
+  criterio: sección de actividad que lista las operaciones del historial con filtros por tipo, servidor y estado, se reabre igual tras reiniciar la app y muestra cada estado con icono y texto además de color; textos con t() en EN y ES; tests de los filtros y de la reapertura; Lo no especificado NO es motivo de rechazo.
+
+- [ ] Panel de actividad: detalle de una operación y avisos coherentes
+  criterio: al abrir una operación se ven sus pasos hechos, fallidos, omitidos y cancelados, una barra de progreso y el detalle del fallo con una sugerencia concreta; los avisos temporales enlazan a ese detalle y un resultado parcial nunca se muestra como éxito total; estados accesibles con teclado y role status/alert; tests de transiciones y de resultado parcial; Lo no especificado NO es motivo de rechazo.
 
 Verificación manual:
 - Crear categoría/canal/rol: ver avance y resultado comprobado; contrastarlo en Discord.
@@ -609,56 +615,74 @@ Verificación manual:
 
 ## FASE 21 — Diagnóstico integrado de ARGUS
 
-- [B] Motor de comprobaciones sin efectos sobre Discord
-  criterio: comando de diagnóstico que comprueba configuración, acceso a BD, disponibilidad del llavero, estado del Gateway y permisos necesarios para construir, y detección/configuración de Claude, Codex, OpenCode y MCP; cada comprobación devuelve correcto, advertencia, fallo o no comprobado con su explicación y fecha; separa «binario encontrado», «sesión disponible» y «servicio responde»; no lee ni devuelve tokens/archivos de autenticación, no conecta nuevos bots, no abre login ni llama a modelos de pago automáticamente; cada proceso/petición tiene timeout y cancelación; tests con agentes/MCP/Discord falsos, sin sesión, sin red, permiso ausente y proceso que se cuelga
+- [ ] Diagnóstico local: configuración, base de datos y llavero
+  criterio: comando de diagnóstico que comprueba la configuración, el acceso a la base de datos y el llavero; cada comprobación devuelve correcto, advertencia, fallo o no comprobado, con explicación y fecha; no devuelve tokens, contraseñas ni contenido de archivos de autenticación; tests con base de datos inaccesible y sin llavero; Lo no especificado NO es motivo de rechazo.
 
-- [B] Pantalla de diagnóstico con acciones para resolver problemas
-  criterio: botón «Run diagnostics» desde Settings y acceso desde un fallo de construcción; lista visual por componente, progreso, última comprobación y sugerencia concreta de solución, usando los estados compartidos de la fase 20; cualquier prueba que escriba datos o use IA requiere una acción explícita separada y explica su alcance; no hay un indicador global de «todo funciona» si algo no se pudo comprobar; todo con t(); pruebas de resultados parciales, cancelación y reintento de una comprobación
+- [ ] Diagnóstico de Discord: Gateway y permisos para construir
+  criterio: comprobación de solo lectura del estado del Gateway del bot activo y de los permisos que necesita para construir en el servidor elegido; no conecta bots nuevos ni escribe en Discord; timeout y cancelación; tests con el Discord falso: Gateway caído, permiso ausente y sin red; Lo no especificado NO es motivo de rechazo.
+
+- [ ] Diagnóstico de agentes y MCP
+  criterio: para Claude, Codex, OpenCode y el MCP distingue «binario encontrado», «sesión disponible» y «responde» como comprobaciones separadas; no abre login ni llama a modelos de pago; cada proceso tiene timeout y cancelación; tests con agentes falsos: sin sesión, sin binario y proceso que se cuelga; Lo no especificado NO es motivo de rechazo.
+
+- [ ] Pantalla de diagnóstico
+  criterio: botón «Run diagnostics» en Settings y acceso desde un fallo de construcción; lista por componente con progreso, última comprobación y sugerencia de solución, **usando los estados compartidos del historial de la FASE 20** (sin estados propios); se puede repetir una comprobación suelta; no hay un «todo funciona» si algo quedó sin comprobar; textos con t(); tests de resultado parcial, cancelación y reintento; Lo no especificado NO es motivo de rechazo.
 
 - [x] Informe de diagnóstico exportable sin secretos
   criterio: exportar un informe legible con versión, sistema, componentes comprobados y resultados, sin tokens, contraseñas, conversaciones, contenido privado de canales ni valores de variables de entorno; el usuario puede revisarlo antes de compartirlo; tests con errores simulados que contienen valores sensibles y comprobación de su redacción antes de mostrar o exportar
 
 ## FASE 22 — Biblioteca personal de plantillas de construcción
 
-- [B] Guardar y organizar las plantillas propias
-  criterio: biblioteca local con nombre, descripción, etiquetas, fecha y esquema versionado; crear desde el editor del plan o desde una estructura/snapshot elegidos por el usuario, editar, buscar, duplicar y borrar con confirmación; representa canales, categorías, roles, descripciones y permisos por referencias portátiles; no incluye tokens, mensajes ni datos personales de miembros por defecto; mantiene separados la plantilla reusable y los snapshots de recuperación; migración compatible con la tabla templates existente y tests de persistencia, duplicado y esquema antiguo
+- [ ] Plantillas propias: guardar desde el plan o desde un snapshot
+  criterio: biblioteca local con nombre, descripción, etiquetas, fecha y esquema versionado; se crea una plantilla desde el editor del plan o desde un snapshot elegido; guarda canales, categorías, roles, descripciones y permisos con referencias portátiles, sin tokens, mensajes ni datos de miembros; migración compatible con la tabla templates existente; tests de persistencia y del esquema antiguo; Lo no especificado NO es motivo de rechazo.
+
+- [ ] Plantillas propias: editar, buscar, duplicar y borrar
+  criterio: se pueden editar los metadatos **y la estructura** de una plantilla guardada, buscar por nombre o etiqueta, duplicar y borrar con confirmación; las plantillas siguen separadas de los snapshots de recuperación; tests de edición de estructura, duplicado y borrado; Lo no especificado NO es motivo de rechazo.
+
+- [ ] Aplicar una plantilla: vista previa
+  criterio: al elegir una plantilla y un servidor autorizado se muestra el árbol, las diferencias, los conflictos y las acciones antes de aplicar; @everyone, categorías y roles se remapean al servidor destino; nada se sobrescribe solo por compartir nombre ni se borra lo existente; tests con dos servidores distintos y roles ambiguos; Lo no especificado NO es motivo de rechazo.
+
+- [ ] Aplicar una plantilla: ejecutar con el motor de propuestas
+  criterio: la plantilla se compila con el motor de planes y propuestas existente y se aplica en orden, con validación de permisos y jerarquía, Stop y la verificación de la FASE 20; no vuelve el antiguo apply_template ficticio; tests de cancelación y de recursos que ya existían; Lo no especificado NO es motivo de rechazo.
+
+- [ ] Usar la biblioteca desde la IA
+  criterio: el asistente puede listar y consultar por sí mismo las plantillas disponibles y preparar un plan basado en una, diciendo cuál usó; guardar una versión sugerida por la IA requiere que el usuario la acepte y nunca sustituye la original; no aplica la estructura directamente; tests con agente falso, aceptar y descartar; Lo no especificado NO es motivo de rechazo.
 
 - [x] Importar y exportar plantillas de la biblioteca
   criterio: formato documentado y versionado con validación de tamaño, tipos, referencias y rangos antes de guardar; vista previa de lo que se importará y confirmación si el nombre ya existe; rechaza archivos corruptos o versiones no compatibles sin cambiar la biblioteca; un exportar/importar conserva la estructura y no arrastra credenciales ni IDs de servidor, bot, canal o rol del origen como destinos de ejecución; tests del recorrido completo, referencias rotas y archivo inválido
-
-- [B] Aplicar una plantilla mediante el motor de propuestas
-  criterio: elegir una plantilla y un servidor autorizado muestra árbol, diferencias, conflictos y acciones antes de Apply; compila con el motor de planes/propuestas existente y remapea @everyone, categorías y roles al servidor destino; no sobrescribe recursos solo por compartir nombre ni borra lo existente por defecto; aplica en orden con validación de permisos/jerarquía, Stop y verificación visual de la fase 20; no se reintroduce el antiguo apply_template ficticio; tests de aplicar a dos servidores distintos, roles ambiguos, recursos existentes y cancelación
-
-- [B] Usar la biblioteca desde la IA
-  criterio: el asistente puede listar y consultar las plantillas autorizadas y preparar un plan/propuesta basada en una elegida, mostrando cuál usó y sus cambios; guardar una versión sugerida por IA requiere que el usuario la acepte y nunca sustituye silenciosamente su plantilla original; no aplica la estructura directamente; tests con agente falso y aprobación/descartar
 
 Verificación manual:
 - Guardar un diseño propio, duplicarlo y aplicarlo a otro servidor de pruebas; comprobar roles, permisos y ausencia de IDs del origen.
 
 ## FASE 23 — Auditoría de permisos del servidor
 
-- [B] Calcular accesos efectivos y detectar hallazgos comprobables
-  criterio: auditoría de solo lectura que reutiliza el cálculo de permisos, jerarquía y overwrites para explicar quién puede ver, escribir o administrar y qué permisos le faltan al bot para una construcción; resalta Administrator y permisos de gestión sensibles; solo declara una discrepancia de privacidad frente a una expectativa explícita del usuario, su plan o un snapshot, sin inferirla por el nombre del canal; cada hallazgo cita sus datos y muestra cuándo se comprobaron; si no puede leer una parte, marca la auditoría como incompleta; tests de herencia, overwrites de rol/miembro, Administrator, expectativas privadas y lectura parcial
+- [ ] Auditoría: accesos efectivos
+  criterio: cálculo de solo lectura que reutiliza el de permisos, jerarquía y overwrites para explicar quién puede ver, escribir o administrar cada canal y qué permisos le faltan al bot para una construcción; resalta Administrator y los permisos sensibles (Manage Messages, Manage Channels, Manage Roles, Manage Webhooks, Kick, Ban, Mention Everyone), también cuando los concede un overwrite de canal; si no puede leer una parte, la auditoría queda incompleta; tests de herencia, overwrites de rol y miembro, Administrator y lectura parcial; Lo no especificado NO es motivo de rechazo.
 
-- [B] Informe visual y correcciones aprobadas
-  criterio: vista con filtros por canal/rol, gravedad, datos que sustentan el hallazgo y explicación de su impacto; «Prepare correction» genera una propuesta por el motor existente, muestra el antes/después y pide aprobación antes de modificar Discord; no arregla permisos sola ni ofrece acciones que superen la jerarquía del bot; después vuelve a comprobar los hallazgos corregidos y muestra resultado parcial si no puede hacerlo; tests de correcciones propuestas, descarte y permisos insuficientes
+- [ ] Auditoría: hallazgos frente a lo esperado
+  criterio: solo se declara una discrepancia de privacidad frente a una expectativa explícita del usuario, su plan o un snapshot, nunca por el nombre del canal; cada hallazgo cita sus datos y cuándo se comprobó; tests con expectativa privada cumplida, incumplida y sin expectativa; Lo no especificado NO es motivo de rechazo.
+
+- [ ] Auditoría: vista de hallazgos
+  criterio: vista con filtros por canal, rol y gravedad, con los datos que sustentan cada hallazgo y su impacto explicado; textos con t(); tests de los filtros; Lo no especificado NO es motivo de rechazo.
+
+- [ ] Auditoría: preparar y aplicar correcciones
+  criterio: «Prepare correction» genera una propuesta con el motor existente, muestra el antes y el después y pide aprobación; nunca ofrece acciones que superen la jerarquía del bot; tras aplicar vuelve a comprobar los hallazgos y muestra resultado parcial si no puede; tests de propuesta, descarte y permisos insuficientes; Lo no especificado NO es motivo de rechazo.
 
 - [x] Explicar la auditoría a la IA sin concederle escrituras
   criterio: herramienta MCP de lectura para consultar el informe y sus límites; la IA puede explicar un hallazgo y preparar una propuesta de corrección, pero no eludir Apply ni las confirmaciones destructivas; devuelve datos estructurados y no conclusiones de «servidor seguro» con información incompleta; tests de la clasificación de lectura y de que consultar no cambia el servidor
 
 ## FASE 24 — Conectar la IA con otros bots mediante MCP e integraciones autorizadas
 
-- [B] Catálogo de conectores y capacidades reales
-  criterio: inventario versionado de conectores por servicio/bot, con origen, método oficial disponible (MCP/API autorizada), requisitos, permisos, herramientas de lectura/escritura y limitaciones; permite habilitar varios conectores para un servidor y probar cada conexión desde diagnóstico; los conectores no implementados o no comprobados aparecen como tales; no promete que todos los bots tengan MCP ni que un bot pueda configurar a otro enviándole mensajes; sin funciones propias de bienvenida/tickets/niveles; tests con catálogo y conectores falsos
+- [ ] Conectores: catálogo y vista
+  criterio: archivo versionado con el catálogo de conectores (servicio, método oficial MCP o API, requisitos, permisos, herramientas de lectura y escritura y limitaciones) y una vista que lo muestra; los conectores no implementados o no probados aparecen como tales; se pueden habilitar varios por servidor y probar cada uno desde el diagnóstico; no promete que todos los bots tengan MCP; tests con catálogo y conector falsos; Lo no especificado NO es motivo de rechazo.
 
-- [B] Vincular cuentas y permisos sin compartir credenciales con la IA
-  criterio: cada conector se activa por decisión del usuario, queda asociado al servicio/cuenta/servidor correctos y muestra lo que permite hacer; usa OAuth/API/MCP del servicio cuando esté disponible y cifrado local/llavero para sus credenciales; no solicita el token privado de un bot ajeno, no automatiza cuentas personales de Discord ni crea selfbots; desconectar deja de ofrecer sus herramientas; los diagnósticos, logs y prompts no contienen credenciales; tests con autorización falsa, expiración y revocación
+- [ ] Conectores: credenciales en el llavero
+  criterio: el usuario activa un conector y su credencial (clave de API o token del propio servicio) se guarda cifrada con el llavero, asociada al servicio, cuenta y servidor; desconectar la borra y deja de ofrecer sus herramientas; nunca pide el token privado de un bot ajeno ni automatiza cuentas personales; ninguna credencial aparece en diagnósticos, logs ni prompts; OAuth queda para más adelante; tests con autorización falsa, expiración y revocación; Lo no especificado NO es motivo de rechazo.
 
-- [B] Lectura de varios MCP con aislamiento entre servicios
-  criterio: los agentes pueden consultar las herramientas de lectura habilitadas mediante una capa controlada, con nombres sin colisiones y límites por conector; las escrituras y herramientas desconocidas no se exponen directamente al modelo; configura la misma política para Claude, Codex y OpenCode sin heredar herramientas extra del usuario; un fallo de un conector no oculta ni cambia el estado de los otros; tests con dos MCP falsos, herramientas homónimas, caída y cancelación
+- [ ] Conectores: lectura de varios MCP con aislamiento
+  criterio: los agentes consultan solo las herramientas de lectura de los conectores habilitados, mediante una capa con nombres sin colisiones y límites por conector; escrituras y herramientas desconocidas no llegan al modelo; la misma política para Claude, Codex y OpenCode; un conector caído no cambia el estado de los otros; tests con dos MCP falsos, herramientas homónimas, caída y cancelación; Lo no especificado NO es motivo de rechazo.
 
-- [B] Propuestas para configurar otros bots y comprobar su resultado
-  criterio: una acción destinada a otro bot identifica conector, cuenta, servidor, cambios y permisos; la IA prepara una propuesta y un adaptador controlado la ejecuta solo tras aprobación por el flujo normal, validando el destino otra vez antes de escribir; nunca pasa una llamada de escritura arbitraria directamente desde el modelo; el adaptador verifica por la API del servicio lo comprobable y el historial distingue ejecución de verificación; si el proveedor no permite comprobarlo, muestra no verificado, sin afirmar éxito; pruebas con adaptador falso, cuenta incorrecta, respuesta parcial y escritura directa rechazada
+- [ ] Conectores: propuestas para configurar otros bots
+  criterio: una acción para otro bot identifica conector, cuenta, servidor, cambios y permisos; la IA la prepara como propuesta y un adaptador controlado la ejecuta solo tras aprobación, validando de nuevo el destino; el adaptador verifica lo comprobable y, si no puede, muestra «no verificado»; nunca pasa una escritura arbitraria del modelo; tests con adaptador falso, cuenta incorrecta, respuesta parcial y escritura directa rechazada; Lo no especificado NO es motivo de rechazo.
 
 - [x] Servicios sin API o MCP de configuración disponible
   criterio: la interfaz explica la limitación y ofrece instrucciones/manual o un enlace a su panel oficial; no muestra una integración inexistente como operativa; una futura receta de navegador es una opción separada con navegador visible, login realizado por el usuario, aviso de fecha/posible desactualización y confirmación antes de guardar; no se instala ni activa por defecto como sustituto de un MCP; no accede a la contraseña ni simula la sesión de usuario de Discord; pruebas de catálogo sin conexión y herramientas no disponibles
@@ -672,11 +696,15 @@ Verificación manual:
 - [x] Comportamiento explícito al cerrar y salir
   criterio: conservar el uso normal de escritorio y explicar en Settings si cerrar oculta en la bandeja o termina la interfaz; respetar la preferencia minimize_to_tray, que el handler actual no consulta, y mostrar claramente si el bot sigue funcionando; «Quit» en el modo normal detiene el proceso; si el servicio opcional está activo, distinguir cerrar la interfaz de detener el servicio y ofrecer acciones claras para ambos; pruebas con eventos falsos de cierre y ambas preferencias, sin parar un bot real
 
-- [B] Motor de servicio opcional y una sola conexión por bot
-  criterio: modo sin ventana separado de la interfaz, desactivado por defecto, que solo se inicia/instala al habilitarlo explícitamente; interfaz y servicio comparten estado mediante un canal local autenticado y con permisos del usuario, sin enviar tokens por el canal; un bloqueo/registro de propietario impide conexiones duplicadas al Gateway por el mismo bot; abrir/cerrar la interfaz no pierde ni repite operaciones ni sus avisos; el servicio mantiene los límites, confirmaciones y resultados de las fases anteriores y no añade tareas programadas genéricas ni módulos de otros bots; pruebas con servicio/Gateway falsos de doble arranque, reconexión de la interfaz y parada ordenada
+- [ ] Servicio: proceso sin ventana con una sola conexión por bot
+  criterio: modo de ARGUS sin ventana, desactivado por defecto y que solo arranca al habilitarlo; un bloqueo de propietario impide dos conexiones al Gateway con el mismo bot (servicio e interfaz incluidos); mantiene los límites, confirmaciones y resultados de las fases anteriores; tests con Gateway falso de doble arranque y parada ordenada; Lo no especificado NO es motivo de rechazo.
 
-- [B] Arranque opcional y diagnóstico del servicio
-  criterio: controles visibles para habilitar/deshabilitar el arranque con el sistema, iniciar, detener y consultar estado/último error; no instala un servicio del sistema ni solicita privilegios por abrir ARGUS, y el inicio automático viene desactivado; documenta qué se mantiene activo y que el equipo debe permanecer encendido y conectado; diagnóstico distingue servicio detenido, interfaz desconectada y Gateway caído; pruebas sin modificar el arranque real del equipo, más checklist manual separado para Linux y Windows
+- [ ] Servicio: canal local con la interfaz
+  criterio: la interfaz y el servicio comparten estado por un canal local autenticado y con permisos del usuario, sin enviar tokens; abrir o cerrar la interfaz no pierde ni repite operaciones ni avisos; tests de reconexión de la interfaz; Lo no especificado NO es motivo de rechazo.
+
+- [ ] Servicio: controles y arranque opcional
+  criterio: controles visibles para iniciar, detener, ver el estado y el último error, y para habilitar el arranque con el sistema (desactivado por defecto, sin servicio del sistema ni privilegios); el diagnóstico distingue servicio detenido, interfaz desconectada y Gateway caído; docs de qué queda activo; tests sin modificar el arranque real del equipo y checklist manual para Linux y Windows; Lo no especificado NO es motivo de rechazo.
+
 
 ## Ideas fuera de esta etapa
 
