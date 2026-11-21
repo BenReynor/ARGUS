@@ -632,7 +632,7 @@ Verificación manual:
 
 ## FASE 22 — Biblioteca personal de plantillas de construcción
 
-- [ ] Plantillas propias: guardar desde el plan o desde un snapshot
+- [B] Plantillas propias: guardar desde el plan o desde un snapshot
   criterio: biblioteca local con nombre, descripción, etiquetas, fecha y esquema versionado; se crea una plantilla desde el editor del plan o desde un snapshot elegido; guarda canales, categorías, roles, descripciones y permisos con referencias portátiles, sin tokens, mensajes ni datos de miembros; migración compatible con la tabla templates existente; tests de persistencia y del esquema antiguo; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Plantillas propias: editar, buscar, duplicar y borrar

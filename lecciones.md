@@ -223,3 +223,8 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - Síntoma: El agente no cumplió el criterio tras 2 intentos.
 - Causa: revisor_fail en la iteración 7: Los cambios cubren diagnóstico accesible, estados compartidos, progreso, reintentos y pruebas de resultados y cancelación; no veo secretos ni cambios ajenos evidentes. Hay un error en la vista: al fallar el diagnóstico global, los estados se marcan `unverified`, pero el botón de cada comprobación solo llama a `diagnostico_agentes`; reintentar comprobaciones de configuración, base de datos, keyring, Gateway o permisos las consulta al grupo incorrecto y no las actualiza.
 - Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-20 23:09 — Tarea bloqueada: Plantillas propias: guardar desde el plan o desde un snapshot
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 8: [GATE] ✗ juez: criterio NO cumplido (La conversión rechaza snapshots válidos con canales de escenario u otros tipos no contemplados.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
