@@ -672,7 +672,7 @@ Verificación manual:
 
 ## FASE 24 — Conectar la IA con otros bots mediante MCP e integraciones autorizadas
 
-- [ ] Conectores: catálogo y vista
+- [B] Conectores: catálogo y vista
   criterio: archivo versionado con el catálogo de conectores (servicio, método oficial MCP o API, requisitos, permisos, herramientas de lectura y escritura y limitaciones) y una vista que lo muestra; los conectores no implementados o no probados aparecen como tales; se pueden habilitar varios por servidor y probar cada uno desde el diagnóstico; no promete que todos los bots tengan MCP; tests con catálogo y conector falsos; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Conectores: credenciales en el llavero
