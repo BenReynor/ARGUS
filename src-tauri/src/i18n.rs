@@ -12,6 +12,15 @@ pub const IDIOMA_DEFECTO: &str = "en";
 
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
+    ("Database is accessible.", "Se puede acceder a la base de datos."),
+    ("Database is unavailable. Check access to the application database and restart ARGUS.", "La base de datos no está disponible. Comprueba el acceso a la base de datos de la aplicación y reinicia ARGUS."),
+    ("Configuration could not be checked because the database is unavailable.", "No se pudo comprobar la configuración porque la base de datos no está disponible."),
+    ("Saved configuration is valid.", "La configuración guardada es válida."),
+    ("No saved configuration exists; defaults are in use.", "No hay configuración guardada; se usan los valores predeterminados."),
+    ("Saved configuration is invalid. Review and save the application settings.", "La configuración guardada no es válida. Revisa y guarda los ajustes de la aplicación."),
+    ("Configuration could not be read. Check the application database.", "No se pudo leer la configuración. Comprueba la base de datos de la aplicación."),
+    ("The system keyring was available when encryption was initialized.", "El llavero del sistema estaba disponible al inicializar el cifrado."),
+    ("The system keyring was unavailable when encryption was initialized. Unlock it and restart ARGUS.", "El llavero del sistema no estaba disponible al inicializar el cifrado. Desbloquéalo y reinicia ARGUS."),
     // <CATALOGO>
     ("The owner, this bot and your verified Discord account are always protected. Administrator roles are excluded by default.", "El dueño, este bot y tu cuenta de Discord verificada siempre están protegidos. Los roles con Administrator se excluyen por defecto."),
     ("Verify your account using the code sent by this bot to your Discord DMs. The code expires after five minutes. If DMs are unavailable, member removal is blocked.", "Verifica tu cuenta con el código que este bot envía por DM en Discord. El código caduca a los cinco minutos. Si no se pueden enviar DM, se bloquea la expulsión de miembros."),

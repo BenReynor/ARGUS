@@ -15,6 +15,7 @@ pub mod commands;
 pub mod crypto;
 pub mod db;
 pub mod destruction;
+pub mod diagnostico;
 pub mod discord;
 pub mod gateway;
 pub mod i18n;
@@ -142,6 +143,7 @@ pub fn run() {
         .manage(app_state)
         .manage(ClosePreference::default())
         .invoke_handler(tauri::generate_handler![
+            diagnostico::diagnostico_local,
             operaciones::listar_operaciones,
             crypto::keyring_available,
             actualizaciones::updater_install_supported,
