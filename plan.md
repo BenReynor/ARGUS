@@ -661,7 +661,7 @@ Verificación manual:
 - [x] Auditoría: hallazgos frente a lo esperado
   criterio: solo se declara una discrepancia de privacidad frente a una expectativa explícita del usuario, su plan o un snapshot, nunca por el nombre del canal; cada hallazgo cita sus datos y cuándo se comprobó; tests con expectativa privada cumplida, incumplida y sin expectativa; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Auditoría: vista de hallazgos
+- [x] Auditoría: vista de hallazgos
   criterio: vista con filtros por canal, rol y gravedad, con los datos que sustentan cada hallazgo y su impacto explicado; textos con t(); tests de los filtros; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Auditoría: preparar y aplicar correcciones
