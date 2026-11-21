@@ -602,7 +602,7 @@ resultados por acción y notificaciones existentes.
 - [B] Verificar roles, posiciones y permisos
   criterio: igual que la tarea anterior para roles (nombre, color, permisos, posición) y para los permisos de canal (overwrites); al reintentar una operación se reconcilian los recursos ya creados y no se repiten los pasos verificados; tests con nombres repetidos, cambio de servidor a mitad y reintento sin duplicar; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Panel de actividad: lista e historial
+- [x] Panel de actividad: lista e historial
   criterio: sección de actividad que lista las operaciones del historial con filtros por tipo, servidor y estado, se reabre igual tras reiniciar la app y muestra cada estado con icono y texto además de color; textos con t() en EN y ES; tests de los filtros y de la reapertura; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Panel de actividad: detalle de una operación y avisos coherentes
