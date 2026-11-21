@@ -599,7 +599,7 @@ resultados por acción y notificaciones existentes.
 - [x] Verificar canales y categorías tras crearlos o editarlos
   criterio: después de que Discord acepte crear o editar un canal o una categoría, se lee por el ID devuelto (de la operación original, nunca del servidor activo) y se marca «verificado» si coincide nombre, tipo, categoría, descripción y posición, o «no verificado» con el motivo si falta permiso o la API no lo refleja; un timeout tras crear no reintenta a ciegas: primero busca el recurso; tests con el Discord falso: canal creado y leído, API que acepta pero no refleja, timeout tras crear y evento tardío; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Verificar roles, posiciones y permisos
+- [B] Verificar roles, posiciones y permisos
   criterio: igual que la tarea anterior para roles (nombre, color, permisos, posición) y para los permisos de canal (overwrites); al reintentar una operación se reconcilian los recursos ya creados y no se repiten los pasos verificados; tests con nombres repetidos, cambio de servidor a mitad y reintento sin duplicar; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Panel de actividad: lista e historial
