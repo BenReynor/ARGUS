@@ -621,7 +621,7 @@ Verificación manual:
 - [x] Diagnóstico de Discord: Gateway y permisos para construir
   criterio: comprobación de solo lectura del estado del Gateway del bot activo y de los permisos que necesita para construir en el servidor elegido; no conecta bots nuevos ni escribe en Discord; timeout y cancelación; tests con el Discord falso: Gateway caído, permiso ausente y sin red; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Diagnóstico de agentes y MCP
+- [x] Diagnóstico de agentes y MCP
   criterio: para Claude, Codex, OpenCode y el MCP distingue «binario encontrado», «sesión disponible» y «responde» como comprobaciones separadas; no abre login ni llama a modelos de pago; cada proceso tiene timeout y cancelación; tests con agentes falsos: sin sesión, sin binario y proceso que se cuelga; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Pantalla de diagnóstico
