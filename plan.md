@@ -605,7 +605,7 @@ resultados por acción y notificaciones existentes.
 - [x] Panel de actividad: lista e historial
   criterio: sección de actividad que lista las operaciones del historial con filtros por tipo, servidor y estado, se reabre igual tras reiniciar la app y muestra cada estado con icono y texto además de color; textos con t() en EN y ES; tests de los filtros y de la reapertura; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Panel de actividad: detalle de una operación y avisos coherentes
+- [x] Panel de actividad: detalle de una operación y avisos coherentes
   criterio: al abrir una operación se ven sus pasos hechos, fallidos, omitidos y cancelados, una barra de progreso y el detalle del fallo con una sugerencia concreta; los avisos temporales enlazan a ese detalle y un resultado parcial nunca se muestra como éxito total; estados accesibles con teclado y role status/alert; tests de transiciones y de resultado parcial; Lo no especificado NO es motivo de rechazo.
 
 Verificación manual:
