@@ -1071,62 +1071,169 @@ impl ArgusMcp {
         Ok(json!({ "entradas": entradas }).to_string())
     }
 
-    /// Informe parcial de concesiones explícitas, sin inferir acceso efectivo.
+    /// Point-in-time, read-only permission audit. Missing inputs remain explicitly unknown.
     pub async fn informe_permisos_json(&self, guild_id: Option<&str>) -> Result<String, String> {
         let gid = self.servidor_de(guild_id).await?;
+        let mut missing = Vec::new();
         let roles = commands::leer_roles(&self.state, &gid, self.url())
             .await
-            .map_err(|e| self.limpiar(e))?;
-        let canales = commands::leer_canales(&self.state, &gid, self.url())
+            .ok();
+        let channels = commands::leer_canales(&self.state, &gid, self.url())
             .await
-            .map_err(|e| self.limpiar(e))?;
+            .ok();
+        let members = commands::leer_miembros(&self.state, &gid, self.url())
+            .await
+            .ok();
+        let owner = match commands::token_del_bot_activo(&self.state) {
+            Ok(token) => crate::discord::fetch_guild_owner_id(&token, self.url(), &gid)
+                .await
+                .ok()
+                .flatten(),
+            Err(_) => None,
+        };
+        if roles.is_none() {
+            missing.push("roles");
+        }
+        if channels.is_none() {
+            missing.push("channels");
+        }
+        if members.is_none() {
+            missing.push("members");
+        }
+        if owner.is_none() {
+            missing.push("owner");
+        }
+        let roles = roles.unwrap_or_default();
+        let channels = channels.unwrap_or_default();
+        let members = members.unwrap_or_default();
+        if !roles.iter().any(|r| r.id == gid)
+            || roles.iter().any(|r| r.permissions.parse::<u64>().is_err())
+        {
+            missing.push("role permissions");
+        }
+        if channels.iter().any(|c| {
+            c.overwrites.is_none()
+                || c.overwrites.iter().flatten().any(|o| {
+                    o.allow.parse::<u64>().is_err() || o.deny.parse::<u64>().is_err() || o.type_ > 1
+                })
+        }) {
+            missing.push("channel overwrites");
+        }
+        if members
+            .iter()
+            .any(|m| m.roles.iter().any(|id| !roles.iter().any(|r| &r.id == id)))
+        {
+            missing.push("member roles");
+        }
         let sensibles = [
             (3, "Administrator"),
-            (5, "ManageGuild"),
+            (13, "ManageMessages"),
             (4, "ManageChannels"),
             (28, "ManageRoles"),
-            (13, "ManageMessages"),
+            (29, "ManageWebhooks"),
             (1, "KickMembers"),
             (2, "BanMembers"),
-            (29, "ManageWebhooks"),
-            (40, "ModerateMembers"),
+            (17, "MentionEveryone"),
         ];
-        let mut hallazgos = Vec::new();
-        for rol in &roles {
-            let bits = rol
-                .permissions_bitfield
-                .as_deref()
-                .unwrap_or("")
-                .parse::<u64>()
-                .map_err(|_| "Invalid role permission bits".to_string())?;
-            for (bit, permiso) in sensibles {
-                if bits & (1_u64 << bit) != 0 {
-                    hallazgos.push(json!({"tipo":"role_grant", "role_id":rol.id,
-                        "role_name":rol.name, "permission":permiso, "permission_bit":bit,
-                        "evidence_bits":bits.to_string()}));
+        let mut findings = Vec::new();
+        for role in &roles {
+            let bits = role.permissions.parse::<u64>().unwrap_or(0);
+            for (bit, permission) in sensibles {
+                if bits & (1 << bit) != 0 {
+                    findings.push(json!({"tipo":"role_grant","role_id":role.id,"role_name":role.name,"permission":permission,"permission_bit":bit,"evidence_bits":bits.to_string()}));
                 }
             }
         }
-        let overwrites: Vec<_> = canales
-            .iter()
-            .flat_map(|canal| {
-                canal.overwrites.iter().flatten().map(move |o| {
-                    json!({
-                        "channel_id":canal.id, "channel_name":canal.name,
-                        "target_id":o.id, "target_type":o.type_, "allow":o.allow, "deny":o.deny
-                    })
-                })
+        let mut overwrites = Vec::new();
+        for channel in &channels {
+            for o in channel.overwrites.iter().flatten() {
+                overwrites.push(json!({"channel_id":channel.id,"channel_name":channel.name,"target_id":o.id,"target_type":o.type_,"allow":o.allow,"deny":o.deny}));
+                let allow = o.allow.parse::<u64>().unwrap_or(0);
+                for (bit, permission) in sensibles {
+                    if allow & (1 << bit) != 0 {
+                        findings.push(json!({"tipo":"channel_overwrite_grant","channel_id":channel.id,"target_id":o.id,"target_type":o.type_,"permission":permission,"permission_bit":bit,"evidence_bits":o.allow}));
+                    }
+                }
+            }
+        }
+        let inputs_ok = missing.is_empty();
+        let mut access = Vec::new();
+        if inputs_ok {
+            for channel in &channels {
+                for member in &members {
+                    let bits =
+                        audit_channel_permissions(&gid, owner.as_deref(), member, &roles, channel);
+                    let view = bits & (1 << 10) != 0;
+                    let sensitive: Vec<_> = sensibles
+                        .iter()
+                        .filter_map(|(bit, name)| (bits & (1 << bit) != 0).then_some(*name))
+                        .collect();
+                    access.push(json!({"channel_id":channel.id,"channel_name":channel.name,"parent_id":channel.parent_id,"member_id":member.user_id,"member_name":member.username,"view":view,"write":view && bits & (1 << 11) != 0,"manage":view && bits & ((1 << 4)|(1 << 28)|(1 << 29)|(1 << 13)) != 0,"permissions_bits":bits.to_string(),"sensitive_permissions":sensitive}));
+                }
+            }
+        }
+        let bot = self.state.get_active_bot();
+        let bot_member = bot
+            .as_ref()
+            .and_then(|b| members.iter().find(|m| m.user_id == b.id));
+        let bot_missing = if inputs_ok {
+            bot_member.map(|m| {
+                let bits = crate::discord::calcular_permisos(
+                    &gid,
+                    owner.as_deref(),
+                    &m.user_id,
+                    &roles,
+                    &m.roles,
+                );
+                [(4, "ManageChannels"), (28, "ManageRoles")]
+                    .iter()
+                    .filter_map(|(bit, name)| (bits & (1 << bit) == 0).then_some(*name))
+                    .collect::<Vec<_>>()
             })
-            .collect();
-        Ok(json!({
-            "guild_id":gid, "status":"partial", "findings":hallazgos,
-            "channel_overwrites":overwrites,
-            "limits":["Only selected explicit role grants are reported as findings; other permissions are not assessed.",
-                "Channel overwrites are raw evidence, not effective access calculations.",
-                "Members, ownership, role combinations, threads and user intent are not assessed; absence of findings does not establish security.",
-                "Data is a point-in-time observation and may change."],
-            "correction_workflow":"Explain evidence and prepare a proposal; the user must review and Apply it in ARGUS, including any destructive confirmations."
-        }).to_string())
+        } else {
+            None
+        };
+        let bot_channel_missing = if inputs_ok {
+            bot_member.map(|member| {
+                channels
+                    .iter()
+                    .map(|channel| {
+                        let bits = audit_channel_permissions(
+                            &gid,
+                            owner.as_deref(),
+                            member,
+                            &roles,
+                            channel,
+                        );
+                        let absent: Vec<_> = [
+                            (10, "ViewChannel"),
+                            (4, "ManageChannels"),
+                            (28, "ManageRoles"),
+                        ]
+                        .iter()
+                        .filter_map(|(bit, name)| (bits & (1 << bit) == 0).then_some(*name))
+                        .collect();
+                        json!({"channel_id": channel.id, "missing_permissions": absent})
+                    })
+                    .collect::<Vec<_>>()
+            })
+        } else {
+            None
+        };
+        let role_hierarchy = if inputs_ok {
+            bot_member.map(|member| {
+            let top = roles.iter().filter(|r| member.roles.contains(&r.id)).map(commands::rango_rol).max();
+            roles.iter().filter(|r| r.id != gid).map(|r| json!({"role_id":r.id, "role_name":r.name, "below_bot":top.is_some_and(|rank| commands::rango_rol(r) < rank)})).collect::<Vec<_>>()
+        })
+        } else {
+            None
+        };
+        if bot_missing.is_none() {
+            missing.push("bot permissions");
+        }
+        Ok(json!({"guild_id":gid,"status":"partial","incomplete":!missing.is_empty(),"missing_data":missing,"findings":findings,"channel_overwrites":overwrites,"channel_access":access,"bot_missing_build_permissions":bot_missing,"bot_channel_missing_permissions":bot_channel_missing,"bot_role_hierarchy":role_hierarchy,
+            "limits":["Data is a point-in-time observation; threads and user intent are not assessed, and absence of findings does not establish security."],
+            "correction_workflow":"Explain evidence and prepare a proposal; the user must review and Apply it in ARGUS, including any destructive confirmations."}).to_string())
     }
 
     pub async fn leer_mensajes_json(
@@ -1932,6 +2039,50 @@ fn fragmento_de(contenido: &str, aguja_plegada: &str) -> Option<String> {
 }
 
 /// 0 = rol, 1 = miembro (igual que `Overwrite::type_`).
+/// Discord applies @everyone, combined role overwrites, then the member overwrite.
+fn audit_channel_permissions(
+    gid: &str,
+    owner: Option<&str>,
+    member: &crate::state::Member,
+    roles: &[crate::state::Role],
+    channel: &crate::state::Channel,
+) -> u64 {
+    let mut bits =
+        crate::discord::calcular_permisos(gid, owner, &member.user_id, roles, &member.roles);
+    if owner == Some(member.user_id.as_str()) || bits & (1 << 3) != 0 {
+        return bits;
+    }
+    let overwrites = channel.overwrites.as_deref().unwrap_or_default();
+    let apply = |bits: u64, allow: u64, deny: u64| (bits & !deny) | allow;
+    for o in overwrites.iter().filter(|o| o.type_ == 0 && o.id == gid) {
+        bits = apply(
+            bits,
+            o.allow.parse().unwrap_or(0),
+            o.deny.parse().unwrap_or(0),
+        );
+    }
+    let (mut allow, mut deny) = (0, 0);
+    for o in overwrites
+        .iter()
+        .filter(|o| o.type_ == 0 && o.id != gid && member.roles.contains(&o.id))
+    {
+        allow |= o.allow.parse::<u64>().unwrap_or(0);
+        deny |= o.deny.parse::<u64>().unwrap_or(0);
+    }
+    bits = apply(bits, allow, deny);
+    for o in overwrites
+        .iter()
+        .filter(|o| o.type_ == 1 && o.id == member.user_id)
+    {
+        bits = apply(
+            bits,
+            o.allow.parse().unwrap_or(0),
+            o.deny.parse().unwrap_or(0),
+        );
+    }
+    bits
+}
+
 fn tipo_de_overwrite(t: &str) -> Result<u8, String> {
     match normalizar(t).as_str() {
         "rol" | "role" | "0" => Ok(0),
@@ -5204,6 +5355,67 @@ mod tests {
         }
     }
 
+    #[test]
+    fn auditoria_herencia_overwrites_y_administrator() {
+        use crate::state::{Channel, Member, Overwrite, Role};
+        let role = |id: &str, bits: u64| Role {
+            id: id.into(),
+            name: id.into(),
+            color: 0,
+            position: 0,
+            permissions: bits.to_string(),
+            permissions_bitfield: Some(bits.to_string()),
+            member_count: 0,
+            mentionable: false,
+            hoist: false,
+        };
+        let mut roles = vec![role("guild", 1 << 10), role("role", 1 << 11)];
+        let member = Member {
+            user_id: "member".into(),
+            username: "member".into(),
+            nickname: None,
+            roles: vec!["role".into()],
+            bot: false,
+            joined_at: None,
+            avatar: None,
+            flags: None,
+        };
+        let overwrite = |id: &str, type_, allow: u64, deny: u64| Overwrite {
+            id: id.into(),
+            type_,
+            allow: allow.to_string(),
+            deny: deny.to_string(),
+        };
+        let mut channel = Channel {
+            id: "channel".into(),
+            name: "channel".into(),
+            channel_type: 0,
+            parent_id: Some("category".into()),
+            position: 0,
+            overwrites: Some(vec![]),
+            permissions_bitfield: None,
+            topic: None,
+        };
+        let calculate = |roles: &[Role], channel: &Channel| {
+            audit_channel_permissions("guild", Some("owner"), &member, roles, channel)
+        };
+        assert_eq!(
+            calculate(&roles, &channel) & ((1 << 10) | (1 << 11)),
+            (1 << 10) | (1 << 11)
+        );
+        channel.overwrites = Some(vec![
+            overwrite("guild", 0, 0, 1 << 10),
+            overwrite("role", 0, (1 << 10) | (1 << 13), 1 << 11),
+            overwrite("member", 1, 1 << 11, 1 << 13),
+        ]);
+        let bits = calculate(&roles, &channel);
+        assert_ne!(bits & (1 << 10), 0);
+        assert_ne!(bits & (1 << 11), 0);
+        assert_eq!(bits & (1 << 13), 0);
+        roles[1] = role("role", 1 << 3);
+        assert_ne!(calculate(&roles, &channel) & (1 << 13), 0);
+    }
+
     #[tokio::test]
     async fn informe_permisos_es_parcial_y_solo_lee() {
         let (_d, mcp, server) = mcp_con_servidor(TODO, true).await;
@@ -5235,6 +5447,39 @@ mod tests {
             .iter()
             .all(|r| r.method.as_str() == "GET"));
         assert_eq!(mcp.state.get_active_guild().as_deref(), Some("555"));
+    }
+
+    #[tokio::test]
+    async fn auditoria_lectura_parcial_no_inventa_accesos() {
+        let (_dir, mcp, server) = mcp_con_servidor(TODO, true).await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555/members"))
+            .respond_with(ResponseTemplate::new(403))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        let report = v(mcp.informe_permisos_json(None).await.unwrap());
+        assert_eq!(report["incomplete"], true);
+        assert!(report["missing_data"].to_string().contains("members"));
+        assert!(report["channel_access"].as_array().unwrap().is_empty());
+        assert!(report["bot_missing_build_permissions"].is_null());
+    }
+
+    #[tokio::test]
+    async fn auditoria_resalta_permisos_sensibles_del_overwrite() {
+        let (_dir, mcp, server) = mcp_con_servidor(TODO, true).await;
+        let bits = (1_u64 << 13) | (1 << 17) | (1 << 29);
+        Mock::given(method("GET")).and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([{"id":"10","type":0,"name":"test","position":0,"permission_overwrites":[{"id":"700","type":0,"allow":bits.to_string(),"deny":"0"}]}])))
+            .with_priority(1).mount(&server).await;
+        let report = v(mcp.informe_permisos_json(None).await.unwrap());
+        for permission in ["ManageMessages", "MentionEveryone", "ManageWebhooks"] {
+            assert!(report["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|f| f["tipo"] == "channel_overwrite_grant" && f["permission"] == permission));
+        }
     }
 
     // ------------------------- moderación, servidor, invitaciones y webhooks
