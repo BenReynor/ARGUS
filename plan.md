@@ -638,7 +638,7 @@ Verificación manual:
 - [x] Plantillas propias: editar, buscar, duplicar y borrar
   criterio: se pueden editar los metadatos **y la estructura** de una plantilla guardada, buscar por nombre o etiqueta, duplicar y borrar con confirmación; las plantillas siguen separadas de los snapshots de recuperación; tests de edición de estructura, duplicado y borrado; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Aplicar una plantilla: vista previa
+- [x] Aplicar una plantilla: vista previa
   criterio: al elegir una plantilla y un servidor autorizado se muestra el árbol, las diferencias, los conflictos y las acciones antes de aplicar; @everyone, categorías y roles se remapean al servidor destino; nada se sobrescribe solo por compartir nombre ni se borra lo existente; tests con dos servidores distintos y roles ambiguos; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Aplicar una plantilla: ejecutar con el motor de propuestas
