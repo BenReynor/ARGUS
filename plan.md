@@ -615,7 +615,7 @@ Verificación manual:
 
 ## FASE 21 — Diagnóstico integrado de ARGUS
 
-- [ ] Diagnóstico local: configuración, base de datos y llavero
+- [x] Diagnóstico local: configuración, base de datos y llavero
   criterio: comando de diagnóstico que comprueba la configuración, el acceso a la base de datos y el llavero; cada comprobación devuelve correcto, advertencia, fallo o no comprobado, con explicación y fecha; no devuelve tokens, contraseñas ni contenido de archivos de autenticación; tests con base de datos inaccesible y sin llavero; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Diagnóstico de Discord: Gateway y permisos para construir
