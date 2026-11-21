@@ -3,6 +3,15 @@
 export const NOMBRE_ES = 'Español';
 
 export const es: Record<string, string> = {
+  "Search by name or tag": "Buscar por nombre o etiqueta",
+  "Tags (comma separated)": "Etiquetas (separadas por comas)",
+  "Structure (portable JSON)": "Estructura (JSON portátil)",
+  "Could not save template. Check the name and structure.": "No se pudo guardar la plantilla. Comprueba el nombre y la estructura.",
+  "Could not duplicate template.": "No se pudo duplicar la plantilla.",
+  "Could not delete template.": "No se pudo borrar la plantilla.",
+  "Delete this template?": "¿Borrar esta plantilla?",
+  "Duplicate": "Duplicar",
+  "Edit": "Editar",
   "Reorder channels": "Ordenar canales",
   "Reorder roles": "Ordenar roles",
   "Assign role": "Asignar rol",

@@ -299,6 +299,8 @@ pub struct Template {
     pub id: String,
     pub name: String,
     pub description: String,
+    #[serde(default)]
+    pub tags: String,
     pub data: String,
     pub version: i64,
     pub created_at: String,
@@ -306,7 +308,7 @@ pub struct Template {
 }
 
 pub async fn list_templates(pool: &SqlitePool) -> Result<Vec<Template>> {
-    let rows = sqlx::query("SELECT id, name, description, data, version, created_at, updated_at FROM templates ORDER BY created_at DESC")
+    let rows = sqlx::query("SELECT id, name, description, tags, data, version, created_at, updated_at FROM templates ORDER BY created_at DESC")
         .fetch_all(pool)
         .await?;
     Ok(rows
@@ -315,6 +317,7 @@ pub async fn list_templates(pool: &SqlitePool) -> Result<Vec<Template>> {
             id: r.get("id"),
             name: r.get("name"),
             description: r.get("description"),
+            tags: r.get("tags"),
             data: r.get("data"),
             version: r.get("version"),
             created_at: r.get("created_at"),
@@ -324,7 +327,7 @@ pub async fn list_templates(pool: &SqlitePool) -> Result<Vec<Template>> {
 }
 
 pub async fn get_template(pool: &SqlitePool, id: &str) -> Result<Option<Template>> {
-    let row = sqlx::query("SELECT id, name, description, data, version, created_at, updated_at FROM templates WHERE id = ?")
+    let row = sqlx::query("SELECT id, name, description, tags, data, version, created_at, updated_at FROM templates WHERE id = ?")
         .bind(id)
         .fetch_optional(pool)
         .await?;
@@ -332,6 +335,7 @@ pub async fn get_template(pool: &SqlitePool, id: &str) -> Result<Option<Template
         id: r.get("id"),
         name: r.get("name"),
         description: r.get("description"),
+        tags: r.get("tags"),
         data: r.get("data"),
         version: r.get("version"),
         created_at: r.get("created_at"),
@@ -341,13 +345,14 @@ pub async fn get_template(pool: &SqlitePool, id: &str) -> Result<Option<Template
 
 pub async fn save_template(pool: &SqlitePool, t: &Template) -> Result<()> {
     sqlx::query(
-        "INSERT INTO templates (id, name, description, data, version, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description, data = excluded.data, version = excluded.version, updated_at = CURRENT_TIMESTAMP"
+        "INSERT INTO templates (id, name, description, tags, data, version, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description, tags = excluded.tags, data = excluded.data, version = excluded.version, updated_at = CURRENT_TIMESTAMP"
     )
     .bind(&t.id)
     .bind(&t.name)
     .bind(&t.description)
+    .bind(&t.tags)
     .bind(&t.data)
     .bind(t.version)
     .bind(&t.created_at)

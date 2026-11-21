@@ -188,9 +188,51 @@ pub async fn export(pool: &SqlitePool, id: &str) -> Result<String, String> {
 mod tests {
     use super::*;
     #[tokio::test]
+    async fn edit_structure_duplicate_and_delete_preserve_other_records() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        db::run_migrations(&pool).await.unwrap();
+        let data = r#"{"format":"argus-template","version":1,"name":"Example","description":"","roles":[],"channels":[]}"#;
+        import(&pool, data, false).await.unwrap();
+        let mut original = db::list_templates(&pool).await.unwrap().remove(0);
+        let mut document = parse(&original.data).unwrap();
+        document.channels.push(Channel {
+            key: "chat".into(),
+            name: "chat".into(),
+            kind: "text".into(),
+            parent: None,
+            overwrites: vec![],
+        });
+        original.data = serde_json::to_string(&document).unwrap();
+        original.tags = "community, example".into();
+        original.name = "Edited".into();
+        db::save_template(&pool, &original).await.unwrap();
+        let saved = db::get_template(&pool, &original.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(parse(&saved.data).unwrap().channels[0].name, "chat");
+        assert_eq!(saved.tags, "community, example");
+        let mut copy = saved.clone();
+        copy.id = uuid::Uuid::new_v4().to_string();
+        db::save_template(&pool, &copy).await.unwrap();
+        db::delete_template(&pool, &original.id).await.unwrap();
+        assert!(db::get_template(&pool, &original.id)
+            .await
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            db::get_template(&pool, &copy.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .data,
+            saved.data
+        );
+    }
+    #[tokio::test]
     async fn roundtrip_and_rejections_leave_library_unchanged() {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        sqlx::query("CREATE TABLE templates (id TEXT PRIMARY KEY, name TEXT, description TEXT, data TEXT, version INTEGER, created_at TEXT, updated_at TEXT)").execute(&pool).await.unwrap();
+        sqlx::query("CREATE TABLE templates (id TEXT PRIMARY KEY, name TEXT, description TEXT, tags TEXT NOT NULL DEFAULT '', data TEXT, version INTEGER, created_at TEXT, updated_at TEXT)").execute(&pool).await.unwrap();
         let data = r#"{"format":"argus-template","version":1,"name":"Example","description":"","roles":[{"key":"staff","name":"Staff","color":12,"permissions":8}],"channels":[{"key":"group","name":"Group","kind":"category","parent":null,"overwrites":[]},{"key":"chat","name":"chat","kind":"text","parent":"group","overwrites":[{"role":"staff","allow":1,"deny":0}]}]}"#;
         let original = parse(data).unwrap();
         assert!(!preview(&pool, data).await.unwrap().name_exists);
