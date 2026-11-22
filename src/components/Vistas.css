@@ -290,3 +290,14 @@
 .diag-estado { display: inline-flex; align-items: center; gap: var(--sp-1); white-space: nowrap; }
 .diag-estado--correct { color: var(--ok, var(--text)); }
 .diag-estado--failed { color: var(--danger, var(--text)); }
+
+/* Copias de seguridad: snapshots y zona peligrosa */
+.copias__seccion { display: flex; flex-direction: column; gap: var(--sp-3); }
+.copias__seccion > h3 { margin: 0; }
+.copias__nota { margin: var(--sp-2) 0; }
+.ajustes__fila--base { align-items: flex-end; }
+.zona-peligro { border: 1px solid var(--danger); border-radius: var(--radius, 8px); padding: var(--sp-3); margin-top: var(--sp-4); }
+.zona-peligro > summary { cursor: pointer; font-weight: 600; color: var(--danger); }
+.zona-peligro[open] > summary { margin-bottom: var(--sp-2); }
+.zona-peligro__aviso { color: var(--danger); margin: 0 0 var(--sp-3); }
+.zona-peligro .ui-campo, .zona-peligro .ajustes__fila { margin-bottom: var(--sp-2); }

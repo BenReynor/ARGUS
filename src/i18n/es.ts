@@ -323,6 +323,9 @@ export const es: Record<string, string> = {
   "Extra in current server": "Sobra en el servidor actual",
 
   "Backups": "Copias de seguridad",
+  "Snapshots": "Snapshots",
+  "Danger zone": "Zona peligrosa",
+  "Actions here are destructive and cannot be undone. Review each step carefully.": "Las acciones de aquí son destructivas y no se pueden deshacer. Revisa cada paso con cuidado.",
   "Create snapshot": "Crear snapshot",
   "Choose a server to manage its snapshots.": "Elige un servidor para gestionar sus snapshots.",
   "Save a complete server snapshot locally. Imports add a saved snapshot for this server.": "Guarda una copia completa del servidor localmente. Las importaciones añaden un snapshot guardado de este servidor.",
