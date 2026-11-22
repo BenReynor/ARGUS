@@ -21,6 +21,8 @@ import './Asistente.css';
 import { DiffView } from './DiffView';
 import { TemplateTransfer } from './TemplateTransfer';
 import { SugerenciaPlantilla } from './SugerenciaPlantilla';
+import { GuardarPlantilla, type PlantillaGuardada } from './GuardarPlantilla';
+import { invoke } from '@tauri-apps/api/core';
 
 type Modo = 'read' | 'plan' | 'execute';
 interface Herramienta { id: string; nombre: string; ok: boolean | null }
@@ -151,6 +153,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
   // Plan propuesto por la IA (modo Plan): vista de cambios frente al editor y plan previo para deshacer.
   const [cambios, setCambios] = useState<{ propuesto: string; vista: CambiosPlan } | null>(null);
   const [planPrevio, setPlanPrevio] = useState<string | null>(null);
+  const [guardandoPlantilla, setGuardandoPlantilla] = useState(false);
   const areaPlan = useRef<HTMLTextAreaElement>(null);
   const [manualAbierto, setManualAbierto] = useState(false);
 
@@ -607,8 +610,11 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
               <Button variante="secundario" tamano="sm" onClick={insertarPlantilla}><FilePlus size={14} /> {t('Insert template')}</Button>
               <Button variante="secundario" tamano="sm" onClick={() => { void importar(); }}><Upload size={14} /> {t('Import .md')}</Button>
               <Button variante="secundario" tamano="sm" onClick={() => { void exportar(); }}><Download size={14} /> {t('Export .md')}</Button>
+              {estructura?.tiene_estructura && <Button variante="secundario" tamano="sm" onClick={() => setGuardandoPlantilla(true)}><FilePlus size={14} /> {t('Save as template')}</Button>}
             </div>
           </header>
+          <GuardarPlantilla abierto={guardandoPlantilla} nombreInicial={nombreArchivoDelPlan(plan) === 'server-plan' ? '' : nombreArchivoDelPlan(plan)} onCerrar={() => setGuardandoPlantilla(false)}
+            guardar={(nombre, descripcion, etiquetas) => invoke<PlantillaGuardada>('crear_plantilla_desde_plan', { plan, nombre, descripcion, etiquetas })} />
           {manualAbierto && (
             <div className="asistente__aviso" role="region" aria-label={t('Plan manual')} style={{ display: 'block', maxHeight: '40%', overflow: 'auto' }}>
               <strong>{t('Plan manual')}</strong>

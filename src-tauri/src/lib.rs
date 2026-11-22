@@ -33,6 +33,7 @@ pub mod responder;
 pub mod snapshots;
 pub mod state;
 pub mod sync;
+mod template_guardar;
 mod template_transfer;
 #[cfg(test)]
 mod tests_ajustes;
@@ -216,6 +217,8 @@ pub fn run() {
             template_transfer::preview_template_target,
             template_transfer::import_template_file,
             template_transfer::export_template_file,
+            template_guardar::crear_plantilla_desde_snapshot,
+            template_guardar::crear_plantilla_desde_plan,
             list_templates,
             save_template,
             delete_template,

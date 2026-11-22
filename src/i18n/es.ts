@@ -3,6 +3,12 @@
 export const NOMBRE_ES = 'Español';
 
 export const es: Record<string, string> = {
+  "Save as template": "Guardar como plantilla",
+  "Template name": "Nombre de la plantilla",
+  "Could not save the template.": "No se pudo guardar la plantilla.",
+  "Template saved to your library.": "Plantilla guardada en tu biblioteca.",
+  "Not included in the template:": "No se incluyó en la plantilla:",
+  "Members, messages and tokens are never saved in a template.": "Una plantilla nunca guarda miembros, mensajes ni tokens.",
   'Select a server to enable connectors.': 'Selecciona un servidor para habilitar conectores.',
   'Not implemented': 'No implementado',
   'Not tested': 'No probado',

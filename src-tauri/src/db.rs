@@ -308,7 +308,7 @@ pub struct Template {
 }
 
 pub async fn list_templates(pool: &SqlitePool) -> Result<Vec<Template>> {
-    let rows = sqlx::query("SELECT id, name, description, tags, data, version, created_at, updated_at FROM templates ORDER BY created_at DESC")
+    let rows = sqlx::query("SELECT id, name, COALESCE(description, '') AS description, tags, data, version, created_at, updated_at FROM templates ORDER BY created_at DESC")
         .fetch_all(pool)
         .await?;
     Ok(rows
@@ -327,7 +327,7 @@ pub async fn list_templates(pool: &SqlitePool) -> Result<Vec<Template>> {
 }
 
 pub async fn get_template(pool: &SqlitePool, id: &str) -> Result<Option<Template>> {
-    let row = sqlx::query("SELECT id, name, description, tags, data, version, created_at, updated_at FROM templates WHERE id = ?")
+    let row = sqlx::query("SELECT id, name, COALESCE(description, '') AS description, tags, data, version, created_at, updated_at FROM templates WHERE id = ?")
         .bind(id)
         .fetch_optional(pool)
         .await?;

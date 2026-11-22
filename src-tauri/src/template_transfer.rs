@@ -31,6 +31,9 @@ pub struct Channel {
     pub name: String,
     pub kind: String,
     pub parent: Option<String>,
+    /// Tema del canal; los documentos antiguos no lo traen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     pub overwrites: Vec<Overwrite>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -85,6 +88,9 @@ pub fn parse(data: &str) -> Result<Document, String> {
             || !name(&c.name, 100)
             || !["category", "text", "voice", "announcement", "forum"].contains(&c.kind.as_str())
             || c.overwrites.len() > 250
+            || c.description.as_ref().is_some_and(|t| {
+                t.chars().count() > 1024 || t.chars().any(|ch| ch.is_control() && ch != '\n')
+            })
         {
             return Err(invalid());
         }
@@ -200,6 +206,7 @@ mod tests {
             name: "chat".into(),
             kind: "text".into(),
             parent: None,
+            description: None,
             overwrites: vec![],
         });
         original.data = serde_json::to_string(&document).unwrap();
