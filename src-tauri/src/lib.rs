@@ -12,6 +12,7 @@ pub mod asistente;
 pub mod backup;
 pub mod chat;
 pub mod commands;
+pub mod conectores;
 pub mod crypto;
 pub mod db;
 pub mod destruction;
