@@ -93,6 +93,18 @@ fn las_instrucciones_describen_las_funciones_nuevas() {
     }
 }
 
+#[test]
+fn toda_herramienta_registrada_esta_en_la_documentacion() {
+    let doc = include_str!("../../docs/MCP.md");
+    for n in nombres(&ArgusMcp::tool_router().list_all()) {
+        assert!(
+            doc.contains(&format!("`{n}`")),
+            "docs/MCP.md no documenta la herramienta {n}"
+        );
+    }
+    assert!(doc.contains("skills/argus/SKILL.md"));
+}
+
 #[tokio::test]
 async fn guardar_plantilla_no_escribe_sin_aprobacion() {
     let (dir, m, server) = mcp().await;
