@@ -29,6 +29,11 @@ export function seccionesDeVista(secciones: SeccionManual[], vista: string): Sec
   return secciones.filter((s) => s.tabs.includes(vista));
 }
 
+/** Una sección arranca abierta al buscar (todas las coincidencias) o si es la de la vista que abrió el manual con «?». */
+export function seccionAbierta(filtrando: boolean, vista: string, destacada: boolean): boolean {
+  return filtrando || (vista !== 'manual' && destacada);
+}
+
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
 /** Busca por título y contenido (todas las palabras; sin distinguir mayúsculas ni tildes). */

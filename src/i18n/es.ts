@@ -172,6 +172,7 @@ export const es: Record<string, string> = {
   "Status": "Estado",
   "All statuses": "Todos los estados",
   "Loading activity…": "Cargando actividad…",
+  "Filters": "Filtros",
   "Could not load activity.": "No se pudo cargar la actividad.",
   "No activity matches these filters.": "Ninguna actividad coincide con estos filtros.",
   "In progress": "En curso",
