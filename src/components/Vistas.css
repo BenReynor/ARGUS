@@ -246,3 +246,12 @@
 .audit-findings { display: grid; gap: var(--sp-3); }
 .audit-findings__filters { display: flex; gap: var(--sp-3); flex-wrap: wrap; }
 .audit-findings .ui-card p { overflow-wrap: anywhere; }
+
+.btn-ayuda-manual { background: none; border: none; color: inherit; cursor: pointer; padding: 4px; margin-left: 8px; display: inline-flex; border-radius: 50%; opacity: .7; }
+.btn-ayuda-manual:hover, .btn-ayuda-manual:focus-visible { opacity: 1; }
+.manual-vista { display: grid; gap: var(--sp-3); max-width: 860px; }
+.manual-vista input[type="search"] { width: 100%; padding: 8px 10px; }
+.manual-vista details { border: 1px solid currentColor; border-radius: 8px; padding: 10px 14px; }
+.manual-vista summary { cursor: pointer; font-weight: 600; }
+.manual-vista h3 { margin: 12px 0 2px; font-size: .85rem; opacity: .75; }
+.manual-vista p { margin: 0; }

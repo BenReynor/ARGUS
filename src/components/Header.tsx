@@ -1,10 +1,11 @@
 import React from 'react';
-import { useBotStatus, useServerMap, useGuildPanel } from '../store/useStore';
+import { useStore, useBotStatus, useServerMap, useGuildPanel } from '../store/useStore';
 import { t } from '../i18n';
-import { Server, Gauge, Users, Wifi, WifiOff } from 'lucide-react';
+import { Server, Gauge, Users, Wifi, WifiOff, HelpCircle } from 'lucide-react';
 
 /** Cabecera de la sección activa (48px), con el estado del Gateway. */
-export const Header: React.FC<{ titulo: string; icono?: any }> = ({ titulo, icono: Icono }) => {
+export const Header: React.FC<{ titulo: string; icono?: any; vista?: string }> = ({ titulo, icono: Icono, vista }) => {
+  const openManual = useStore((s) => s.openManual);
   const botStatus = useBotStatus();
   const serverMap = useServerMap();
   const guildPanel = useGuildPanel();
@@ -17,6 +18,17 @@ export const Header: React.FC<{ titulo: string; icono?: any }> = ({ titulo, icon
       <div className="header-left">
         {Icono && <Icono className="header-icono" size={20} aria-hidden="true" />}
         <h1 className="page-title">{titulo}</h1>
+        {vista && vista !== 'manual' && (
+          <button
+            type="button"
+            className="btn-ayuda-manual"
+            title={t('Open the manual for this view')}
+            aria-label={t('Open the manual for this view')}
+            onClick={() => openManual(vista)}
+          >
+            <HelpCircle size={16} aria-hidden="true" />
+          </button>
+        )}
       </div>
       <div className="header-right">
         <div className={`connection-status ${botStatus.connected ? 'connected' : 'disconnected'}`}>

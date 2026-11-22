@@ -73,8 +73,11 @@ interface AppState {
   refreshServerMap: () => Promise<void>;
 
   // UI state
-  activeTab: 'permission-audit' | 'activity' | 'backups' | 'dashboard' | 'channels' | 'members' | 'roles' | 'servidor' | 'asistente' | 'settings' | 'logs';
+  activeTab: 'permission-audit' | 'activity' | 'backups' | 'dashboard' | 'channels' | 'members' | 'roles' | 'servidor' | 'asistente' | 'settings' | 'logs' | 'manual';
   setActiveTab: (tab: AppState['activeTab']) => void;
+  /** Vista desde la que se abrió el manual con el botón «?». */
+  manualVista: string;
+  openManual: (vista: string) => void;
   
   selectedChannel: Channel | null;
   setSelectedChannel: (channel: Channel | null) => void;
@@ -269,7 +272,9 @@ export const useStore = create<AppState>()(
 
       // UI state
       activeTab: 'dashboard',
-      setActiveTab: (tab) => set({ activeTab: tab }),
+      setActiveTab: (tab) => set({ activeTab: tab, manualVista: 'manual' }),
+      manualVista: 'manual',
+      openManual: (vista) => set({ manualVista: vista, activeTab: 'manual' }),
       selectedChannel: null,
       setSelectedChannel: (channel) => set({ selectedChannel: channel }),
       selectedMember: null,
