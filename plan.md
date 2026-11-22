@@ -736,7 +736,7 @@ título y acciones a la derecha, márgenes de `main-content`), tarjetas y
 componentes de `src/components/ui`; textos con t() en EN y ES; sin datos reales
 en los tests. Cada tarea termina ejecutando `npm run e2e:capturas` sin errores.
 
-- [ ] Recorrido automático de la interfaz con capturas
+- [x] Recorrido automático de la interfaz con capturas
   criterio: script `npm run e2e:capturas` (Node + playwright-core con el Chromium ya instalado en ~/.cache/ms-playwright) que levanta Vite, inyecta un backend de Tauri simulado con datos demo (bot, servidor con categorías, canales, 60+ miembros con roles, roles con colores, snapshots, hallazgos de auditoría, actividad) y recorre cada vista de la barra lateral, cada pestaña del Asistente y de Config, guardando un PNG por pantalla en una carpeta fuera del repo (variable E2E_CAPTURAS, por defecto en el tmp del sistema); falla si hay errores de JavaScript, comandos invoke sin simular, texto técnico visible (undefined, NaN, [object Object]) o IDs de Discord crudos de 17–20 dígitos visibles fuera de campos de ID; documentado en README; no forma parte de `npm test`; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Miembros: roles con nombre y color
