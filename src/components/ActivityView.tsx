@@ -72,8 +72,11 @@ export function ActivityView() {
         <label>{t('Status')} <Select value={filters.status} onChange={e => update('status', e.target.value)}><option value="">{t('All statuses')}</option>{statuses.map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}</Select></label>
         <Button className="actividad__refrescar" onClick={() => setReload(n => n + 1)}>{t('Refresh')}</Button>
       </div>
-      {loading ? <p>{t('Loading activity…')}</p> : error ? <p role="alert">{t('Could not load activity.')}</p> : visibles.length === 0 ? <EstadoVacio icono={<Inbox size={32} aria-hidden="true" />} titulo={t('No activity matches these filters.')} /> : <ul>{visibles.map(op => <li key={op.id}>
-        <p><Status status={op.status} /> · {guilds.find(g => g.id === op.guild_id)?.name ?? op.guild_id} · <time dateTime={op.started_at}>{new Date(op.started_at).toLocaleString()}</time> · <button onClick={() => selectOperation(op.id)} aria-expanded={selectedId === op.id}>{t('View operation')}</button></p>
+      {loading ? <p>{t('Loading activity…')}</p> : error ? <p role="alert">{t('Could not load activity.')}</p> : visibles.length === 0 ? <EstadoVacio icono={<Inbox size={32} aria-hidden="true" />} titulo={t('No activity matches these filters.')} /> : <ul className="actividad__tarjetas">{visibles.map(op => <li key={op.id} className={`actividad__tarjeta${selectedId === op.id ? ' actividad__tarjeta--sel' : ''}`}>
+        <Status status={op.status} />
+        <span className="actividad__servidor">{guilds.find(g => g.id === op.guild_id)?.name ?? op.guild_id}</span>
+        <time className="actividad__fecha" dateTime={op.started_at}>{new Date(op.started_at).toLocaleString()}</time>
+        <Button variante="secundario" tamano="sm" onClick={() => selectOperation(op.id)} aria-expanded={selectedId === op.id}>{t('View operation')}</Button>
       </li>)}</ul>}
       {selectedId && !loading && !selected && <p role="status">{t('Operation not found for the selected bot.')}</p>}
       {selected && <OperationDetail operation={selected} />}

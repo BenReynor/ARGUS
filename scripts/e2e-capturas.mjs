@@ -18,7 +18,7 @@ const puerto = Number(process.env.E2E_PUERTO || 14210);
 const IDIOMAS = (process.env.E2E_IDIOMAS || 'en,es').split(',').map((x) => x.trim()).filter(Boolean);
 // Vistas de la barra lateral, por posición (independiente del idioma).
 const SLUGS = ['dashboard', 'channels', 'members', 'roles', 'backups', 'permission-audit', 'server', 'ai-assistant', 'activity', 'logs', 'manual', 'settings'];
-const CON_PESTANAS = ['members', 'ai-assistant'];
+const CON_PESTANAS = ['members', 'ai-assistant', 'settings'];
 const SIN_SERVIDOR = ['No server selected', 'Select a bot and server', 'Ningún servidor seleccionado', 'Selecciona un bot y un servidor'];
 
 /** Localiza el Chromium ya instalado por Playwright en ~/.cache/ms-playwright. */
@@ -121,16 +121,10 @@ async function recorrer(idioma) {
       await irA(i);
       if (CON_PESTANAS.includes(slug)) await pestanas(slug);
       else await capturar(slug);
-      if (slug === 'settings') {
-        // Config no tiene pestañas: se recorre por secciones desplazando el contenedor.
-        const alto = await pagina.evaluate(() => {
-          const c = document.querySelector('.main-content');
-          return c ? c.scrollHeight - c.clientHeight : 0;
-        });
-        for (let y = 900, k = 2; y < alto + 900; y += 800, k++) {
-          await pagina.evaluate((top) => document.querySelector('.main-content')?.scrollTo(0, top), y - 100);
-          await capturar(`${slug}-parte-${k}`);
-        }
+      if (slug === 'activity') {
+        await pagina.locator('.actividad__tarjeta button').first().click();
+        await pagina.waitForSelector('section[aria-label] progress', { timeout: 5000 });
+        await capturar('activity-detalle');
       }
     }
   } catch (e) {

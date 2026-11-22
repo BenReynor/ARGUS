@@ -301,3 +301,8 @@
 .zona-peligro[open] > summary { margin-bottom: var(--sp-2); }
 .zona-peligro__aviso { color: var(--danger); margin: 0 0 var(--sp-3); }
 .zona-peligro .ui-campo, .zona-peligro .ajustes__fila { margin-bottom: var(--sp-2); }
+.actividad__tarjetas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.actividad__tarjeta { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; padding: var(--sp-2) var(--sp-3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.actividad__tarjeta--sel { border-color: var(--accent); background: var(--accent-soft); }
+.actividad__servidor { flex: 1; min-width: 8rem; font-weight: var(--fw-medium); overflow-wrap: anywhere; }
+.actividad__fecha { color: var(--text-3); font-size: 0.9em; }
