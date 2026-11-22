@@ -720,7 +720,7 @@ todo lo que ofrece. Nada de funciones nuevas fuera de lo listado.
 - [x] Skill de ARGUS para agentes
   criterio: archivo versionado `skills/argus/SKILL.md` (frontmatter con name y description) que enseña a Claude, Codex y OpenCode a usar el MCP de ARGUS gastando pocos tokens: leer el mapa una vez, usar nombres en vez de IDs, agrupar cambios en una propuesta, no repetir lecturas y comprobar el resultado con la verificación; solo nombra herramientas que existen; en Settings se ofrece instalarla en la carpeta de skills del agente elegido, mostrando la ruta y pidiendo confirmación, sin sobrescribir una existente sin preguntar; test que compara las herramientas citadas en la skill con las registradas en el MCP y test de la instalación en una carpeta temporal; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Manual dentro de la aplicación
+- [x] Manual dentro de la aplicación
   criterio: sección «Manual» en la barra lateral con todas las funciones de ARGUS por áreas (bots y servidores, canales y roles, miembros y moderación, asistente y plan, plantillas, snapshots y restauración, expulsión y destrucción masiva, auditoría, diagnóstico, actividad e historial, conectores, MCP y skill, servicio sin ventana, seguridad y privacidad): qué hace, cómo se usa y sus límites; buscador; cada vista tiene un botón «?» que abre su sección; textos con t() en EN y ES; test de que cada vista de la barra lateral tiene su sección y de que la búsqueda encuentra por título y contenido; Lo no especificado NO es motivo de rechazo.
 
 - [ ] README y documentación al día
