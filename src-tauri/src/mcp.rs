@@ -580,6 +580,42 @@ pub struct ApplyRestoreParams {
     pub confirmation: String,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct GuardarPlantillaPlanParams {
+    /// Markdown plan of the server. It must describe at least one role or category.
+    pub plan: String,
+    /// Name of the new template.
+    pub nombre: String,
+    #[serde(default)]
+    pub descripcion: String,
+    /// Comma-separated tags.
+    #[serde(default)]
+    pub etiquetas: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct GuardarPlantillaSnapshotParams {
+    /// Identifier returned by listar_snapshots (active bot and server only).
+    pub snapshot_id: String,
+    /// Name of the new template.
+    pub nombre: String,
+    #[serde(default)]
+    pub descripcion: String,
+    /// Comma-separated tags.
+    #[serde(default)]
+    pub etiquetas: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct ProponerCorreccionParams {
+    pub guild_id: Option<String>,
+    /// A finding exactly as returned by informe_permisos.
+    pub finding: serde_json::Value,
+}
+
 #[derive(Clone)]
 pub struct ArgusMcp {
     pool: SqlitePool,
@@ -604,6 +640,79 @@ impl ArgusMcp {
             Some(c) => c.list_tools().await,
             None => Vec::new(),
         }
+    }
+
+    /// Builds (without applying) the proposal that creates a saved template on
+    /// the active server. The user reviews and approves it in ARGUS.
+    pub async fn proponer_plantilla_json(&self, id: &str) -> Result<String, String> {
+        let plantilla = crate::db::get_template(&self.pool, id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or("Template not found")?;
+        let documento = crate::template_transfer::parse(&plantilla.data)?;
+        let propuesta = crate::template_aplicar::propuesta_de_documento(&documento);
+        let validacion = crate::propuesta::validar_en_estado(&self.state, &propuesta);
+        Ok(json!({
+            "propuesta": propuesta,
+            "validacion": validacion,
+            "nota": "Proposal only: nothing was changed. Return it in Execute mode for the user to approve.",
+        })
+        .to_string())
+    }
+
+    /// Prepares the correction of an audit finding as a proposal (never applied here).
+    pub async fn proponer_correccion_json(
+        &self,
+        guild_id: Option<&str>,
+        hallazgo: &serde_json::Value,
+    ) -> Result<String, String> {
+        let gid = self.servidor_de(guild_id).await?;
+        let r = self.preparar_correccion_json(&gid, hallazgo).await?;
+        Ok(r.to_string())
+    }
+
+    /// Local write (template library): only runs after the user approves a proposal.
+    async fn guardar_plantilla_plan_json(
+        &self,
+        p: GuardarPlantillaPlanParams,
+    ) -> Result<String, String> {
+        let (d, omitidos) = crate::template_guardar::desde_plan(&p.plan, p.nombre, p.descripcion)?;
+        let id = crate::template_guardar::guardar(&self.pool, d, &p.etiquetas).await?;
+        Ok(json!({"template_id": id, "omitidos": omitidos}).to_string())
+    }
+
+    async fn guardar_plantilla_snapshot_json(
+        &self,
+        p: GuardarPlantillaSnapshotParams,
+    ) -> Result<String, String> {
+        let guild = self.servidor_de(None).await?;
+        let bot = self.state.get_active_bot().ok_or(SIN_BOT)?;
+        let snapshot = crate::snapshots::load(&self.pool, &bot.id, &guild, &p.snapshot_id)
+            .await
+            .map_err(|_| "Snapshot not found".to_string())?;
+        let (d, omitidos) =
+            crate::template_guardar::desde_snapshot(&snapshot, p.nombre, p.descripcion)?;
+        let id = crate::template_guardar::guardar(&self.pool, d, &p.etiquetas).await?;
+        Ok(json!({"template_id": id, "omitidos": omitidos}).to_string())
+    }
+
+    /// Tool list the MCP exposes: the fixed ARGUS tools plus, only when there
+    /// are enabled connectors, their read tools (`connector__tool`).
+    pub async fn herramientas_publicas(&self) -> Vec<rmcp::model::Tool> {
+        let mut tools = Self::tool_router().list_all();
+        for nombre in self.herramientas_conectores().await {
+            let esquema: rmcp::model::JsonObject =
+                serde_json::from_value(json!({"type": "object", "additionalProperties": true}))
+                    .unwrap_or_default();
+            tools.push(rmcp::model::Tool::new(
+                nombre.clone(),
+                format!(
+                    "Read-only tool «{nombre}» of an enabled connector. It never changes anything."
+                ),
+                std::sync::Arc::new(esquema),
+            ));
+        }
+        tools
     }
 
     pub async fn llamar_conector(
@@ -2381,6 +2490,8 @@ fn miembro_json(m: &Member, roles: &[Role]) -> serde_json::Value {
 pub const HERRAMIENTAS_LECTURA: &[&str] = &[
     "listar_plantillas",
     "consultar_plantilla",
+    "proponer_plantilla",
+    "proponer_correccion",
     "informe_permisos",
     "info_restauracion",
     "listar_snapshots",
@@ -2406,6 +2517,8 @@ pub const HERRAMIENTAS_LECTURA: &[&str] = &[
 
 /// Herramientas que modifican algo (Discord o el servidor activo guardado).
 pub const HERRAMIENTAS_ESCRITURA: &[&str] = &[
+    "guardar_plantilla_desde_plan",
+    "guardar_plantilla_desde_snapshot",
     "crear_snapshot",
     "aplicar_restauracion",
     "elegir_servidor",
@@ -2467,6 +2580,8 @@ pub fn validar_accion(nombre: &str, args: &serde_json::Value) -> Result<(), Stri
         args_de::<T>(n, a.clone()).map(|_| ())
     }
     match nombre {
+        "guardar_plantilla_desde_plan" => ok::<GuardarPlantillaPlanParams>(nombre, args),
+        "guardar_plantilla_desde_snapshot" => ok::<GuardarPlantillaSnapshotParams>(nombre, args),
         "crear_snapshot" => ok::<ServidorParams>(nombre, args),
         "aplicar_restauracion" => ok::<ApplyRestoreParams>(nombre, args),
         "elegir_servidor" => ok::<ElegirServidorParams>(nombre, args),
@@ -2514,6 +2629,8 @@ pub fn esquema_args(nombre: &str) -> Option<serde_json::Value> {
         serde_json::to_value(schemars::schema_for!(T)).ok()
     }
     match nombre {
+        "guardar_plantilla_desde_plan" => de::<GuardarPlantillaPlanParams>(),
+        "guardar_plantilla_desde_snapshot" => de::<GuardarPlantillaSnapshotParams>(),
         "crear_snapshot" => de::<ServidorParams>(),
         "aplicar_restauracion" => de::<ApplyRestoreParams>(),
         "elegir_servidor" => de::<ElegirServidorParams>(),
@@ -3090,6 +3207,14 @@ impl ArgusMcp {
     ) -> Result<String, String> {
         comprobar_escritura(nombre)?;
         match nombre {
+            "guardar_plantilla_desde_plan" => {
+                self.guardar_plantilla_plan_json(args_de(nombre, args)?)
+                    .await
+            }
+            "guardar_plantilla_desde_snapshot" => {
+                self.guardar_plantilla_snapshot_json(args_de(nombre, args)?)
+                    .await
+            }
             "crear_snapshot" => self.crear_snapshot_json().await,
             "aplicar_restauracion" => {
                 let p: ApplyRestoreParams = args_de(nombre, args)?;
@@ -3223,6 +3348,59 @@ impl ArgusMcp {
             .map_err(|e| e.to_string())?
             .ok_or("Template not found")?;
         serde_json::to_string(&item).map_err(|e| e.to_string())
+    }
+
+    #[tool(
+        name = "proponer_plantilla",
+        description = "Prepares, without applying it, the proposal that would create a saved template (see listar_plantillas) on the active server, with its validation. Nothing is changed: return the proposal in Execute mode so the user can approve it."
+    )]
+    async fn proponer_plantilla(
+        &self,
+        Parameters(p): Parameters<PlantillaParams>,
+    ) -> Result<String, String> {
+        self.salida(self.proponer_plantilla_json(&p.id).await)
+    }
+
+    #[tool(
+        name = "guardar_plantilla_desde_plan",
+        description = "Saves a Markdown server plan as a template in the local library. It is a write: it only runs from an approved proposal, never from a direct call. Return a guardar_plantilla_desde_plan action and wait for the user to approve it."
+    )]
+    async fn guardar_plantilla_desde_plan(
+        &self,
+        Parameters(p): Parameters<GuardarPlantillaPlanParams>,
+    ) -> Result<String, String> {
+        let _ = p;
+        self.salida(Err(
+            "Saving a template requires approval in ARGUS".to_string()
+        ))
+    }
+
+    #[tool(
+        name = "guardar_plantilla_desde_snapshot",
+        description = "Saves a snapshot of the active server (see listar_snapshots) as a template in the local library, without tokens or source IDs. It is a write: it only runs from an approved proposal, never from a direct call. Return a guardar_plantilla_desde_snapshot action and wait for the user to approve it."
+    )]
+    async fn guardar_plantilla_desde_snapshot(
+        &self,
+        Parameters(p): Parameters<GuardarPlantillaSnapshotParams>,
+    ) -> Result<String, String> {
+        let _ = p;
+        self.salida(Err(
+            "Saving a template requires approval in ARGUS".to_string()
+        ))
+    }
+
+    #[tool(
+        name = "proponer_correccion",
+        description = "Prepares, without applying it, the correction proposal for one finding of informe_permisos (pass the finding unchanged). It refuses when the audit is incomplete, the finding is gone or the bot could not apply it. Nothing is changed: return the proposal in Execute mode so the user can approve it."
+    )]
+    async fn proponer_correccion(
+        &self,
+        Parameters(p): Parameters<ProponerCorreccionParams>,
+    ) -> Result<String, String> {
+        let r = self
+            .proponer_correccion_json(p.guild_id.as_deref(), &p.finding)
+            .await;
+        self.salida(r)
     }
 
     #[tool(
@@ -3871,12 +4049,67 @@ impl ServerHandler for ArgusMcp {
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("argus-mcp", env!("CARGO_PKG_VERSION")))
-            .with_instructions(
-                "Manage Discord with the bots registered in ARGUS. Start with `estado` \
-                 to see the active bot and server.",
-            )
+            .with_instructions(INSTRUCCIONES)
+    }
+
+    async fn call_tool(
+        &self,
+        request: rmcp::model::CallToolRequestParams,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::CallToolResponse, rmcp::ErrorData> {
+        let nombre = request.name.to_string();
+        if self.herramientas_conectores().await.contains(&nombre) {
+            let args = request
+                .arguments
+                .map(serde_json::Value::Object)
+                .unwrap_or_else(|| json!({}));
+            let (_tx, rx) = tokio::sync::watch::channel(false);
+            let r = self
+                .llamar_conector(&nombre, args, rx)
+                .await
+                .map(|v| v.to_string())
+                .map_err(|e| self.limpiar(e));
+            return rmcp::handler::server::tool::IntoCallToolResult::into_call_tool_result(r);
+        }
+        let ctx = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+        Self::tool_router().call(ctx).await
+    }
+
+    async fn list_tools(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
+        _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::ListToolsResult, rmcp::ErrorData> {
+        Ok(rmcp::model::ListToolsResult::with_all_items(
+            self.herramientas_publicas().await,
+        ))
     }
 }
+
+/// Instructions returned by `get_info`: what the server can do and how writes work.
+pub const INSTRUCCIONES: &str = "Manage Discord with the bots registered in ARGUS. \
+Start with `estado` to see the active bot and server.\n\
+- Writes are proposals: the user approves them in ARGUS and ARGUS runs exactly what was approved. \
+Never claim a change is done before that.\n\
+- Result verification: an accepted request is not a verified change. Operation results are \
+correct, partial, failed, cancelled or unverified; report partial or unverified results \
+honestly and re-read the server to check the outcome.\n\
+- History: ARGUS keeps a persistent history of operations per bot, server and operation; \
+do not repeat an operation that already appears there as done.\n\
+- Diagnostics: ARGUS can check connection, permissions, agents, MCP and storage without \
+changing Discord; ask the user to open Diagnostics when a tool fails.\n\
+- Templates: `listar_plantillas` and `consultar_plantilla` read the user's library; \
+`proponer_plantilla` prepares the proposal to apply one to the active server; \
+`guardar_plantilla_desde_plan` and `guardar_plantilla_desde_snapshot` save one (only as an \
+approved proposal action).\n\
+- Permission audit: `informe_permisos` reports partial evidence and never proves a server is \
+safe; `proponer_correccion` prepares the correction of one finding as a proposal for the user to approve.\n\
+- Connectors: when the user enabled connectors for other bots, their read-only tools appear \
+as `connector__tool`. They only read; configuring another bot is a proposal the user approves.";
+
+#[cfg(test)]
+#[path = "mcp_tests_nuevo.rs"]
+mod tests_mcp_nuevo;
 
 #[cfg(test)]
 mod tests {
@@ -5944,6 +6177,8 @@ mod tests {
                 || *n == "buscar_mensajes"
                 || *n == "comparar_snapshot"
                 || *n == "consultar_plantilla"
+                || *n == "proponer_plantilla"
+                || *n == "proponer_correccion"
                 || n.starts_with("listar_")
                 || n.starts_with("info_");
             assert!(ok, "{n} no es una herramienta de lectura conocida");

@@ -153,6 +153,7 @@ const CATALOGO_ES: &[(&str, &str)] = &[
     ("Permission role unavailable: {name}", "Rol de permisos no disponible: {name}"),
     ("Restore dependency is unavailable", "Una dependencia de la restauración no está disponible"),
     ("Restore requires confirmation in ARGUS", "La restauración requiere confirmación en ARGUS"),
+    ("Saving a template requires approval in ARGUS", "Guardar una plantilla requiere aprobación en ARGUS"),
     ("Restore proposal is unavailable", "La propuesta de restauración no está disponible"),
     ("Type the server name to confirm deletion of extra items", "Escribe el nombre del servidor para confirmar el borrado de los elementos sobrantes"),
     ("A restore is already running", "Ya hay una restauración en curso"),
