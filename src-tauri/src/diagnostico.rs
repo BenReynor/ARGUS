@@ -695,7 +695,7 @@ exec sleep 10
             false,
             "en",
             rx,
-            Duration::from_secs(2),
+            Duration::from_secs(20),
         )
         .await;
         assert_eq!(checks[0].status, Status::Failed);

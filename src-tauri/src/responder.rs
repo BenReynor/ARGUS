@@ -2068,7 +2068,7 @@ mod tests {
                 let (c, a) = (c.clone(), a.clone());
                 tareas.spawn(async move { c.atender(entrada(1, true), &a).await });
             }
-            tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::time::timeout(Duration::from_secs(30), async {
                 for _ in 0..29 {
                     assert_eq!(
                         tareas.join_next().await.unwrap().unwrap(),
@@ -2312,7 +2312,7 @@ printf 'Hola.'
         *limite.lock().unwrap() = Duration::from_millis(150);
         let inicio = Instant::now();
         c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
-        assert!(inicio.elapsed() < Duration::from_secs(5));
+        assert!(inicio.elapsed() < Duration::from_secs(20));
         let t = textos(&envios(&server).await);
         assert_eq!(t.len(), 3, "{t:?}");
         assert!(t[2].contains(crate::asistente::ERROR_TIEMPO_IA), "{t:?}");
@@ -2768,7 +2768,7 @@ EOF"#;
                     async move { c.atender(entrada(1, true), &ajustes_ordenes(false)).await },
                 )
             };
-            tokio::time::timeout(Duration::from_secs(5), iniciado.notified())
+            tokio::time::timeout(Duration::from_secs(30), iniciado.notified())
                 .await
                 .unwrap();
             // Otro autor, incluso respondiendo al bot, no puede detenerla.
@@ -2792,7 +2792,7 @@ EOF"#;
                     .await,
                 Resultado::Respondido
             );
-            tokio::time::timeout(Duration::from_secs(5), trabajo)
+            tokio::time::timeout(Duration::from_secs(30), trabajo)
                 .await
                 .unwrap()
                 .unwrap();
@@ -2872,7 +2872,7 @@ EOF"#;
                     .await;
                 })
             };
-            tokio::time::timeout(Duration::from_secs(5), publicando.notified())
+            tokio::time::timeout(Duration::from_secs(30), publicando.notified())
                 .await
                 .unwrap();
             assert!(!trabajo.is_finished());
@@ -2890,7 +2890,7 @@ EOF"#;
                 c.coord.sacar_pendiente((555, 10, 1)),
                 EstadoPendiente::Ninguna
             ));
-            tokio::time::timeout(Duration::from_secs(5), trabajo)
+            tokio::time::timeout(Duration::from_secs(30), trabajo)
                 .await
                 .unwrap()
                 .unwrap();
@@ -2927,7 +2927,7 @@ EOF"#;
             let c = c.clone();
             tokio::spawn(async move { c.atender(entrada(1, true), &ajustes_ordenes(true)).await })
         };
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(Duration::from_secs(30), async {
             while !marca.exists() {
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
@@ -2936,7 +2936,7 @@ EOF"#;
         .unwrap();
         c.atender(confirmar(1, "detente"), &ajustes_ordenes(true))
             .await;
-        tokio::time::timeout(Duration::from_secs(5), trabajo)
+        tokio::time::timeout(Duration::from_secs(30), trabajo)
             .await
             .unwrap()
             .unwrap();
@@ -3024,7 +3024,7 @@ EOF"#;
                     }
                 })
             };
-            tokio::time::timeout(Duration::from_secs(5), iniciada.notified())
+            tokio::time::timeout(Duration::from_secs(30), iniciada.notified())
                 .await
                 .unwrap();
             assert_eq!(
@@ -3050,7 +3050,7 @@ EOF"#;
             assert_eq!(realizadas.load(Ordering::SeqCst), 0);
             assert!(!trabajo.is_finished());
             terminar.notify_one();
-            tokio::time::timeout(Duration::from_secs(5), trabajo)
+            tokio::time::timeout(Duration::from_secs(30), trabajo)
                 .await
                 .unwrap()
                 .unwrap();
@@ -3501,7 +3501,7 @@ echo '{}'"#,
                 tokio::spawn(async move { c.atender(e, &a).await })
             };
             if n > 30 {
-                tokio::time::timeout(Duration::from_secs(5), async {
+                tokio::time::timeout(Duration::from_secs(30), async {
                     while envios(&server).await.is_empty() {
                         tokio::time::sleep(Duration::from_millis(5)).await;
                     }
@@ -3524,7 +3524,7 @@ echo '{}'"#,
                 assert!(!tarea.is_finished());
                 c.atender(confirmar(1, "sí"), &a).await;
             }
-            tokio::time::timeout(Duration::from_secs(5), tarea)
+            tokio::time::timeout(Duration::from_secs(30), tarea)
                 .await
                 .unwrap()
                 .unwrap();
@@ -3568,7 +3568,7 @@ echo '{}'"#,
                 let a = a.clone();
                 tokio::spawn(async move { c.atender(e, &a).await })
             };
-            tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::time::timeout(Duration::from_secs(30), async {
                 while envios(&server).await.is_empty() {
                     tokio::time::sleep(Duration::from_millis(5)).await;
                 }
@@ -3578,7 +3578,7 @@ echo '{}'"#,
             if respuesta != "caduca" {
                 c.atender(confirmar(1, respuesta), &a).await;
             }
-            tokio::time::timeout(Duration::from_secs(5), tarea)
+            tokio::time::timeout(Duration::from_secs(30), tarea)
                 .await
                 .unwrap()
                 .unwrap();

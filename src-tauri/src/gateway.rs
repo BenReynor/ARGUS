@@ -471,7 +471,8 @@ mod tests {
         assert!(!intents().contains(Intents::MESSAGE_CONTENT));
     }
 
-    #[tokio::test]
+    // Paused clock: the debounce is measured in virtual time, not wall time.
+    #[tokio::test(start_paused = true)]
     async fn los_avisos_seguidos_se_agrupan_en_uno() {
         use std::sync::atomic::{AtomicU32, Ordering};
         let notify = Arc::new(Notify::new());

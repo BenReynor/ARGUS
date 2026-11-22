@@ -887,7 +887,7 @@ pub async fn create_guild_channel(
             .map_err(|_| "Invalid slowmode".to_string())?;
     }
     // A cancelled request may still be processed by Discord. Never repeat POST.
-    let espera = if cfg!(test) { 100 } else { 15_000 };
+    let espera = if cfg!(test) { 3_000 } else { 15_000 };
     let respuesta = tokio::time::timeout(std::time::Duration::from_millis(espera), async {
         peticion
             .await

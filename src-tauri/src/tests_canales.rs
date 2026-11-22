@@ -20,7 +20,7 @@ async fn timeout_al_crear_busca_sin_repetir_post() {
         .and(path("/api/v10/guilds/555/channels"))
         .respond_with(
             ResponseTemplate::new(201)
-                .set_delay(std::time::Duration::from_millis(500))
+                .set_delay(std::time::Duration::from_millis(10_000))
                 .set_body_json(canal_json("10", "nuevo", 0, None)),
         )
         .expect(1)
@@ -62,7 +62,7 @@ async fn timeout_al_crear_detecta_canal_reflejado_tarde() {
         .and(path("/api/v10/guilds/555/channels"))
         .respond_with(
             ResponseTemplate::new(201)
-                .set_delay(std::time::Duration::from_millis(500))
+                .set_delay(std::time::Duration::from_millis(10_000))
                 .set_body_json(canal_json("10", "nuevo", 0, None)),
         )
         .expect(1)
