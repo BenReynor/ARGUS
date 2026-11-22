@@ -106,22 +106,36 @@ async fn conectar_bot(
     // Los tests pasan una URL base falsa: sin red real no hay Gateway.
     if let (true, true, Some(app)) = (resultado.is_ok(), base_url.is_none(), app) {
         let pool = db::get_pool(app).await.ok();
-        if let Some(previous) = state.gateway_task.lock().unwrap().take() {
-            previous.abort();
-        }
-        *state.gateway_health.lock().unwrap() = Some((active_bot.id.clone(), false));
-        let tarea = crate::gateway::lanzar(
-            app.clone(),
-            token,
+        // Suelta (de forma ordenada) la conexión anterior y su lock antes de
+        // tomar el lock del bot: solo un propietario por bot.
+        detener_conexion(state).await;
+        let carpeta = crate::servicio::carpeta_locks(app)?;
+        let (mapas, estado, health, app_g, id) = (
             state.server_maps.clone(),
             state.bot_status.clone(),
-            pool,
-            active_bot.id.clone(),
             state.gateway_health.clone(),
+            app.clone(),
+            active_bot.id.clone(),
         );
-        let anterior = state.gateway_task.lock().unwrap().replace(tarea);
-        if let Some(anterior) = anterior {
-            anterior.abort();
+        let conexion = crate::conexion::Conexion::iniciar(&carpeta, &active_bot.id, |parar| {
+            *health.lock().unwrap() = Some((id.clone(), false));
+            let tarea =
+                crate::gateway::lanzar(app_g, token, mapas, estado, pool, id, health.clone());
+            crate::conexion::con_parada(tarea, parar)
+        });
+        match conexion {
+            Ok(c) => *state.gateway_task.lock().unwrap() = Some(c),
+            Err(e) => {
+                let nuevo = {
+                    let mut status = state.bot_status.lock().unwrap();
+                    status.running = false;
+                    status.connected = false;
+                    status.last_error = Some(e.clone());
+                    status.clone()
+                };
+                crate::gateway::emitir_estado(app, &nuevo);
+                return Err(e);
+            }
         }
     }
     let (nuevo, salida) = {
@@ -151,6 +165,21 @@ async fn conectar_bot(
     salida
 }
 
+/// Parada ordenada de la conexión al Gateway (si la hay) y liberación de su lock.
+pub async fn detener_conexion(state: &AppState) {
+    let conexion = state.gateway_task.lock().unwrap().take();
+    *state.gateway_health.lock().unwrap() = None;
+    if let Some(c) = conexion {
+        c.detener(crate::servicio::ESPERA_PARADA).await;
+    }
+}
+
+/// Conecta el bot activo desde el proceso sin ventana (mismas comprobaciones y
+/// mismo lock que la interfaz).
+pub async fn conectar_bot_servicio(app: &AppHandle, state: &AppState) -> Result<BotStatus, String> {
+    conectar_bot(Some(app), state, None).await
+}
+
 #[tauri::command]
 pub async fn stop_bot(app: AppHandle, state: State<'_, AppState>) -> Result<BotStatus, String> {
     let st = state.clone();
@@ -159,11 +188,7 @@ pub async fn stop_bot(app: AppHandle, state: State<'_, AppState>) -> Result<BotS
 }
 
 async fn stop_bot_en(app: AppHandle, state: State<'_, AppState>) -> Result<BotStatus, String> {
-    let tarea = state.gateway_task.lock().unwrap().take();
-    *state.gateway_health.lock().unwrap() = None;
-    if let Some(tarea) = tarea {
-        tarea.abort();
-    }
+    detener_conexion(&state).await;
     let nuevo = {
         let mut status = state.bot_status.lock().unwrap();
         status.running = false;

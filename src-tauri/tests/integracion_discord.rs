@@ -10,6 +10,8 @@
 
 #![allow(dead_code, unused_imports)]
 
+#[path = "../src/conexion.rs"]
+mod conexion;
 #[path = "../src/crypto.rs"]
 mod crypto;
 #[path = "../src/db.rs"]

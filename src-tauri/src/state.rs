@@ -389,7 +389,7 @@ pub struct AppState {
     pub server_maps: Arc<Mutex<HashMap<String, ServerMap>>>,
     pub bot_core_tx: Arc<Mutex<Option<broadcast::Sender<BotCoreEvent>>>>,
     /// Tarea tokio del Gateway mientras el bot está activo.
-    pub gateway_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    pub gateway_task: Arc<Mutex<Option<crate::conexion::Conexion>>>,
     pub gateway_health: Arc<Mutex<Option<(String, bool)>>>,
     pub diagnostic_cancel: broadcast::Sender<()>,
 }

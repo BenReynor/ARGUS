@@ -15,6 +15,7 @@ pub mod backup;
 pub mod chat;
 pub mod commands;
 pub mod conectores;
+pub mod conexion;
 pub mod crypto;
 pub mod db;
 pub mod destruction;
@@ -33,6 +34,7 @@ pub mod plan_descripciones;
 pub mod plan_estructurado;
 pub mod propuesta;
 pub mod responder;
+pub mod servicio;
 pub mod snapshots;
 pub mod state;
 pub mod sync;
@@ -120,7 +122,18 @@ mod close_tests {
     }
 }
 
+/// Arranque normal de escritorio.
 pub fn run() {
+    ejecutar(false);
+}
+
+/// Modo sin ventana (`argus --service`): sin interfaz ni bandeja; solo conecta
+/// el bot activo si el servicio está habilitado.
+pub fn run_service() {
+    ejecutar(true);
+}
+
+fn ejecutar(sin_ventana: bool) {
     let app_state = AppState::new();
 
     tauri::Builder::default()
@@ -249,6 +262,8 @@ pub fn run() {
             propuesta::validar_propuesta,
             propuesta::aplicar_propuesta,
             propuesta::cancelar_asistente,
+            servicio::get_service_enabled,
+            servicio::set_service_enabled,
             adaptadores::preparar_accion_conector,
             adaptadores::aprobar_accion_conector,
             asistente::listar_agentes_ia,
@@ -268,7 +283,7 @@ pub fn run() {
             asistente::nueva_conversacion,
         ])
         .manage(backup::Pending::default())
-        .setup(|app| {
+        .setup(move |app| {
             let handle = app.handle().clone();
 
             // Abre la BD (y aplica migraciones) en el runtime de Tauri y la
@@ -325,6 +340,11 @@ pub fn run() {
                 Err(e) => tracing::error!("no se pudo cargar el mapa guardado: {e}"),
             }
 
+            if sin_ventana {
+                servicio::arrancar_sin_ventana(handle.clone());
+                return Ok(());
+            }
+
             let show_item =
                 MenuItem::with_id(&handle, "show", "Mostrar ARGUS", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(&handle, "quit", "Salir", true, None::<&str>)?;
@@ -371,6 +391,12 @@ pub fn run() {
                 handle_close(&mut WindowClose { window, api }, preference);
             }
         })
-        .run(tauri::generate_context!())
+        .run({
+            let mut contexto = tauri::generate_context!();
+            if sin_ventana {
+                contexto.config_mut().app.windows.clear();
+            }
+            contexto
+        })
         .expect("error while running tauri application");
 }
