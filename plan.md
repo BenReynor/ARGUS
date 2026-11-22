@@ -766,7 +766,7 @@ en los tests. Cada tarea termina ejecutando `npm run e2e:capturas` sin errores.
 - [x] Panel más útil
   criterio: el Panel añade, solo lectura y con enlaces a cada vista: estado del bot y del Gateway con acción para encender, último snapshot y si los automáticos están activos, resumen de la última auditoría (o invitación a ejecutarla) y las últimas operaciones de Actividad; la lista de permisos del bot en dos columnas; sin llamadas extra a Discord al abrirlo más allá de las que ya hace; tests con datos simulados y estados vacíos; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Actividad en tarjetas y capturas de cada pestaña de Config
+- [x] Actividad en tarjetas y capturas de cada pestaña de Config
   criterio: la lista de Actividad deja de ser una lista con viñetas: cada operación es una fila o tarjeta compacta con estado (icono+texto+color), servidor, fecha y un botón «Ver operación» del diseño (no texto con fondo gris); `npm run e2e:capturas` captura también cada pestaña de Config (Bots y servidor, Apariencia e idioma, IA y MCP, Diagnóstico, Copias de configuración, Conectores, Servicio) y abre el detalle de una operación de Actividad; Lo no especificado NO es motivo de rechazo.
 
 ## Ideas fuera de esta etapa
