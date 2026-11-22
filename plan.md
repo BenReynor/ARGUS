@@ -757,7 +757,7 @@ en los tests. Cada tarea termina ejecutando `npm run e2e:capturas` sin errores.
 - [x] Copias de seguridad ordenadas y zona peligrosa aparte
   criterio: la vista separa claramente «Snapshots» (crear, importar, programación automática alineada con su casilla, lista) de una «Zona peligrosa» plegada por defecto al final con «Expulsar a todos los miembros», con borde y texto de advertencia; botones con separación y alineados; mismo comportamiento y confirmaciones que ahora; tests de que la zona peligrosa empieza plegada y conserva sus pasos de verificación; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Asistente: etiquetas y biblioteca de plantillas
+- [x] Asistente: etiquetas y biblioteca de plantillas
   criterio: los selectores de agente y modelo tienen etiqueta visible; la biblioteca de plantillas usa componentes del diseño (tarjetas por plantilla con nombre, etiquetas, fecha y acciones; botón de importar archivo estilizado en vez del control nativo «Elegir archivo / ningún archivo seleccionado»; buscador con icono); tests del listado y de la importación con archivo simulado; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Coherencia de datos y textos
