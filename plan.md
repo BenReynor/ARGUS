@@ -745,7 +745,7 @@ en los tests. Cada tarea termina ejecutando `npm run e2e:capturas` sin errores.
 - [x] Miembros: roles con nombre y color
   criterio: cada miembro muestra sus roles como chips con el nombre y el color del rol (no IDs), ordenados por posición, con «+N» y tooltip con el resto; avatar real de Discord cuando existe y la inicial solo como respaldo; el ID del usuario solo en el detalle o al copiar; tests del formateo de chips y del respaldo sin avatar; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Auditoría de permisos con el diseño de la app
+- [x] Auditoría de permisos con el diseño de la app
   criterio: la vista usa el layout común (márgenes, cabecera con «Actualizar» como botón normal a la derecha); arriba un resumen con el número de hallazgos por gravedad y si el informe está completo; hallazgos agrupados por rol o canal en tarjetas compactas con gravedad como icono+texto+color; nombres de permisos traducidos (catálogo existente de permisos en español) en vez de `MentionEveryone`; bits y evidencias técnicas en un detalle plegable; «Preparar corrección» como acción secundaria de cada tarjeta; tests de agrupado y de traducción de permisos; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Actividad y Manual con el layout común
