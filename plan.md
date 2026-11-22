@@ -696,7 +696,7 @@ Verificación manual:
 - [x] Comportamiento explícito al cerrar y salir
   criterio: conservar el uso normal de escritorio y explicar en Settings si cerrar oculta en la bandeja o termina la interfaz; respetar la preferencia minimize_to_tray, que el handler actual no consulta, y mostrar claramente si el bot sigue funcionando; «Quit» en el modo normal detiene el proceso; si el servicio opcional está activo, distinguir cerrar la interfaz de detener el servicio y ofrecer acciones claras para ambos; pruebas con eventos falsos de cierre y ambas preferencias, sin parar un bot real
 
-- [ ] Servicio: proceso sin ventana con una sola conexión por bot
+- [x] Servicio: proceso sin ventana con una sola conexión por bot
   criterio: bloqueo de propietario con un lock de archivo del sistema por bot (se libera solo si el proceso muere) que también toma el arranque del Gateway de la interfaz; modo de ARGUS sin ventana, desactivado por defecto y que solo arranca al habilitarlo; un bloqueo de propietario impide dos conexiones al Gateway con el mismo bot (servicio e interfaz incluidos); mantiene los límites, confirmaciones y resultados de las fases anteriores; tests con Gateway falso de doble arranque y parada ordenada; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Servicio: canal local con la interfaz
