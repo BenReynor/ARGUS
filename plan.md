@@ -751,7 +751,7 @@ en los tests. Cada tarea termina ejecutando `npm run e2e:capturas` sin errores.
 - [x] Actividad y Manual con el layout común
   criterio: Actividad pone los filtros en una barra bajo la cabecera (no en medio de la página) y un estado vacío centrado con icono y texto; Manual usa los márgenes comunes, ancho de lectura (máx. ~80 caracteres), buscador con icono, secciones plegables con iconos de lucide en vez de «▶» escrito y la sección activa resaltada al abrirse desde «?»; tests de que los filtros y el plegado siguen funcionando; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Config en pestañas y diagnóstico compacto
+- [x] Config en pestañas y diagnóstico compacto
   criterio: Config se divide en pestañas o un índice lateral (Bots y servidor, Apariencia e idioma, IA y MCP, Diagnóstico, Copias de configuración, Conectores, Servicio) que recuerda la última abierta; el diagnóstico es una tabla compacta (componente, estado con icono+texto, última comprobación, botón pequeño de reintentar con icono) en vez de un botón grande por línea; «Servicios externos» y «Conectores» se unen en una sola tarjeta por servicio con su estado, capacidades y conectar/desconectar; ninguna función existente se pierde; tests de navegación entre pestañas y de que cada sección sigue presente; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Copias de seguridad ordenadas y zona peligrosa aparte
