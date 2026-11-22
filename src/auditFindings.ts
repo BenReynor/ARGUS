@@ -22,6 +22,32 @@ export function filterFindings(findings: Finding[], filters: FindingFilters): Fi
     && (!filters.severity || findingSeverity(f) === filters.severity));
 }
 
+export interface FindingGroup { kind: 'role' | 'channel' | 'other'; key: string; findings: Finding[] }
+const rank = (s: Severity) => (s === 'high' ? 0 : 1);
+
+/** Agrupa por rol (concesiones de rol y overwrites de rol) o, si no hay rol, por canal. */
+export function groupFindings(findings: Finding[]): FindingGroup[] {
+  const groups = new Map<string, FindingGroup>();
+  for (const f of findings) {
+    const role = findingRole(f);
+    const kind = role ? 'role' : f.channel_id ? 'channel' : 'other';
+    const key = role ?? f.channel_id ?? '';
+    const id = `${kind}:${key}`;
+    const g = groups.get(id) ?? { kind, key, findings: [] };
+    g.findings.push(f);
+    groups.set(id, g);
+  }
+  const worst = (g: FindingGroup) => Math.min(...g.findings.map(f => rank(findingSeverity(f))));
+  const order = { role: 0, channel: 1, other: 2 };
+  return [...groups.values()].sort((a, b) => worst(a) - worst(b) || order[a.kind] - order[b.kind]);
+}
+
+export interface AuditSummary { high: number; medium: number; total: number; complete: boolean }
+export function summarize(report: AuditReport): AuditSummary {
+  const high = report.findings.filter(f => findingSeverity(f) === 'high').length;
+  return { high, medium: report.findings.length - high, total: report.findings.length, complete: !report.incomplete };
+}
+
 /** Corrección preparada por el backend con el motor de propuestas. */
 export interface PreparedCorrection {
   hallazgo: Finding;

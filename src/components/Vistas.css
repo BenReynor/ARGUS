@@ -243,7 +243,18 @@
 .mensaje__adjunto { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--accent); font-size: var(--fs-sm); }
 .mensaje__acciones { display: flex; gap: var(--sp-1); }
 
-.audit-findings { display: grid; gap: var(--sp-3); }
+.audit-findings__filters { align-items: flex-end; }
+.audit-resumen__fila { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center; }
+.audit-resumen .ui-badge, .audit-card .ui-badge { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.audit-grupo { display: grid; gap: var(--sp-2); }
+.audit-grupo__titulo { margin: 0; font-size: var(--fs-md, 1rem); }
+.audit-grupo__lista { display: grid; gap: var(--sp-2); grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.audit-card__top { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-2); }
+.audit-card__titulo { margin: 0; font-size: var(--fs-sm); }
+.audit-card__texto { margin: var(--sp-1) 0; color: var(--text-2, inherit); font-size: var(--fs-sm); }
+.audit-card__pie { display: grid; gap: var(--sp-2); justify-items: start; }
+.audit-card__detalle { font-size: var(--fs-xs); color: var(--text-3); }
+.audit-card__detalle summary { cursor: pointer; }
 .audit-findings__filters { display: flex; gap: var(--sp-3); flex-wrap: wrap; }
 .audit-findings .ui-card p { overflow-wrap: anywhere; }
 
