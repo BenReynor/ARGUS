@@ -723,7 +723,7 @@ todo lo que ofrece. Nada de funciones nuevas fuera de lo listado.
 - [x] Manual dentro de la aplicación
   criterio: sección «Manual» en la barra lateral con todas las funciones de ARGUS por áreas (bots y servidores, canales y roles, miembros y moderación, asistente y plan, plantillas, snapshots y restauración, expulsión y destrucción masiva, auditoría, diagnóstico, actividad e historial, conectores, MCP y skill, servicio sin ventana, seguridad y privacidad): qué hace, cómo se usa y sus límites; buscador; cada vista tiene un botón «?» que abre su sección; textos con t() en EN y ES; test de que cada vista de la barra lateral tiene su sección y de que la búsqueda encuentra por título y contenido; Lo no especificado NO es motivo de rechazo.
 
-- [ ] README y documentación al día
+- [x] README y documentación al día
   criterio: README.md y README.es.md listan todas las funciones actuales (incluidas las FASES 20–26) con enlace al manual y a docs/; docs/MCP.md documenta cada herramienta registrada del MCP y la skill; un test falla si una herramienta registrada no aparece en docs/MCP.md; no se incluyen tokens, IDs de servidores reales ni datos de info/; Lo no especificado NO es motivo de rechazo.
 
 ## Ideas fuera de esta etapa
