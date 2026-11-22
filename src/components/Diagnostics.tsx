@@ -2,8 +2,8 @@ import { useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { t } from '../i18n';
 import { operationProgress } from '../activity';
-import { allCorrect, groups, initialChecks, mergeChecks } from '../diagnostics';
-import type { DiagnosticCheck, Group } from '../diagnostics';
+import { allCorrect, groups, groupsToRun, initialChecks, mergeChecks } from '../diagnostics';
+import type { DiagnosticCheck } from '../diagnostics';
 import { Button, Card } from './ui';
 
 function label(name: string) {
@@ -22,7 +22,7 @@ export function Diagnostics() {
   const cancelled = useRef(false);
   const run = async (only?: string) => {
     cancelled.current = false; setBusy(true);
-    const selected = (Object.keys(groups) as Group[]).filter(g => !only || (groups[g] as readonly string[]).includes(only));
+    const selected = groupsToRun(only);
     if (!only) setChecks(initialChecks());
     for (const group of selected) {
       if (cancelled.current) break;

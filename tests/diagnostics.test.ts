@@ -21,3 +21,11 @@ test('retry replaces only the selected result', () => {
   assert.equal(retried[0].status, 'correct');
   assert.equal(retried[1].status, 'pending');
 });
+
+test('retrying one check calls only the command of its group', async () => {
+  const { groupsToRun } = await import('../src/diagnostics.ts');
+  assert.deepEqual(groupsToRun('configuration'), ['diagnostico_local']);
+  assert.deepEqual(groupsToRun('build_permissions'), ['diagnostico_discord']);
+  assert.deepEqual(groupsToRun('codex_response'), ['diagnostico_agentes']);
+  assert.deepEqual(groupsToRun(), ['diagnostico_local', 'diagnostico_discord', 'diagnostico_agentes']);
+});

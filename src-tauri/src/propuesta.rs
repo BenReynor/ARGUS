@@ -502,6 +502,30 @@ impl Nombres {
         Ok(args)
     }
 
+    /// Olvida los recursos existentes cuyo nombre crea la propuesta: las
+    /// referencias por ese nombre son al recurso nuevo. Si su creación falla,
+    /// la acción que dependía de él se omite en vez de caer en el antiguo.
+    pub fn olvidar_nombres_creados(&mut self, p: &Propuesta) {
+        for a in &p.acciones {
+            let Some(nombre) = a.args.get("nombre").and_then(Value::as_str) else {
+                continue;
+            };
+            let k = clave(nombre);
+            match a.herramienta.as_str() {
+                "crear_rol" => {
+                    self.roles.remove(&k);
+                }
+                "crear_canal" => {
+                    if es_categoria(&a.args) {
+                        self.categorias.remove(&k);
+                    }
+                    self.canales.remove(&k);
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// Apunta lo que acaba de crear una acción, para las siguientes.
     /// `salida` es el JSON que devuelve la herramienta.
     pub fn registrar_creado(&mut self, herramienta: &str, args: &Value, salida: &str) {

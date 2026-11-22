@@ -2744,6 +2744,7 @@ impl ArgusMcp {
             .await
             .map_err(|e| self.limpiar(e))?;
         let mut nombres = Nombres::desde(&roles, &canales);
+        nombres.olvidar_nombres_creados(propuesta);
         if propuesta.acciones.iter().any(|a| {
             a.herramienta == "crear_canal"
                 && a.args["permisos"]
@@ -5316,6 +5317,48 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    #[tokio::test]
+    async fn plantilla_con_rol_fallido_no_da_permisos_al_rol_viejo_del_mismo_nombre() {
+        let (_d, mcp, server) = mcp_con_servidor(TODO, true).await;
+        // El servidor ya tiene «Moderadores» (700); crear el de la plantilla falla.
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .respond_with(
+                ResponseTemplate::new(403)
+                    .set_body_json(json!({"code":50013,"message":"Missing Permissions"})),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id":"31", "type":0, "guild_id":"555", "name":"chat", "position":1
+            })))
+            .mount(&server)
+            .await;
+        let documento = crate::template_transfer::parse(r#"{"format":"argus-template","version":1,"name":"T","description":"","roles":[{"key":"mods","name":"Moderadores","color":12,"permissions":0}],"channels":[{"key":"chat","name":"chat","kind":"text","parent":null,"overwrites":[{"role":"mods","allow":1024,"deny":0}]}]}"#).unwrap();
+        let p = crate::template_aplicar::propuesta_de_documento(&documento);
+        mcp.ejecutar_propuesta_con(&p, &AtomicBool::new(false), &mut |_, _| {})
+            .await
+            .unwrap();
+        let tocan_700: Vec<_> = server
+            .received_requests()
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|r| r.method.as_str() != "GET")
+            .filter(|r| {
+                r.url.path().ends_with("/700")
+                    || String::from_utf8_lossy(&r.body).contains("\"700\"")
+            })
+            .map(|r| format!("{} {}", r.method, r.url.path()))
+            .collect();
+        assert!(
+            tocan_700.is_empty(),
+            "the old role must not get the template's permissions: {tocan_700:?}"
+        );
     }
 
     #[tokio::test]
