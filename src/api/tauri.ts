@@ -73,6 +73,11 @@ export const updateBot = (bot: BotConfig) => invoke<string>('update_bot', { bot 
 export const setActiveBot = (botId: string) => invoke<string>('set_active_bot', { botId });
 export const inviteUrl = () => invoke<string>('invite_url');
 export const rutaMcp = () => invoke<string>('ruta_mcp');
+// Conectores: la credencial solo viaja hacia el backend; nunca vuelve.
+export type ConnectorStateDto = { service: string; accepts_credential: boolean; status: string; account: string | null; expires_at: number | null };
+export const connectorStates = (guildId: string) => invoke<ConnectorStateDto[]>('connector_states', { guildId });
+export const connectConnector = (service: string, account: string, guildId: string, secret: string) => invoke<void>('connect_connector', { service, account, guildId, secret });
+export const disconnectConnector = (service: string, account: string, guildId: string) => invoke<boolean>('disconnect_connector', { service, account, guildId });
 export const deleteBot =(botId: string) => invoke<string>('delete_bot', { botId });
 
 // Avatar oficial del bot en el CDN de Discord (el hash lo guarda el backend)

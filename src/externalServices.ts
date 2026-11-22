@@ -19,6 +19,14 @@ export async function testConnector(service: ExternalService, probe?: () => Prom
   if (!service.tested || !probe) return 'untested';
   try { return await probe() ? 'available' : 'failed'; } catch { return 'failed'; }
 }
+export type ConnectorStatus = 'not_implemented' | 'untested' | 'connected' | 'expired' | 'revoked';
+/** Backend state ("none" | "connected" | "expired") combined with the catalogue flags. */
+export function connectorStatus(service: ExternalService, backend: string | undefined, revoked = false): ConnectorStatus {
+  if (backend === 'expired') return 'expired';
+  if (backend === 'connected') return 'connected';
+  if (revoked) return 'revoked';
+  return service.implemented ? 'untested' : 'not_implemented';
+}
 export function toggleConnector(ids: string[], id: string, enabled: boolean): string[] {
   return enabled ? [...new Set([...ids, id])] : ids.filter(item => item !== id);
 }

@@ -55,6 +55,13 @@ const CATALOGO_ES: &[(&str, &str)] = &[
     ("The system keyring was available when encryption was initialized.", "El llavero del sistema estaba disponible al inicializar el cifrado."),
     ("The system keyring was unavailable when encryption was initialized. Unlock it and restart ARGUS.", "El llavero del sistema no estaba disponible al inicializar el cifrado. Desbloquéalo y reinicia ARGUS."),
     // <CATALOGO>
+    ("Unknown connector", "Conector desconocido"),
+    ("This service does not accept credentials in ARGUS", "Este servicio no admite credenciales en ARGUS"),
+    ("Account, server and credential are required", "La cuenta, el servidor y la credencial son obligatorios"),
+    ("The credential has already expired", "La credencial ya ha caducado"),
+    ("The service rejected the credential", "El servicio rechazó la credencial"),
+    ("OAuth is not supported yet", "OAuth aún no está soportado"),
+    ("Unsupported credential type", "Tipo de credencial no soportado"),
     ("The owner, this bot and your verified Discord account are always protected. Administrator roles are excluded by default.", "El dueño, este bot y tu cuenta de Discord verificada siempre están protegidos. Los roles con Administrator se excluyen por defecto."),
     ("Verify your account using the code sent by this bot to your Discord DMs. The code expires after five minutes. If DMs are unavailable, member removal is blocked.", "Verifica tu cuenta con el código que este bot envía por DM en Discord. El código caduca a los cinco minutos. Si no se pueden enviar DM, se bloquea la expulsión de miembros."),
     ("Send verification code", "Enviar código de verificación"),
