@@ -75,9 +75,48 @@ mismo que tú desde la app.
   Discord (canales, roles, miembros que entran o salen) aparece al instante, sin
   recargar, y queda un historial en **Logs**.
 - **Ajustes propios por servidor**, que se conservan al cambiar de uno a otro.
-- **Conecta una IA (MCP):** el binario `argus-mcp` ofrece 47 herramientas para que
-  Claude Code u otro cliente MCP gestione Discord con tus bots, incluso con ARGUS
-  cerrado.
+- **Resultados comprobados e historial (Activity):** cada operación muestra sus
+  pasos, progreso, motivo del fallo y una comprobación posterior que lee el
+  resultado en Discord. Una petición solo aceptada o parcial nunca se muestra como
+  éxito total. El historial se guarda por bot y servidor y la IA puede leerlo. Ver
+  [docs/INVENTARIO_OPERACIONES.md](docs/INVENTARIO_OPERACIONES.md).
+- **Diagnóstico:** comprueba conexión, permisos, agentes, MCP y almacenamiento sin
+  modificar Discord ni usar modelos de pago, con el siguiente paso para cada
+  resultado y un informe sin secretos.
+- **Biblioteca de plantillas:** guarda tus planes o snapshots como plantillas,
+  edítalas, búscalas, duplícalas, impórtalas y expórtalas, y aplica una a otro
+  servidor autorizado con vista previa y tu aprobación. No arrastran tokens ni IDs
+  del origen. Ver [docs/PLANTILLAS_PORTATILES.md](docs/PLANTILLAS_PORTATILES.md).
+- **Auditoría de permisos:** calcula los accesos efectivos, los compara con lo que
+  esperas (tu plan o un snapshot), explica cada hallazgo y prepara correcciones
+  que apruebas y que se vuelven a comprobar.
+- **Conectores para otros bots:** catálogo de integraciones con sus capacidades y
+  límites reales. Conecta un servicio con su propia credencial (cifrada, no vuelve
+  a mostrarse), deja que la IA lea a través de él y prepare propuestas que un
+  adaptador controlado aplica tras tu aprobación.
+- **Snapshots y restauración:** snapshots locales del servidor, comparación,
+  restauración manual con propuesta que apruebas y avisos de destrucción o
+  expulsión masivas. Ver [docs/SNAPSHOTS.md](docs/SNAPSHOTS.md),
+  [docs/RESTAURACION.md](docs/RESTAURACION.md),
+  [docs/DESTRUCCION_MASIVA.md](docs/DESTRUCCION_MASIVA.md) y
+  [docs/EXPULSION_MASIVA.md](docs/EXPULSION_MASIVA.md).
+- **Copias de seguridad cifradas:** copias portátiles de la configuración con
+  contraseña, vista previa y confirmación. Ver
+  [docs/COPIAS_SEGURIDAD.md](docs/COPIAS_SEGURIDAD.md).
+- **Servicio sin ventana (opcional):** desactivado por defecto; ejecuta ARGUS sin
+  ventana con una sola conexión al Gateway por bot. Cerrar la ventana solo la
+  oculta en la bandeja; Salir termina el proceso. Ver [docs/SERVICIO.md](docs/SERVICIO.md).
+- **Actualizaciones firmadas:** ARGUS busca versiones nuevas y solo instala una
+  tras pulsar Update, verificando su firma.
+- **Manual en la aplicación:** la entrada **Manual** de la barra lateral (y el
+  botón **?** de cada vista) explica cada área: qué hace, cómo se usa y sus
+  límites, con buscador. Su texto está en [`src/manual.ts`](src/manual.ts).
+- **Conecta una IA (MCP):** el binario `argus-mcp` ofrece más de 55 herramientas
+  para que Claude Code u otro cliente MCP gestione Discord con tus bots, incluso
+  con ARGUS cerrado. Cada herramienta está documentada en
+  [docs/MCP.md](docs/MCP.md) (en inglés). La **skill** de ARGUS
+  (`skills/argus/SKILL.md`, instalable desde Ajustes) enseña a los agentes a usarlo
+  gastando pocos tokens.
 - **10 temas:** Discord (por defecto), minimal, cyberpunk, cálido, datos, anime,
   manga, glass, retro y brutalista, con modo claro u oscuro donde lo hay.
 - **Inglés y español:** la interfaz, los mensajes de error y el MCP están en

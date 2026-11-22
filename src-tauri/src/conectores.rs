@@ -57,7 +57,7 @@ pub enum Authorization {
     Valid,
     Revoked,
 }
-pub trait Authorizer {
+pub trait Authorizer: Sync {
     fn check(&self, service: &str, secret: &str) -> Result<Authorization>;
 }
 
@@ -247,12 +247,63 @@ pub async fn offered_tools(
     Ok(tools)
 }
 
+/// Autorizador sin red: ningún servicio real está implementado todavía, así que solo
+/// comprueba el formato (no vacío). Los adaptadores reales lo sustituirán.
+pub struct FormatOnlyAuthorizer;
+impl Authorizer for FormatOnlyAuthorizer {
+    fn check(&self, _service: &str, secret: &str) -> Result<Authorization> {
+        Ok(if secret.trim().is_empty() {
+            Authorization::Revoked
+        } else {
+            Authorization::Valid
+        })
+    }
+}
+
+/// Estado de un conector del catálogo para la pantalla (sin secretos).
+#[derive(Serialize, Debug, PartialEq, Eq, Clone)]
+pub struct ConnectorState {
+    pub service: String,
+    pub accepts_credential: bool,
+    /// "none" | "connected" | "expired"
+    pub status: String,
+    pub account: Option<String>,
+    pub expires_at: Option<i64>,
+}
+
+pub async fn states(
+    pool: &SqlitePool,
+    catalogue: &[ConnectorSpec],
+    guild_id: &str,
+    now: i64,
+) -> Result<Vec<ConnectorState>> {
+    let creds = list(pool, guild_id, now).await?;
+    Ok(catalogue
+        .iter()
+        .map(|s| {
+            let c = creds.iter().find(|c| c.service == s.id);
+            ConnectorState {
+                service: s.id.to_string(),
+                accepts_credential: s.accepts_credential,
+                status: match c {
+                    None => "none",
+                    Some(c) if c.expired => "expired",
+                    Some(_) => "connected",
+                }
+                .to_string(),
+                account: c.map(|c| c.account.clone()),
+                expires_at: c.and_then(|c| c.expires_at),
+            }
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db;
     use sqlx::sqlite::SqlitePoolOptions;
-    use std::cell::Cell;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     const FAKE: &[ConnectorSpec] = &[
         ConnectorSpec {
@@ -268,10 +319,10 @@ mod tests {
     ];
     const SECRET: &str = "sk-fake-SECRET-123";
 
-    struct FakeAuth(Cell<bool>);
+    struct FakeAuth(AtomicBool);
     impl Authorizer for FakeAuth {
         fn check(&self, _: &str, _: &str) -> Result<Authorization> {
-            Ok(if self.0.get() {
+            Ok(if self.0.load(Ordering::SeqCst) {
                 Authorization::Valid
             } else {
                 Authorization::Revoked
@@ -299,7 +350,7 @@ mod tests {
     #[tokio::test]
     async fn stores_encrypted_and_scoped_without_leaking() {
         let p = pool().await;
-        let a = FakeAuth(Cell::new(true));
+        let a = FakeAuth(AtomicBool::new(true));
         conectar(&p, &a, None).await.unwrap();
         let raw: String =
             sqlx::query_scalar("SELECT credential_ciphertext FROM connector_credentials")
@@ -329,7 +380,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_foreign_bot_tokens_oauth_and_bad_input_without_echoing_secret() {
         let p = pool().await;
-        let a = FakeAuth(Cell::new(true));
+        let a = FakeAuth(AtomicBool::new(true));
         let e = connect(
             &p,
             FAKE,
@@ -394,7 +445,7 @@ mod tests {
     #[tokio::test]
     async fn fake_authorization_rejection_stores_nothing() {
         let p = pool().await;
-        let a = FakeAuth(Cell::new(false));
+        let a = FakeAuth(AtomicBool::new(false));
         let e = conectar(&p, &a, None).await.unwrap_err();
         assert!(!e.to_string().contains(SECRET));
         assert!(list(&p, "g1", 100).await.unwrap().is_empty());
@@ -403,7 +454,7 @@ mod tests {
     #[tokio::test]
     async fn expiry_stops_use_and_tools() {
         let p = pool().await;
-        let a = FakeAuth(Cell::new(true));
+        let a = FakeAuth(AtomicBool::new(true));
         assert!(conectar(&p, &a, Some(100)).await.is_err());
         conectar(&p, &a, Some(500)).await.unwrap();
         let en = vec!["fake".to_string()];
@@ -422,10 +473,10 @@ mod tests {
     #[tokio::test]
     async fn revocation_deletes_credential_and_tools() {
         let p = pool().await;
-        let a = FakeAuth(Cell::new(true));
+        let a = FakeAuth(AtomicBool::new(true));
         conectar(&p, &a, None).await.unwrap();
         assert!(verify(&p, &a, "fake", "acct", "g1", 100).await.unwrap());
-        a.0.set(false);
+        a.0.store(false, Ordering::SeqCst);
         assert!(!verify(&p, &a, "fake", "acct", "g1", 100).await.unwrap());
         assert!(list(&p, "g1", 100).await.unwrap().is_empty());
         assert!(offered_tools(&p, FAKE, "g1", &["fake".into()], 100)
@@ -435,9 +486,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn screen_states_connect_disconnect_and_never_return_credential() {
+        let p = pool().await;
+        let a = FormatOnlyAuthorizer;
+        let st = states(&p, FAKE, "g1", 100).await.unwrap();
+        assert!(st.iter().all(|s| s.status == "none"));
+        assert!(
+            !st.iter()
+                .find(|s| s.service == "other_bot")
+                .unwrap()
+                .accepts_credential
+        );
+        connect(
+            &p,
+            FAKE,
+            &a,
+            "fake",
+            "acct",
+            "g1",
+            "api_key",
+            SECRET,
+            Some(500),
+            100,
+        )
+        .await
+        .unwrap();
+        let st = states(&p, FAKE, "g1", 100).await.unwrap();
+        assert_eq!(
+            st.iter().find(|s| s.service == "fake").unwrap().status,
+            "connected"
+        );
+        assert!(!serde_json::to_string(&st).unwrap().contains(SECRET));
+        assert_eq!(
+            states(&p, FAKE, "g1", 600).await.unwrap()[0].status,
+            "expired"
+        );
+        assert!(states(&p, FAKE, "g2", 100)
+            .await
+            .unwrap()
+            .iter()
+            .all(|s| s.status == "none"));
+        assert!(disconnect(&p, "fake", "acct", "g1").await.unwrap());
+        assert!(states(&p, FAKE, "g1", 100)
+            .await
+            .unwrap()
+            .iter()
+            .all(|s| s.status == "none"));
+    }
+
+    #[tokio::test]
     async fn disconnect_deletes_and_withdraws_tools_and_requires_enabling() {
         let p = pool().await;
-        let a = FakeAuth(Cell::new(true));
+        let a = FakeAuth(AtomicBool::new(true));
         conectar(&p, &a, None).await.unwrap();
         assert!(offered_tools(&p, FAKE, "g1", &[], 100)
             .await

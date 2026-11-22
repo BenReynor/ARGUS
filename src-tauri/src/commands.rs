@@ -211,6 +211,79 @@ async fn get_bot_status_en(state: State<'_, AppState>) -> Result<BotStatus, Stri
     Ok(state.bot_status.lock().unwrap().clone())
 }
 
+// Connectors screen: the credential goes in, never comes back out.
+#[tauri::command]
+pub async fn connector_states(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<Vec<crate::conectores::ConnectorState>, String> {
+    let st = state.clone();
+    let r = async {
+        let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
+        crate::conectores::states(
+            &pool,
+            crate::conectores::CATALOGUE,
+            &guild_id,
+            crate::conectores::now(),
+        )
+        .await
+        .map_err(|e| e.to_string())
+    }
+    .await;
+    crate::i18n::localizar_error(&st, r)
+}
+
+#[tauri::command]
+pub async fn connect_connector(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    service: String,
+    account: String,
+    guild_id: String,
+    secret: String,
+) -> Result<(), String> {
+    let st = state.clone();
+    let r = async {
+        let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
+        crate::conectores::connect(
+            &pool,
+            crate::conectores::CATALOGUE,
+            &crate::conectores::FormatOnlyAuthorizer,
+            &service,
+            &account,
+            &guild_id,
+            "api_key",
+            &secret,
+            None,
+            crate::conectores::now(),
+        )
+        .await
+        .map_err(|e| e.to_string())
+    }
+    .await;
+    crate::i18n::localizar_error(&st, r)
+}
+
+#[tauri::command]
+pub async fn disconnect_connector(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    service: String,
+    account: String,
+    guild_id: String,
+) -> Result<bool, String> {
+    let st = state.clone();
+    let r = async {
+        let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
+        crate::conectores::disconnect(&pool, &service, &account, &guild_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    .await;
+    crate::i18n::localizar_error(&st, r)
+}
+
 // Guild management
 #[tauri::command]
 pub async fn list_guilds(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Guild>, String> {

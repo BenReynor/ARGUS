@@ -8,6 +8,8 @@ import { Button, Input, Select, Card, Cargando, EstadoVacio } from './ui';
 import './Vistas.css';
 import { BackupSettings } from './BackupSettings';
 import { DiagnosticReport } from './DiagnosticReport';
+import { ConnectorsPanel } from './ConnectorsPanel';
+import { SkillInstall } from './SkillInstall';
 import { Diagnostics } from './Diagnostics';
 import { ServiceControls } from './ServiceControls';
 import { externalServices, toggleConnector } from '../externalServices';
@@ -442,6 +444,7 @@ export const SettingsView: React.FC = () => {
             <p className="ajustes__aviso">
               <AlertCircle size={14} /> {t('MCP can do anything the active bot’s permissions allow: use it only with trusted clients.')}
             </p>
+            <SkillInstall />
           </>
         )}
       </Seccion>
@@ -546,6 +549,7 @@ export const SettingsView: React.FC = () => {
             finally { setSavingGuild(false); }
           }} /> {t('Enable for this server')}</label>
         </article>)}
+        <ConnectorsPanel guildId={activeGuildId} notify={showNotification} />
         <p>{t('When a service has no available configuration API or MCP, configure it manually in its official panel. Consult the provider’s official documentation for the correct panel and steps.')}</p>
         <p>{t('ARGUS cannot read or change that service’s settings or verify the result. Check the settings in the official panel after saving.')}</p>
         <h4>{t('Future browser recipes')}</h4>

@@ -38,3 +38,13 @@ test('fake catalogue drives selection, availability and individual fake connecto
   assert.equal(calls, 1);
   assert.deepEqual(enabledConnectorServices(catalogue, toggleConnector(selected, 'alpha', false)).map(service => service.id), ['beta']);
 });
+
+test('connector status combines catalogue flags and backend state', async () => {
+  const { connectorStatus } = await import('../src/externalServices.ts');
+  const svc = { ...externalServices[0], implemented: false };
+  assert.equal(connectorStatus(svc, 'none'), 'not_implemented');
+  assert.equal(connectorStatus({ ...svc, implemented: true }, 'none'), 'untested');
+  assert.equal(connectorStatus(svc, 'connected'), 'connected');
+  assert.equal(connectorStatus(svc, 'expired'), 'expired');
+  assert.equal(connectorStatus(svc, 'none', true), 'revoked');
+});

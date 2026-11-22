@@ -198,6 +198,57 @@ members with a role equal to or above the bot's.
 | `crear_webhook` | `guild_id?`, `channel_id`, `nombre` (1–80) | Creates a webhook; the full URL is only shown on creation. |
 | `borrar_webhook` | `guild_id?`, `webhook_id` | Deletes a webhook. |
 
+### Message search
+
+| Tool | Parameters | Description |
+|---|---|---|
+| `buscar_mensajes` | `guild_id?`, `texto`, `canales?` (IDs or names), `autor?`, `limite_por_canal?` (default 100, max. 5000) | Read-only. Bots cannot use Discord search, so it reads each channel's recent history and filters locally (ignoring case and accents). Needs «Read Message History». |
+
+### Template library
+
+The user's own template library (see [PLANTILLAS_PORTATILES.md](PLANTILLAS_PORTATILES.md)).
+Saved templates never contain tokens or the IDs of the source server.
+
+| Tool | Parameters | Description |
+|---|---|---|
+| `listar_plantillas` | — | Lists the saved templates. Read-only. |
+| `consultar_plantilla` | `id` | Reads one template. Never applies or modifies it. |
+| `proponer_plantilla` | `id` | Prepares, without applying it, the proposal that would create the template on the active server. Return it in Execute mode so the user approves it. |
+| `guardar_plantilla_desde_plan` | `plan`, `nombre`, `descripcion?`, `etiquetas?` | **Write, approval only.** Saves a Markdown plan as a template. A direct call is rejected («Saving a template requires approval in ARGUS»). |
+| `guardar_plantilla_desde_snapshot` | `snapshot_id`, `nombre`, `descripcion?`, `etiquetas?` | **Write, approval only.** Saves a snapshot of the active server as a template. A direct call is rejected. |
+
+### Permission audit corrections
+
+| Tool | Parameters | Description |
+|---|---|---|
+| `proponer_correccion` | `guild_id?`, `finding` (exactly as returned by `informe_permisos`) | Prepares, without applying it, the correction proposal for one finding. Refuses when the audit is incomplete, the finding is gone or the bot could not apply it. The user approves it with Apply. |
+
+### Snapshots and restore
+
+| Tool | Parameters | Description |
+|---|---|---|
+| `listar_snapshots` | — | Lists local snapshots of the active bot and server. |
+| `crear_snapshot` | — | Captures a local snapshot using only Discord reads. |
+| `comparar_snapshot` | `snapshot_id` | Compares a snapshot with the current server. |
+| `info_restauracion` | `snapshot_id?`, `undo?`, `delete_extra?` | Without ID lists snapshots; with ID generates a restore proposal (steps, conflicts, unrecoverable items, duration) without applying it. |
+| `aplicar_restauracion` | `id`, `confirmation?` | **Write, approval only.** A direct call is rejected; only the executor of an approved proposal restores. |
+
+### Connector tools
+
+When the user enables connectors (Settings → Connectors), the read tools that the
+versioned catalogue lists for each one are added to the tool list as
+`connector__tool`. Only read tools are exposed, each connector is isolated from the
+others and with no enabled connector the list contains only the tools above.
+Writes to other bots go through a proposal that the user approves.
+
+## Skill
+
+`skills/argus/SKILL.md` teaches Claude, Codex and OpenCode to use this MCP with few
+tokens: read the map once, use names instead of IDs, group changes in one proposal,
+do not repeat reads and check the result. Install it from Settings (it shows the
+path and asks before overwriting an existing one). A test checks that every tool the
+skill names is registered, and another that every registered tool is documented here.
+
 ## Environment variables
 
 | Variable | Effect |

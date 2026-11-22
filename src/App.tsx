@@ -16,10 +16,11 @@ import { ActivityView } from './components/ActivityView';
 import { LogsView } from './components/LogsView';
 import { AuditFindingsView } from './components/AuditFindingsView';
 import { ServidorView } from './components/ServidorView';
+import { ManualView } from './components/ManualView';
 import { AsistenteView } from './components/AsistenteView';
 import { DestructionAlerts } from './components/DestructionAlerts';
 import { Notification } from './components/Notification';
-import { LayoutDashboard, Hash, Users, Shield, Terminal, Settings, Server, Sparkles, Activity } from 'lucide-react';
+import { LayoutDashboard, Hash, Users, Shield, Terminal, Settings, Server, Sparkles, Activity, BookOpen } from 'lucide-react';
 import { aplicarTema } from './temas';
 import { setIdioma, t } from './i18n';
 import { pasoCarga, finCarga } from './carga';
@@ -104,13 +105,14 @@ function App() {
     { id: 'asistente', label: t('AI Assistant'), icon: 'sparkles' },
     { id: 'activity', label: t('Activity'), icon: 'activity' },
     { id: 'logs', label: t('Logs'), icon: 'terminal' },
+    { id: 'manual', label: t('Manual'), icon: 'book-open' },
     { id: 'settings', label: t('Settings'), icon: 'settings' },
   ];
 
   const activeTab = useStore((s) => s.activeTab);
   const seccion = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
   const iconosSeccion: Record<string, any> = {
-    'layout-dashboard': LayoutDashboard, hash: Hash, users: Users, shield: Shield, server: Server, sparkles: Sparkles, terminal: Terminal, settings: Settings, activity: Activity,
+    'layout-dashboard': LayoutDashboard, hash: Hash, users: Users, shield: Shield, server: Server, sparkles: Sparkles, terminal: Terminal, settings: Settings, activity: Activity, 'book-open': BookOpen,
   };
 
   const renderView = () => {
@@ -125,6 +127,7 @@ function App() {
       case 'asistente': return <AsistenteView />;
       case 'activity': return <ActivityView />;
       case 'logs': return <LogsView />;
+      case 'manual': return <ManualView />;
       case 'settings': return <SettingsView />;
       default: return <Dashboard />;
     }
@@ -135,7 +138,7 @@ function App() {
       <GuildRail />
       <Sidebar tabs={tabs} />
       <div className="main-layout">
-        <Header titulo={seccion.label} icono={iconosSeccion[seccion.icon]} />
+        <Header titulo={seccion.label} icono={iconosSeccion[seccion.icon]} vista={seccion.id} />
         <main className="main-content">
           <UpdateNotice />
           <DestructionAlerts />
