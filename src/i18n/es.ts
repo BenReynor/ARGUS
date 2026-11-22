@@ -490,6 +490,8 @@ export const es: Record<string, string> = {
   'Gateway disconnected': 'Gateway desconectado',
   'Gateway latency': 'Latencia del Gateway',
   'Server members': 'Miembros del servidor',
+  'Server members (approximate)': 'Miembros del servidor (aproximado)',
+  '{count} members': '{count} miembros',
   'No server selected': 'Ningún servidor seleccionado',
   'No server': 'Sin servidor',
 

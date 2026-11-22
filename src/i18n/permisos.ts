@@ -44,6 +44,14 @@ const NOMBRE_OFICIAL: Record<string, string> = {
 /** Nombre oficial en inglés del permiso; si no se conoce, devuelve el recibido. */
 export const nombreOficialPermiso = (nombre: string): string => NOMBRE_OFICIAL[nombre] ?? nombre;
 
+/**
+ * Nombre visible del permiso según el idioma de la interfaz: el catálogo en
+ * español, o el nombre oficial de Discord en inglés. Un único punto para Roles,
+ * Servidor (permisos de canal), Auditoría y avisos.
+ */
+export const nombrePermiso = (nombre: string, idioma: 'en' | 'es'): string =>
+  idioma === 'es' ? nombre : nombreOficialPermiso(nombre);
+
 /** Permisos agrupados para el editor: [bit de Discord, nombre]. */
 export const GRUPOS_PERMISOS: { grupo: string; permisos: [number, string][] }[] = [
   { grupo: 'General', permisos: [[10, 'Ver canales'], [4, 'Gestionar canales'], [28, 'Gestionar roles'], [5, 'Gestionar servidor'], [29, 'Gestionar webhooks'], [7, 'Ver el registro de auditoría']] },

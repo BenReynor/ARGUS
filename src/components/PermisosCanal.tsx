@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Check, Minus, X, Plus, Trash2, Users, User } from 'lucide-react';
 import { Button, Badge, Select } from './ui';
 import { GRUPOS_PERMISOS } from './RolesView';
-import { t } from '../i18n';
-import { nombreOficialPermiso } from '../i18n/permisos';
+import { t, idiomaActual } from '../i18n';
+import { nombrePermiso } from '../i18n/permisos';
 import type { Channel, Member, Role } from '../types';
 
 type Estado = 'permitir' | 'heredar' | 'denegar';
@@ -181,7 +181,7 @@ export const PermisosCanal: React.FC<{
                 <legend>{etiquetaGrupo(grupo)}</legend>
                 {permisos.map(([bit, nombreEs]) => {
                   const estado = estadoDe(actual, bit);
-                  const nombre = nombreOficialPermiso(nombreEs);
+                  const nombre = nombrePermiso(nombreEs, idiomaActual());
                   return (
                     <div key={bit} className="permisos__fila">
                       <span>{nombre}</span>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useStore, useBotStatus, useServerMap, useGuildPanel } from '../store/useStore';
+import { useStore, useBotStatus, useServerMap, useGuildPanel, useRecuentoMiembros } from '../store/useStore';
 import { t } from '../i18n';
 import { Server, Gauge, Users, Wifi, WifiOff, HelpCircle } from 'lucide-react';
 
@@ -10,7 +10,7 @@ export const Header: React.FC<{ titulo: string; icono?: any; vista?: string }> =
   const serverMap = useServerMap();
   const guildPanel = useGuildPanel();
   // Estos datos ya están cargados; el estado del bot no los rellenaba y se veía «--».
-  const miembros = serverMap?.members.length ?? botStatus.member_count ?? 0;
+  const recuento = useRecuentoMiembros();
   const servidor = guildPanel.guild?.name ?? serverMap?.guild.name ?? botStatus.guild_name ?? null;
 
   return (
@@ -43,10 +43,10 @@ export const Header: React.FC<{ titulo: string; icono?: any; vista?: string }> =
               <span className="num">{botStatus.latency_ms} ms</span>
             </span>
           ) : null}
-          {miembros > 0 && (
-            <span className="status-item" title={t('Server members')}>
+          {recuento && recuento.valor > 0 && (
+            <span className="status-item" title={recuento.aproximado ? t('Server members (approximate)') : t('Server members')}>
               <Users size={14} aria-hidden="true" />
-              <span className="num">{miembros.toLocaleString()}</span>
+              <span className="num">{recuento.aproximado ? '~' : ''}{recuento.valor.toLocaleString()}</span>
             </span>
           )}
           <span className="status-item" title={servidor ?? t('No server selected')}>

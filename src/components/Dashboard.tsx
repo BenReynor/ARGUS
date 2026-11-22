@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useServerMap, useBotStatus, useAddLog, useShowNotification, useSetActiveTab, useConfig, useActiveGuildId, useGuildPanel, useLoadGuildPanel, PERMISOS_REQUERIDOS } from '../store/useStore';
+import { useServerMap, useBotStatus, useAddLog, useShowNotification, useSetActiveTab, useConfig, useActiveGuildId, useGuildPanel, useLoadGuildPanel, PERMISOS_REQUERIDOS, useRecuentoMiembros } from '../store/useStore';
 import { resyncMap, onSyncProgress } from '../api/tauri';
 import type { SyncProgress } from '../api/tauri';
 import { Avatar, Badge, Button, Card, Cargando, EstadoVacio, ErrorPanel } from './ui';
@@ -72,7 +72,8 @@ export const Dashboard: React.FC = () => {
   // Sin categorías (tipo 4), igual que la vista Canales.
   const canales = serverMap?.channels.filter((c) => c.channel_type !== 4).length ?? 0;
   const roles = serverMap?.roles.length ?? 0;
-  const miembros = serverMap?.members.filter((m) => !m.bot).length ?? 0;
+  const recuento = useRecuentoMiembros();
+  const miembros = recuento?.valor ?? 0;
 
   // Actividad reciente: diferencias entre dos versiones consecutivas del mapa.
   useEffect(() => {
@@ -161,8 +162,12 @@ export const Dashboard: React.FC = () => {
           <Avatar src={icono} nombre={guild?.name ?? t('Server')} tamano={56} />
           <div className="dash__nombre">
             <h3>{guild?.name ?? t('Server')}</h3>
-            {guild?.member_count != null && (
-              <span className="dash__kpi-etiqueta">{t('~{count} members (approximate)', { count: guild.member_count.toLocaleString() })}</span>
+            {recuento && (
+              <span className="dash__kpi-etiqueta">
+                {recuento.aproximado
+                  ? t('~{count} members (approximate)', { count: recuento.valor.toLocaleString() })
+                  : t('{count} members', { count: recuento.valor.toLocaleString() })}
+              </span>
             )}
           </div>
         </div>
@@ -170,13 +175,13 @@ export const Dashboard: React.FC = () => {
 
       <div className="dash__kpis">
         {[
-          { etiqueta: t('Members'), valor: miembros },
-          { etiqueta: t('Channels'), valor: canales },
-          { etiqueta: t('Roles'), valor: roles },
+          { etiqueta: t('Members'), valor: miembros, aprox: recuento?.aproximado ?? false, disponible: !!recuento },
+          { etiqueta: t('Channels'), valor: canales, disponible: !!serverMap },
+          { etiqueta: t('Roles'), valor: roles, disponible: !!serverMap },
         ].map((k) => (
           <Card key={k.etiqueta}>
             <div className="dash__kpi">
-              <span className="dash__kpi-valor">{serverMap ? k.valor.toLocaleString() : '—'}</span>
+              <span className="dash__kpi-valor">{k.disponible ? `${'aprox' in k && k.aprox ? '~' : ''}${k.valor.toLocaleString()}` : '—'}</span>
               <span className="dash__kpi-etiqueta">{k.etiqueta}</span>
             </div>
           </Card>

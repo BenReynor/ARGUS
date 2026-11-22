@@ -52,3 +52,20 @@ export function urlAvatar(userId: string, avatar: string | null | undefined, tam
 export function inicialesAvatar(nombre: string): string {
   return nombre.trim().split(/\s+/).slice(0, 2).map((p) => Array.from(p)[0]?.toUpperCase() ?? '').join('') || '?';
 }
+
+export interface RecuentoMiembros {
+  valor: number;
+  /** true si la cifra puede no ser exacta (sin mapa cargado o con miembros sin descargar). */
+  aproximado: boolean;
+}
+
+/**
+ * Recuento de miembros único para el Panel y la cabecera. Con el mapa cargado
+ * cuenta sus miembros (bots incluidos); es aproximado si Discord informa de más
+ * miembros de los descargados. Sin mapa usa la cifra aproximada de Discord.
+ */
+export function recuentoMiembros(descargados: number | null, total: number | null): RecuentoMiembros | null {
+  if (descargados !== null) return { valor: descargados, aproximado: total !== null && descargados < total };
+  if (total !== null) return { valor: total, aproximado: true };
+  return null;
+}
