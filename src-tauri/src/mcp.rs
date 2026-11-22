@@ -2624,34 +2624,10 @@ impl ArgusMcp {
         }
         let total = propuesta.acciones.len();
         let mut resultados = Vec::new();
-        for r in anteriores.iter().filter(|r| r.estado == EstadoAccion::Ok) {
-            if let Some(a) = propuesta.acciones.get(r.indice) {
-                if a.herramienta == r.herramienta
-                    && !resultados
-                        .iter()
-                        .any(|x: &ResultadoAccion| x.indice == r.indice)
-                {
-                    nombres.registrar_creado(&a.herramienta, &a.args, &r.mensaje);
-                    crate::operaciones::paso(
-                        &self.pool,
-                        id,
-                        r.indice,
-                        "unverified",
-                        Some("Previously accepted; the result has not been verified"),
-                    )
-                    .await
-                    .map_err(|e| e.to_string())?;
-                    resultados.push(r.clone());
-                }
-            }
-        }
         // `indice` es la posición original de la acción: la app empareja así
         // cada resultado con su fila aunque el orden de ejecución sea otro.
         for indice in orden_de_ejecucion(propuesta) {
             let a = &propuesta.acciones[indice];
-            if resultados.iter().any(|r| r.indice == indice) {
-                continue;
-            }
             if cancelar.load(Ordering::SeqCst) {
                 break;
             }
@@ -2659,11 +2635,16 @@ impl ArgusMcp {
                 .await
                 .map_err(|e| e.to_string())?;
             let mut argumentos_resueltos = None;
+            let previo = anteriores.iter().find(|r| {
+                r.indice == indice && r.herramienta == a.herramienta && r.estado == EstadoAccion::Ok
+            });
             let (estado, mensaje) = match nombres.resolver_args(&a.herramienta, &a.args) {
                 Err(e) => (EstadoAccion::Omitida, e),
                 Ok(args) => {
                     argumentos_resueltos = Some(args.clone());
-                    match if a.herramienta == "aplicar_restauracion" {
+                    match if let Some(previo) = previo {
+                        Ok(previo.mensaje.clone())
+                    } else if a.herramienta == "aplicar_restauracion" {
                         match args_de::<ApplyRestoreParams>(&a.herramienta, args.clone()) {
                             Ok(p) => self
                                 .aplicar_restauracion_con(&p, cancelar)
@@ -2784,7 +2765,153 @@ impl ArgusMcp {
                     .map_err(|e| e.to_string())?,
                 }
             }
-            avance(total, &r);
+            if r.estado == EstadoAccion::Ok
+                && matches!(
+                    a.herramienta.as_str(),
+                    "crear_rol"
+                        | "editar_rol"
+                        | "ordenar_roles"
+                        | "permiso_canal"
+                        | "quitar_permiso_canal"
+                )
+            {
+                crate::operaciones::iniciar_verificacion(&self.pool, id, indice)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let verification = async {
+                    let args = argumentos_resueltos
+                        .as_ref()
+                        .ok_or("Missing action arguments")?;
+                    match a.herramienta.as_str() {
+                        "crear_rol" | "editar_rol" => {
+                            let output: serde_json::Value = serde_json::from_str(&r.mensaje)
+                                .map_err(|_| "Discord returned an unreadable role")?;
+                            let expected = &output["rol"];
+                            let role_id = expected["id"]
+                                .as_str()
+                                .ok_or("Discord did not return a role ID")?;
+                            let roles = commands::leer_roles(&self.state, gid, self.url())
+                                .await
+                                .map_err(|e| self.limpiar(e))?;
+                            let role = roles
+                                .iter()
+                                .find(|role| role.id == role_id)
+                                .ok_or("Discord did not return the role")?;
+                            let actual = rol_json(role);
+                            for field in ["nombre", "color", "permisos_bits", "posicion"] {
+                                if actual[field] != expected[field] {
+                                    return Err(format!(
+                                        "Discord does not reflect the role field: {field}"
+                                    ));
+                                }
+                            }
+                            if let Some(name) = args.get("nombre").and_then(|v| v.as_str()) {
+                                if role.name != name {
+                                    return Err(
+                                        "Discord does not reflect the requested role name".into()
+                                    );
+                                }
+                            }
+                            if let Some(value) = args.get("color").filter(|v| !v.is_null()) {
+                                let color: ColorParam = serde_json::from_value(value.clone())
+                                    .map_err(|e| e.to_string())?;
+                                if role.color != color.a_u32()? {
+                                    return Err(
+                                        "Discord does not reflect the requested role color".into(),
+                                    );
+                                }
+                            }
+                            if let Some(value) = args.get("permisos").filter(|v| !v.is_null()) {
+                                let permissions: PermisosParam =
+                                    serde_json::from_value(value.clone())
+                                        .map_err(|e| e.to_string())?;
+                                if role.permissions != permissions.a_bits()? {
+                                    return Err(
+                                        "Discord does not reflect the requested role permissions"
+                                            .into(),
+                                    );
+                                }
+                            }
+                        }
+                        "ordenar_roles" => {
+                            let p: OrdenarParams = args_de(&a.herramienta, args.clone())?;
+                            let roles = commands::leer_roles(&self.state, gid, self.url())
+                                .await
+                                .map_err(|e| self.limpiar(e))?;
+                            for position in p.posiciones {
+                                if !roles.iter().any(|role| {
+                                    role.id == position.id
+                                        && role.position >= 0
+                                        && role.position as u64 == position.posicion
+                                }) {
+                                    return Err(
+                                        "Discord does not reflect the requested role position"
+                                            .into(),
+                                    );
+                                }
+                            }
+                        }
+                        _ => {
+                            let channel_id =
+                                args["channel_id"].as_str().ok_or("Missing channel ID")?;
+                            let target_id =
+                                args["target_id"].as_str().ok_or("Missing target ID")?;
+                            let kind = tipo_de_overwrite(
+                                args["tipo"].as_str().ok_or("Missing overwrite type")?,
+                            )?;
+                            let token = commands::token_del_bot_activo(&self.state)?;
+                            let channel =
+                                crate::discord::read_channel(&token, self.url(), channel_id)
+                                    .await?;
+                            let overwrites = channel
+                                .overwrites
+                                .as_ref()
+                                .ok_or("Discord did not return channel overwrites")?;
+                            let actual = overwrites
+                                .iter()
+                                .find(|o| o.id == target_id && o.type_ == kind);
+                            if a.herramienta == "quitar_permiso_canal" {
+                                if actual.is_some() {
+                                    return Err(
+                                        "Discord still reports the channel overwrite".into()
+                                    );
+                                }
+                            } else {
+                                let p: PermisoCanalParams = args_de(&a.herramienta, args.clone())?;
+                                let allow =
+                                    bits_opcionales(&p.permitir)?.unwrap_or_else(|| "0".into());
+                                let deny =
+                                    bits_opcionales(&p.denegar)?.unwrap_or_else(|| "0".into());
+                                if !actual.is_some_and(|o| o.allow == allow && o.deny == deny) {
+                                    return Err(
+                                        "Discord does not reflect the requested channel overwrite"
+                                            .into(),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Ok::<(), String>(())
+                }
+                .await;
+                match verification {
+                    Ok(()) => crate::operaciones::confirmar_verificacion(&self.pool, id, indice)
+                        .await
+                        .map_err(|e| e.to_string())?,
+                    Err(e) => crate::operaciones::paso(
+                        &self.pool,
+                        id,
+                        indice,
+                        "unverified",
+                        Some(&self.limpiar(e)),
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?,
+                }
+            }
+            if previo.is_none() {
+                avance(total, &r);
+            }
             resultados.push(r);
         }
         Ok(ResumenPropuesta::de(total, resultados))
@@ -4895,6 +5022,169 @@ mod tests {
         let ids = [snowflake_hace_dias(1), snowflake_hace_dias(2)];
         let e = mcp.borrar_mensajes_json(None, "11", &ids).await;
         assert_eq!(e.unwrap_err(), falta);
+    }
+
+    #[tokio::test]
+    async fn reintento_reconcilia_rol_por_id_y_overwrite_sin_repetir_escrituras() {
+        let (_d, mcp, server) = mcp_con_servidor(TODO, true).await;
+        roles_con_nuevos(
+            &server,
+            &[rol("1200", "Repetido", 1, 0), rol("1201", "Repetido", 2, 0)],
+        )
+        .await;
+        get_json(
+            &server,
+            "/api/v10/channels/11",
+            json!({
+                "id":"11", "type":0, "guild_id":"555", "name":"general", "position":1,
+                "permission_overwrites":[{"id":"1200", "type":0, "allow":"1024", "deny":"0"}]
+            }),
+        )
+        .await;
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: vec![
+                accion(
+                    "crear_rol",
+                    json!({"nombre":"Repetido", "color":255, "permisos":"0"}),
+                ),
+                accion(
+                    "permiso_canal",
+                    json!({"channel_id":"11", "target_id":"1200", "tipo":"rol", "permitir":"1024"}),
+                ),
+            ],
+        };
+        let anteriores = vec![
+            ResultadoAccion { indice:0, herramienta:"crear_rol".into(), descripcion:String::new(), estado:EstadoAccion::Ok,
+                mensaje:json!({"rol":{"id":"1200", "nombre":"Repetido", "color":"#0000ff", "permisos_bits":"0", "posicion":1}}).to_string() },
+            ResultadoAccion { indice:1, herramienta:"permiso_canal".into(), descripcion:String::new(), estado:EstadoAccion::Ok, mensaje:"{}".into() },
+        ];
+        let result = mcp
+            .ejecutar_propuesta_reanudable(&p, &AtomicBool::new(false), &mut |_, _| {}, &anteriores)
+            .await
+            .unwrap();
+        assert_eq!(result.hechas, 2);
+        let bot = mcp.state.get_active_bot().unwrap();
+        let history = crate::operaciones::listar(&mcp.pool, &bot.id, "555")
+            .await
+            .unwrap();
+        assert_eq!(history[0].status, "correct");
+        assert!(server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .all(|r| r.method.as_str() == "GET"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cambio_de_servidor_a_mitad_verifica_rol_y_overwrite_en_el_original() {
+        let (_d, mcp, server) = mcp_con_servidor(TODO, true).await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "Mods"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(rol("1000", "Mods", 1, 0)))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "Guias"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(rol("1001", "Guias", 1, 0)))
+            .expect(1)
+            .mount(&server)
+            .await;
+        roles_con_nuevos(
+            &server,
+            &[rol("1000", "Mods", 1, 0), rol("1001", "Guias", 1, 0)],
+        )
+        .await;
+        Mock::given(method("PUT"))
+            .and(path("/api/v10/channels/11/permissions/700"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+        get_json(
+            &server,
+            "/api/v10/channels/11",
+            json!({
+                "id":"11", "type":0, "guild_id":"555", "name":"general", "position":1,
+                "permission_overwrites":[{"id":"700", "type":0, "allow":"1024", "deny":"0"}]
+            }),
+        )
+        .await;
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: vec![
+                accion(
+                    "crear_rol",
+                    json!({"nombre":"Mods", "color":255, "permisos":"0"}),
+                ),
+                // Se crea y se verifica después del cambio de servidor.
+                accion(
+                    "crear_rol",
+                    json!({"nombre":"Guias", "color":255, "permisos":"0"}),
+                ),
+                accion(
+                    "permiso_canal",
+                    json!({"channel_id":"11", "target_id":"700", "tipo":"rol", "permitir":"1024"}),
+                ),
+            ],
+        };
+        let state = mcp.state.clone();
+        let pool = mcp.pool.clone();
+        let bot = state.get_active_bot().unwrap();
+        let mut cambiado = false;
+        let resultado = mcp
+            .ejecutar_propuesta_con(&p, &AtomicBool::new(false), &mut |_, r| {
+                if !cambiado {
+                    assert_eq!(r.indice, 0);
+                    cambiado = true;
+                    state.set_active_guild("556");
+                    let state = state.clone();
+                    let pool = pool.clone();
+                    std::thread::spawn(move || {
+                        tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .unwrap()
+                            .block_on(state.save_config_to_pool(&pool))
+                            .unwrap();
+                    })
+                    .join()
+                    .unwrap();
+                }
+            })
+            .await
+            .unwrap();
+        assert!(cambiado);
+        assert_eq!(resultado.hechas, 3);
+        // Todo se leyó y escribió en el servidor de la operación, nunca en el activo.
+        assert!(server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .all(|r| !r.url.path().contains("/guilds/556")));
+        let history = crate::operaciones::listar(&mcp.pool, &bot.id, "555")
+            .await
+            .unwrap();
+        assert_eq!(history.len(), 1);
+        assert!(
+            history[0].steps.iter().all(|s| s.status == "correct"),
+            "{:?}",
+            history[0].steps
+        );
+        assert_eq!(history[0].status, "correct");
+        assert!(crate::operaciones::listar(&mcp.pool, &bot.id, "556")
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]
