@@ -760,7 +760,7 @@ en los tests. Cada tarea termina ejecutando `npm run e2e:capturas` sin errores.
 - [x] Asistente: etiquetas y biblioteca de plantillas
   criterio: los selectores de agente y modelo tienen etiqueta visible; la biblioteca de plantillas usa componentes del diseño (tarjetas por plantilla con nombre, etiquetas, fecha y acciones; botón de importar archivo estilizado en vez del control nativo «Elegir archivo / ningún archivo seleccionado»; buscador con icono); tests del listado y de la importación con archivo simulado; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Coherencia de datos y textos
+- [x] Coherencia de datos y textos
   criterio: los nombres de permisos se muestran traducidos en Roles, Servidor y Auditoría (inglés solo si el idioma es inglés); el número de miembros es coherente entre Panel y cabecera (misma fuente, y si uno es aproximado se indica igual en ambos); revisar que no quedan textos en inglés sin t() en las vistas; tests de la traducción de permisos y del recuento; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Panel más útil
