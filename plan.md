@@ -717,7 +717,7 @@ todo lo que ofrece. Nada de funciones nuevas fuera de lo listado.
 - [x] MCP actualizado con las funciones nuevas
   criterio: las instrucciones del servidor MCP (get_info) describen verificación de resultados, historial, diagnóstico, plantillas, auditoría con correcciones y conectores; hay herramientas para listar plantillas, guardar una plantilla desde el plan o desde un snapshot, preparar la propuesta de aplicar una plantilla y preparar la corrección de un hallazgo (las escrituras siguen yendo como propuesta que aprueba el usuario); las herramientas de lectura de los conectores habilitados (`conector__herramienta`, del agregador existente) aparecen en la lista de herramientas del MCP solo cuando hay conectores habilitados; descripciones en inglés; tests de registro, de que las nuevas no escriben sin aprobación y de la lista con y sin conectores; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Skill de ARGUS para agentes
+- [x] Skill de ARGUS para agentes
   criterio: archivo versionado `skills/argus/SKILL.md` (frontmatter con name y description) que enseña a Claude, Codex y OpenCode a usar el MCP de ARGUS gastando pocos tokens: leer el mapa una vez, usar nombres en vez de IDs, agrupar cambios en una propuesta, no repetir lecturas y comprobar el resultado con la verificación; solo nombra herramientas que existen; en Settings se ofrece instalarla en la carpeta de skills del agente elegido, mostrando la ruta y pidiendo confirmación, sin sobrescribir una existente sin preguntar; test que compara las herramientas citadas en la skill con las registradas en el MCP y test de la instalación en una carpeta temporal; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Manual dentro de la aplicación
