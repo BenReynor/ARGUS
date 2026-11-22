@@ -702,7 +702,7 @@ Verificación manual:
 - [x] Servicio: canal local con la interfaz
   criterio: la interfaz y el servicio comparten estado por un canal local autenticado y con permisos del usuario, sin enviar tokens; abrir o cerrar la interfaz no pierde ni repite operaciones ni avisos; tests de reconexión de la interfaz; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Servicio: controles y arranque opcional
+- [x] Servicio: controles y arranque opcional
   criterio: controles visibles para iniciar, detener, ver el estado y el último error, y para habilitar el arranque con el sistema (desactivado por defecto, sin servicio del sistema ni privilegios); el diagnóstico distingue servicio detenido, interfaz desconectada y Gateway caído; docs de qué queda activo; tests sin modificar el arranque real del equipo y checklist manual para Linux y Windows; Lo no especificado NO es motivo de rechazo.
 
 
