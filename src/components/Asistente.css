@@ -89,3 +89,14 @@
 
 .asistente__aviso--lectura { border-color: var(--warning); margin: var(--sp-2) var(--sp-3); font-size: var(--fs-sm); }
 .asistente__aviso--lectura svg { flex-shrink: 0; }
+
+/* Biblioteca de plantillas */
+.plantillas__buscar { margin: var(--sp-3) 0; max-width: none; }
+.plantillas__lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-3); }
+.plantillas__tarjeta { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--border); border-radius: 8px; min-width: 0; }
+.plantillas__tarjeta h4 { margin: 0; overflow-wrap: anywhere; }
+.plantillas__desc { margin: 0; color: var(--text-2); }
+.plantillas__etiquetas { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.plantillas__fecha { color: var(--text-3); }
+.plantillas__acciones { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: auto; }
+.plantillas__importar { margin: var(--sp-3) 0; }

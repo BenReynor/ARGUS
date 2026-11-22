@@ -681,16 +681,16 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
 
         <section className="asistente__panel asistente__panel--chat" aria-label={t('Chat')}>
           <header className="asistente__cabecera asistente__cabecera--chat">
-            <Select aria-label={t('Agent')} value={agente} onChange={(e) => cambiarAgente(e.target.value)} disabled={enviando}>
+            <Select etiqueta={t('Agent')} value={agente} onChange={(e) => cambiarAgente(e.target.value)} disabled={enviando}>
               {agentes.map((a) => <option key={a.agente} value={a.agente}>{a.agente}</option>)}
             </Select>
             {agenteActual && agenteActual.modelos.length > 0 ? (
-              <Select aria-label={t('Model')} value={modelo} onChange={(e) => setModelo(e.target.value)} disabled={enviando}>
+              <Select etiqueta={t('Model')} value={modelo} onChange={(e) => setModelo(e.target.value)} disabled={enviando}>
                 {!agenteActual.modelos.includes(modelo) && modelo && <option value={modelo}>{modelo}</option>}
                 {agenteActual.modelos.map((m) => <option key={m} value={m}>{m}</option>)}
               </Select>
             ) : (
-              <Input aria-label={t('Model')} value={modelo} placeholder={t('Model name')} onChange={(e) => setModelo(e.target.value)} disabled={enviando} />
+              <Input etiqueta={t('Model')} value={modelo} placeholder={t('Model name')} onChange={(e) => setModelo(e.target.value)} disabled={enviando} />
             )}
             <div className="asistente__modo" role="group" aria-label={t('Mode')}>
               <button type="button" className={modo === 'read' ? 'activo' : ''} aria-pressed={modo === 'read'} disabled={enviando} onClick={() => setModo('read')}>{t('Read')}</button>
