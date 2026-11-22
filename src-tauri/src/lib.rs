@@ -8,6 +8,7 @@ use tauri::{
 use tauri_plugin_log::{Target, TargetKind};
 
 mod actualizaciones;
+pub mod agregador;
 pub mod asistente;
 pub mod backup;
 pub mod chat;

@@ -587,9 +587,40 @@ pub struct ArgusMcp {
     /// URL base de Discord; solo los tests la cambian (Discord falso).
     base_url: Option<String>,
     contexto_fijado: bool,
+    /// Capa de conectores (solo lectura); None si no hay conectores habilitados.
+    conectores: Option<Arc<crate::agregador::Aggregator>>,
 }
 
 impl ArgusMcp {
+    /// Activa la capa de conectores: solo herramientas de lectura del catálogo.
+    pub fn con_conectores(mut self, capa: Arc<crate::agregador::Aggregator>) -> Self {
+        self.conectores = Some(capa);
+        self
+    }
+
+    /// Herramientas `conector__herramienta` expuestas (misma política para todos los agentes).
+    pub async fn herramientas_conectores(&self) -> Vec<String> {
+        match &self.conectores {
+            Some(c) => c.list_tools().await,
+            None => Vec::new(),
+        }
+    }
+
+    pub async fn llamar_conector(
+        &self,
+        nombre: &str,
+        args: serde_json::Value,
+        cancelar: tokio::sync::watch::Receiver<bool>,
+    ) -> Result<serde_json::Value, String> {
+        let capa = self
+            .conectores
+            .as_ref()
+            .ok_or_else(|| "Unknown connector tool".to_string())?;
+        capa.call(nombre, args, cancelar)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
     /// Abre el servidor sobre una base ya abierta y carga el bot activo. Si hay
     /// un bot activo comprueba que su token se pueda descifrar (sin mostrarlo).
     pub async fn nuevo(pool: SqlitePool, base_url: Option<String>) -> Result<Self, String> {
@@ -598,6 +629,7 @@ impl ArgusMcp {
             state: Arc::new(AppState::new()),
             base_url,
             contexto_fijado: false,
+            conectores: None,
         };
         servidor.recargar().await?;
         if servidor.state.get_active_bot().is_some() {
@@ -619,6 +651,7 @@ impl ArgusMcp {
             state: Arc::new(state),
             base_url,
             contexto_fijado: true,
+            conectores: None,
         }
     }
 
@@ -2676,6 +2709,7 @@ impl ArgusMcp {
             state: Arc::new(estado_fijado),
             base_url: self.base_url.clone(),
             contexto_fijado: true,
+            conectores: None,
         };
         let resultado = fijado
             .ejecutar_propuesta_registrada(propuesta, cancelar, avance, anteriores, &gid, &id)
