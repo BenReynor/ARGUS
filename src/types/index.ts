@@ -115,6 +115,7 @@ export interface BotRegistrado extends BotConfig {
 
 /** Ajustes propios de un servidor (sincronizado con `GuildSettings` de db.rs). */
 export interface GuildSettings {
+  enabled_connectors: string[];
   moderacion_no_preguntar: boolean;
   alias: string | null;
   notes: string;

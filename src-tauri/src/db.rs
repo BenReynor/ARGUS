@@ -748,6 +748,8 @@ impl DestructionSettings {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct GuildSettings {
+    #[serde(default)]
+    pub enabled_connectors: Vec<String>,
     /// Omite la confirmación de lecturas grandes de Moderación en este servidor.
     #[serde(default)]
     pub moderacion_no_preguntar: bool,
@@ -839,6 +841,7 @@ fn chat_contexto_defecto() -> u32 {
 impl Default for GuildSettings {
     fn default() -> Self {
         Self {
+            enabled_connectors: Vec::new(),
             moderacion_no_preguntar: false,
             alias: None,
             notes: String::new(),
