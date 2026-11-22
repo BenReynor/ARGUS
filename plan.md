@@ -711,7 +711,7 @@ Verificación manual:
 ARGUS ya tiene sus funciones; esta fase hace que el usuario y los agentes sepan
 todo lo que ofrece. Nada de funciones nuevas fuera de lo listado.
 
-- [ ] Conectores: pantalla para conectar y desconectar
+- [x] Conectores: pantalla para conectar y desconectar
   criterio: en Settings, cada conector del catálogo muestra su estado (no implementado, sin probar, conectado, caducado o revocado); el usuario puede conectar uno pegando la credencial del propio servicio (campo de contraseña, nunca se vuelve a mostrar) y desconectarlo con confirmación, usando el almacén de credenciales existente (`conectores.rs`); nunca pide el token de un bot ajeno; textos con t() en EN y ES; tests de conectar, desconectar y de que la credencial no vuelve al frontend; Lo no especificado NO es motivo de rechazo.
 
 - [ ] MCP actualizado con las funciones nuevas
