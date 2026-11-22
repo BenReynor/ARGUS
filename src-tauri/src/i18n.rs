@@ -12,6 +12,15 @@ pub const IDIOMA_DEFECTO: &str = "en";
 
 /// Catálogo español: (texto fuente en inglés, traducción).
 const CATALOGO_ES: &[(&str, &str)] = &[
+    ("The action is not a valid typed connector action", "La acción no es una acción tipada válida de conector"),
+    ("The action targets a different server", "La acción apunta a otro servidor"),
+    ("The action must name an account", "La acción debe indicar una cuenta"),
+    ("The action has no changes", "La acción no tiene cambios"),
+    ("The connector does not support this change type", "El conector no admite este tipo de cambio"),
+    ("No adapter is available for this connector", "No hay adaptador disponible para este conector"),
+    ("The active server changed since the action was approved", "El servidor activo cambió desde que se aprobó la acción"),
+    ("The connector is not connected for this account and server", "El conector no está conectado para esta cuenta y servidor"),
+    ("There is no pending action with that id", "No hay ninguna acción pendiente con ese id"),
     ("The active bot Gateway is connected.", "El Gateway del bot activo está conectado."),
     ("The active bot Gateway is disconnected. Start or reconnect the bot.", "El Gateway del bot activo está desconectado. Inicia o reconecta el bot."),
     ("Permission check cancelled.", "Comprobación de permisos cancelada."),

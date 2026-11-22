@@ -8,6 +8,7 @@ use tauri::{
 use tauri_plugin_log::{Target, TargetKind};
 
 mod actualizaciones;
+pub mod adaptadores;
 pub mod agregador;
 pub mod asistente;
 pub mod backup;
@@ -248,6 +249,8 @@ pub fn run() {
             propuesta::validar_propuesta,
             propuesta::aplicar_propuesta,
             propuesta::cancelar_asistente,
+            adaptadores::preparar_accion_conector,
+            adaptadores::aprobar_accion_conector,
             asistente::listar_agentes_ia,
             asistente::enviar_al_asistente,
             asistente::preparar_lectura_moderacion,
