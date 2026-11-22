@@ -7,6 +7,7 @@ import { Avatar, Badge, Button, EstadoVacio, Dialogo, Input, Select, Cargando, E
 import { EstadoVista, BuscadorVista, CabeceraVista } from './EstadoVista';
 import { MoreVertical, Search } from 'lucide-react';
 import type { Member, Role } from '../types';
+import { chipsMiembro, urlAvatar } from '../miembros';
 
 interface AccionMenu {
   clave: string;
@@ -268,13 +269,19 @@ export const MembersView: React.FC = () => {
     if (!ctx) return t('Checking the role hierarchy…');
     if (ctx.owner_id === m.user_id) return t('The server owner cannot be moderated');
     if (ctx.bot_id === m.user_id) return t('The bot cannot moderate itself');
-    const top = Math.max(0, ...roles.filter((r) => m.roles.includes(r.name)).map((r) => r.position));
+    const top = Math.max(0, ...roles.filter((r) => m.roles.includes(r.id)).map((r) => r.position));
     return top >= ctx.bot_top_position ? t('Their highest role is equal to or above the bot’s: raise the bot’s role') : null;
   };
 
   const accionesDe = (m: Member): AccionMenu[] => {
     const jerarquia = motivoJerarquia(m);
     const acciones: AccionMenu[] = [
+      {
+        clave: 'copiar-id',
+        etiqueta: t('Copy user ID'),
+        motivo: null,
+        ejecutar: () => { void navigator.clipboard?.writeText(m.user_id).then(() => showNotification(t('User ID copied'), 'success')).catch(() => {}); },
+      },
       { clave: 'dm', etiqueta: t('Send DM'), motivo: m.bot ? t('You cannot send a DM to a bot') : null, ejecutar: () => { void handleDM(m); } },
       { clave: 'timeout', etiqueta: t('Apply timeout'), motivo: m.bot ? t('You cannot apply a timeout to a bot') : motivoTimeout, ejecutar: () => { void handleTimeout(m); } },
     ];
@@ -284,7 +291,7 @@ export const MembersView: React.FC = () => {
       { clave: 'banear', etiqueta: t('Ban'), motivo: motivoBanear ?? jerarquia, ejecutar: () => setModeracion({ tipo: 'banear', miembro: m }) },
     );
     for (const r of roles.filter((x) => x.name !== '@everyone').slice(0, 10)) {
-      const tiene = m.roles.includes(r.name);
+      const tiene = m.roles.includes(r.id);
       acciones.push({
         clave: `rol-${r.id}`,
         etiqueta: tiene ? t('Remove role {name}', { name: r.name }) : t('Add role {name}', { name: r.name }),
@@ -320,17 +327,23 @@ export const MembersView: React.FC = () => {
           <ul className="vista__lista vista__tarjeta" aria-label={t('Members')}>
             {miembros.map((m) => {
               const nombre = m.nickname || m.username;
+              const chips = chipsMiembro(m, roles);
               return (
                 <li key={m.user_id} className="vista__fila">
-                  <Avatar src={m.avatar} nombre={nombre} tamano={32} />
+                  <Avatar src={urlAvatar(m.user_id, m.avatar)} nombre={nombre} tamano={32} />
                   <div className="vista__fila-cuerpo">
                     <span className="vista__fila-nombre vista__recorte">{nombre}</span>
                     {m.nickname && <span className="vista__fila-sub vista__recorte">@{m.username}</span>}
                   </div>
                   <div className="vista__etiquetas">
                     {m.bot && <Badge tono="acento">BOT</Badge>}
-                    {m.roles.slice(0, 3).map((r) => <Badge key={r}>{r}</Badge>)}
-                    {m.roles.length > 3 && <Badge>+{m.roles.length - 3}</Badge>}
+                    {chips.visibles.map((r) => (
+                      <span key={r.id} className="ui-badge" title={r.name} style={r.color ? { borderColor: r.color } : undefined}>
+                        <span aria-hidden="true" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', marginRight: 4, background: r.color ?? 'var(--text-muted, #888)' }} />
+                        {r.name}
+                      </span>
+                    ))}
+                    {chips.masEtiqueta && <span className="ui-badge" title={chips.masTooltip} aria-label={t('{count} more roles: {names}', { count: chips.resto.length, names: chips.masTooltip })}>{chips.masEtiqueta}</span>}
                   </div>
                   <MenuAcciones nombre={nombre} acciones={accionesDe(m)} />
                 </li>

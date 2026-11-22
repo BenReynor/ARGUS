@@ -8,7 +8,8 @@
 .dash__kpi { display: flex; flex-direction: column; gap: var(--sp-1); }
 .dash__kpi-valor { font-size: var(--fs-xl); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
 .dash__kpi-etiqueta { color: var(--text-3); font-size: var(--fs-sm); }
-.dash__permisos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.dash__permisos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2) var(--sp-4); }
+.dash__fila { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .dash__permiso { display: flex; align-items: baseline; gap: var(--sp-2); }
 .dash__permiso-nota { color: var(--text-3); font-size: var(--fs-sm); }
 .dash__sync { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }

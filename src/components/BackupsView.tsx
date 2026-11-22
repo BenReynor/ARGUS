@@ -76,21 +76,22 @@ const ServerBackups: React.FC<{ botId: string; guildId: string }> = ({ botId, gu
   });
   return <div className="vista">
     <header className="vista__cabecera"><h2>{t('Backups')}</h2><p>{t('Save a complete server snapshot locally. Imports add a saved snapshot for this server.')}</p></header>
+    <section aria-labelledby="snapshots-titulo" className="copias__seccion">
+    <h3 id="snapshots-titulo">{t('Snapshots')}</h3>
     <Card>
       <div className="ajustes__fila">
         <Button disabled={busy} onClick={() => run(async () => ({ op: 'create' }))}>{t('Create snapshot')}</Button>
         <Button variante="secundario" disabled={busy} onClick={importFile}>{t('Import snapshot')}</Button>
       </div>
-      <p>{t('Snapshots include member information and bans. Store exported files securely.')}</p>
+      <p className="copias__nota">{t('Snapshots include member information and bans. Store exported files securely.')}</p>
       <label className="ajustes__interruptor"><input type="checkbox" checked={data?.schedule.enabled ?? false} disabled={busy || !data} onChange={e => { const enabled = e.target.checked; void run(async () => ({ op: 'schedule', enabled, keep_last: keep, interval_hours: intervalHours })); }} /><span>{t('Automatic snapshots')}<small>{t('Runs while ARGUS is open. Retention applies only to automatic snapshots for this server.')}</small></span></label>
-      <div className="ajustes__fila">
+      <div className="ajustes__fila ajustes__fila--base">
         <Select etiqueta={t('Snapshot interval')} value={intervalHours} disabled={busy || !data} onChange={e => setIntervalHours(Number(e.target.value) as 6 | 12 | 24)}><option value={6}>{t('Every 6 hours')}</option><option value={12}>{t('Every 12 hours')}</option><option value={24}>{t('Every 24 hours')}</option></Select>
         <Input type="number" min={1} max={365} etiqueta={t('Automatic snapshots to keep')} value={keep} disabled={busy || !data} onChange={e => setKeep(Number(e.target.value))} />
         <Button variante="secundario" disabled={busy || !data || !Number.isInteger(keep) || keep < 1 || keep > 365} onClick={() => run(async () => ({ op: 'schedule', enabled: data?.schedule.enabled ?? false, keep_last: keep, interval_hours: intervalHours }))}>{t('Save schedule')}</Button>
       </div>
       {data?.schedule.last_error && <p role="alert">{t('Last automatic snapshot failed: {error}', { error: data.schedule.last_error })}</p>}
     </Card>
-    <MassKick botId={botId} guildId={guildId} />
     {busy && <p role="status">{t('Processing snapshot…')}</p>}
     {error && <ErrorPanel mensaje={error} onReintentar={() => run(async () => ({ op: 'list' }))} />}
     {!data && !error && <Cargando />}
@@ -130,6 +131,12 @@ const ServerBackups: React.FC<{ botId: string; guildId: string }> = ({ botId, gu
         <Button variante="peligro" disabled={busy} onClick={() => setDeleting(snapshot)}>{t('Delete')}</Button>
       </div>
     </Card>)}
+    </section>
+    <details className="zona-peligro" data-testid="danger-zone">
+      <summary>{t('Danger zone')}</summary>
+      <p className="zona-peligro__aviso" role="note">{t('Actions here are destructive and cannot be undone. Review each step carefully.')}</p>
+      <MassKick botId={botId} guildId={guildId} />
+    </details>
     <GuardarPlantilla abierto={comoPlantilla !== null} nombreInicial={comoPlantilla?.name ?? ''} onCerrar={() => setComoPlantilla(null)}
       guardar={(nombre, descripcion, etiquetas) => invoke<PlantillaGuardada>('crear_plantilla_desde_snapshot', { botId, guildId, snapshotId: comoPlantilla?.id ?? '', nombre, descripcion, etiquetas })} />
     <Dialogo abierto={rename !== null} titulo={t('Rename snapshot')} onCerrar={() => { if (!busy) setRename(null); }} pie={<Button disabled={!name.trim() || busy} onClick={() => run(async () => rename ? { op: 'rename', id: rename.id, name } : null)}>{t('Save')}</Button>}>

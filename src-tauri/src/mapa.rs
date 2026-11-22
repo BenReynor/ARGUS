@@ -208,7 +208,7 @@ pub fn aplicar_evento(mapa: &mut ServerMap, evento: &Event) -> Option<ResumenCam
             let id = m.user.id.to_string();
             let roles: Vec<String> = m.roles.iter().map(|r| r.to_string()).collect();
             let nombre = m.user.name.clone();
-            let avatar = m.avatar.or(m.user.avatar).map(|a| a.to_string());
+            let avatar = m.user.avatar.map(|a| a.to_string());
             let (antes, despues) = match mapa.members.iter_mut().find(|x| x.user_id == id) {
                 Some(actual) => {
                     let antes = std::mem::replace(&mut actual.roles, roles.clone());

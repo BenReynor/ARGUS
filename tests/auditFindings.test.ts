@@ -17,6 +17,28 @@ test('channel, role and severity filters intersect and distinguish member overwr
   deepStrictEqual(filterFindings(findings, { channel: 'c1', role: 'r1', severity: 'high' }), []);
 });
 
+test('findings are grouped by role, then by channel, worst severity first', async () => {
+  const { groupFindings, summarize } = await import('../src/auditFindings.ts');
+  const findings: Finding[] = [
+    { tipo: 'role_grant', role_id: 'r1', permission: 'ManageMessages', checked_at: 'now' },
+    { tipo: 'channel_overwrite_grant', channel_id: 'c1', target_id: 'r1', target_type: 0, permission: 'ManageChannels', checked_at: 'now' },
+    { tipo: 'channel_overwrite_grant', channel_id: 'c2', target_id: 'u1', target_type: 1, permission: 'Administrator', checked_at: 'now' },
+    { tipo: 'privacy_discrepancy', channel_id: 'c2', member_id: 'u2', checked_at: 'now' },
+  ];
+  deepStrictEqual(groupFindings(findings).map(g => [g.kind, g.key, g.findings.length]), [['channel', 'c2', 2], ['role', 'r1', 2]]);
+  const report = { guild_id: 'g', checked_at: 'now', incomplete: true, missing_data: ['roles'], findings };
+  deepStrictEqual(summarize(report), { high: 2, medium: 2, total: 4, complete: false });
+});
+
+test('permission identifiers are translated with the Spanish catalogue by bit', async () => {
+  const { nombrePermisoApi } = await import('../src/i18n/permisos.ts');
+  deepStrictEqual(nombrePermisoApi('MentionEveryone', 17, 'es'), 'Mencionar @everyone');
+  deepStrictEqual(nombrePermisoApi('MentionEveryone', 17, 'en'), 'Mention @everyone, @here, and All Roles');
+  deepStrictEqual(nombrePermisoApi('ManageMessages', 13, 'es'), 'Gestionar mensajes');
+  deepStrictEqual(nombrePermisoApi('Administrator', 3, 'es'), 'Administrador');
+  deepStrictEqual(nombrePermisoApi('SomeNewPermission', undefined, 'es'), 'Some New Permission');
+});
+
 test('a correction is verified only when the re-audit no longer shows the finding', async () => {
   const { correctionOutcome, canCorrect } = await import('../src/auditFindings.ts');
   const finding: Finding = { tipo: 'role_grant', role_id: 'r1', permission_bit: 13, checked_at: 'now' };

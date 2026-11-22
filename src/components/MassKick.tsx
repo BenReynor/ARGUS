@@ -67,9 +67,13 @@ export const MassKick: React.FC<{ botId: string; guildId: string }> = ({ botId, 
     <p>{t('The owner, this bot and your verified Discord account are always protected. Administrator roles are excluded by default.')}</p>
     <Input etiqueta={t('Your Discord member ID')} value={actor} disabled={running} onChange={e => { setActor(e.target.value); setIdentityKey(''); setCode(''); setStep(0); }} />
     <p>{t('Verify your account using the code sent by this bot to your Discord DMs. The code expires after five minutes. If DMs are unavailable, member removal is blocked.')}</p>
-    <Button disabled={running || !/^[1-9]\d*$/.test(actor)} onClick={identify}>{t('Send verification code')}</Button>
+    <div className="ajustes__fila">
+      <Button disabled={running || !/^[1-9]\d*$/.test(actor)} onClick={identify}>{t('Send verification code')}</Button>
+    </div>
     {identityKey && <Input etiqueta={t('Discord DM verification code')} value={code} disabled={running} onChange={e => setCode(e.target.value)} autoComplete="off" />}
-    <Button variante="peligro" disabled={running || !identityKey || !code.trim()} onClick={prepare}>{t('Review member removal')}</Button>
+    <div className="ajustes__fila">
+      <Button variante="peligro" disabled={running || !identityKey || !code.trim()} onClick={prepare}>{t('Review member removal')}</Button>
+    </div>
     {(error || status?.error) && <p role="alert">{error || status?.error}</p>}
     {status && <>
       <p role="status" aria-live="polite">{t('{done} of {total}', { done: status.done ?? 0, total: status.total ?? 0 })} · {({ verification: t('Verification required'), preparing: t('Preparing'), ready: t('Ready'), running: t('Running'), stopped: t('Stopped'), completed: t('Completed'), failed: t('Failed') })[status.phase]}</p>

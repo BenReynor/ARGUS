@@ -319,7 +319,8 @@ pub fn convertir_miembro(m: twilight_model::guild::Member) -> crate::state::Memb
         roles: m.roles.iter().map(|r| r.to_string()).collect(),
         bot: m.user.bot,
         joined_at: Some(m.joined_at.iso_8601().to_string()),
-        avatar: m.avatar.or(m.user.avatar).map(|a| a.to_string()),
+        // Solo el avatar de usuario: el de servidor tiene otra URL en el CDN.
+        avatar: m.user.avatar.map(|a| a.to_string()),
         flags: Some(m.flags.bits()),
     }
 }

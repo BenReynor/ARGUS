@@ -736,32 +736,38 @@ título y acciones a la derecha, márgenes de `main-content`), tarjetas y
 componentes de `src/components/ui`; textos con t() en EN y ES; sin datos reales
 en los tests. Cada tarea termina ejecutando `npm run e2e:capturas` sin errores.
 
-- [ ] Recorrido automático de la interfaz con capturas
+- [x] Recorrido automático de la interfaz con capturas
   criterio: script `npm run e2e:capturas` (Node + playwright-core con el Chromium ya instalado en ~/.cache/ms-playwright) que levanta Vite, inyecta un backend de Tauri simulado con datos demo (bot, servidor con categorías, canales, 60+ miembros con roles, roles con colores, snapshots, hallazgos de auditoría, actividad) y recorre cada vista de la barra lateral, cada pestaña del Asistente y de Config, guardando un PNG por pantalla en una carpeta fuera del repo (variable E2E_CAPTURAS, por defecto en el tmp del sistema); falla si hay errores de JavaScript, comandos invoke sin simular, texto técnico visible (undefined, NaN, [object Object]) o IDs de Discord crudos de 17–20 dígitos visibles fuera de campos de ID; documentado en README; no forma parte de `npm test`; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Miembros: roles con nombre y color
+- [x] Recorrido de capturas: servidor activo y datos visibles en cada vista
+  criterio: corregir el backend simulado de `npm run e2e:capturas` para que haya un servidor activo y cargado (get_config con active_bot_id y active_guild_id, guilds, mapa del servidor y lo que lean las vistas), de modo que Panel, Canales, Miembros, Roles, Copias, Auditoría, Servidor y Actividad muestren datos demo y no «No server selected» ni «Select a bot and server»; el script falla si alguna de esas vistas muestra un estado de «sin servidor»; capturas en español además de inglés (variable o pasada por idioma); Lo no especificado NO es motivo de rechazo.
+
+- [x] Miembros: roles con nombre y color
   criterio: cada miembro muestra sus roles como chips con el nombre y el color del rol (no IDs), ordenados por posición, con «+N» y tooltip con el resto; avatar real de Discord cuando existe y la inicial solo como respaldo; el ID del usuario solo en el detalle o al copiar; tests del formateo de chips y del respaldo sin avatar; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Auditoría de permisos con el diseño de la app
+- [x] Auditoría de permisos con el diseño de la app
   criterio: la vista usa el layout común (márgenes, cabecera con «Actualizar» como botón normal a la derecha); arriba un resumen con el número de hallazgos por gravedad y si el informe está completo; hallazgos agrupados por rol o canal en tarjetas compactas con gravedad como icono+texto+color; nombres de permisos traducidos (catálogo existente de permisos en español) en vez de `MentionEveryone`; bits y evidencias técnicas en un detalle plegable; «Preparar corrección» como acción secundaria de cada tarjeta; tests de agrupado y de traducción de permisos; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Actividad y Manual con el layout común
+- [x] Actividad y Manual con el layout común
   criterio: Actividad pone los filtros en una barra bajo la cabecera (no en medio de la página) y un estado vacío centrado con icono y texto; Manual usa los márgenes comunes, ancho de lectura (máx. ~80 caracteres), buscador con icono, secciones plegables con iconos de lucide en vez de «▶» escrito y la sección activa resaltada al abrirse desde «?»; tests de que los filtros y el plegado siguen funcionando; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Config en pestañas y diagnóstico compacto
+- [x] Config en pestañas y diagnóstico compacto
   criterio: Config se divide en pestañas o un índice lateral (Bots y servidor, Apariencia e idioma, IA y MCP, Diagnóstico, Copias de configuración, Conectores, Servicio) que recuerda la última abierta; el diagnóstico es una tabla compacta (componente, estado con icono+texto, última comprobación, botón pequeño de reintentar con icono) en vez de un botón grande por línea; «Servicios externos» y «Conectores» se unen en una sola tarjeta por servicio con su estado, capacidades y conectar/desconectar; ninguna función existente se pierde; tests de navegación entre pestañas y de que cada sección sigue presente; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Copias de seguridad ordenadas y zona peligrosa aparte
+- [x] Copias de seguridad ordenadas y zona peligrosa aparte
   criterio: la vista separa claramente «Snapshots» (crear, importar, programación automática alineada con su casilla, lista) de una «Zona peligrosa» plegada por defecto al final con «Expulsar a todos los miembros», con borde y texto de advertencia; botones con separación y alineados; mismo comportamiento y confirmaciones que ahora; tests de que la zona peligrosa empieza plegada y conserva sus pasos de verificación; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Asistente: etiquetas y biblioteca de plantillas
+- [x] Asistente: etiquetas y biblioteca de plantillas
   criterio: los selectores de agente y modelo tienen etiqueta visible; la biblioteca de plantillas usa componentes del diseño (tarjetas por plantilla con nombre, etiquetas, fecha y acciones; botón de importar archivo estilizado en vez del control nativo «Elegir archivo / ningún archivo seleccionado»; buscador con icono); tests del listado y de la importación con archivo simulado; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Coherencia de datos y textos
+- [x] Coherencia de datos y textos
   criterio: los nombres de permisos se muestran traducidos en Roles, Servidor y Auditoría (inglés solo si el idioma es inglés); el número de miembros es coherente entre Panel y cabecera (misma fuente, y si uno es aproximado se indica igual en ambos); revisar que no quedan textos en inglés sin t() en las vistas; tests de la traducción de permisos y del recuento; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Panel más útil
+- [x] Panel más útil
   criterio: el Panel añade, solo lectura y con enlaces a cada vista: estado del bot y del Gateway con acción para encender, último snapshot y si los automáticos están activos, resumen de la última auditoría (o invitación a ejecutarla) y las últimas operaciones de Actividad; la lista de permisos del bot en dos columnas; sin llamadas extra a Discord al abrirlo más allá de las que ya hace; tests con datos simulados y estados vacíos; Lo no especificado NO es motivo de rechazo.
+
+- [x] Actividad en tarjetas y capturas de cada pestaña de Config
+  criterio: la lista de Actividad deja de ser una lista con viñetas: cada operación es una fila o tarjeta compacta con estado (icono+texto+color), servidor, fecha y un botón «Ver operación» del diseño (no texto con fondo gris); `npm run e2e:capturas` captura también cada pestaña de Config (Bots y servidor, Apariencia e idioma, IA y MCP, Diagnóstico, Copias de configuración, Conectores, Servicio) y abre el detalle de una operación de Actividad; Lo no especificado NO es motivo de rechazo.
 
 ## Ideas fuera de esta etapa
 

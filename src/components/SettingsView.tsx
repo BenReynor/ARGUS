@@ -12,7 +12,9 @@ import { ConnectorsPanel } from './ConnectorsPanel';
 import { SkillInstall } from './SkillInstall';
 import { Diagnostics } from './Diagnostics';
 import { ServiceControls } from './ServiceControls';
-import { externalServices, toggleConnector } from '../externalServices';
+import { toggleConnector } from '../externalServices';
+import { SETTINGS_TABS, readSettingsTab, saveSettingsTab, moveTab } from '../ajustesTabs';
+import type { SettingsTab } from '../ajustesTabs';
 import { Save, Trash2, Plus, Server, CheckCircle, AlertCircle, Eye, EyeOff, Copy } from 'lucide-react';
 import { TEMAS, aplicarTema } from '../temas';
 
@@ -61,7 +63,21 @@ const nombreModo = (modo: string): string => {
   }
 };
 
+const tabLabel = (id: SettingsTab): string => {
+  switch (id) {
+    case 'bots': return t('Bots and server');
+    case 'appearance': return t('Appearance and language');
+    case 'ai': return t('AI and MCP');
+    case 'diagnostics': return t('Diagnostics');
+    case 'backups': return t('Configuration backups');
+    case 'connectors': return t('Connectors');
+    case 'service': return t('Service');
+  }
+};
+
 export const SettingsView: React.FC = () => {
+  const [tab, setTab] = useState<SettingsTab>(() => readSettingsTab(localStorage));
+  const selectTab = (id: SettingsTab) => { setTab(id); saveSettingsTab(localStorage, id); };
   const config = useConfig();
   const updateState = useUpdates();
   const [keyringReady, setKeyringReady] = useState<boolean | null>(null);
@@ -296,7 +312,25 @@ export const SettingsView: React.FC = () => {
         <p className="ajustes__aviso" role="alert">{t('The system keyring is unavailable. New tokens use the legacy machine-id key. Unlock or enable the keyring and restart ARGUS to migrate them. Previously migrated tokens require the original keyring.')}</p>
       )}
 
-      <Seccion titulo={t('Bots')} descripcion={t('Register the bots ARGUS can use and choose which one to work with.')}>
+      <div className="pestanas ajustes__pestanas" role="tablist" aria-label={t('Settings sections')}>
+        {SETTINGS_TABS.map((id) => (
+          <button key={id} role="tab" id={`ajustes-tab-${id}`} aria-selected={tab === id} aria-controls="ajustes-panel"
+            tabIndex={tab === id ? 0 : -1} className="pestanas__tab" onClick={() => selectTab(id)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                e.preventDefault();
+                const next = moveTab(tab, e.key === 'ArrowRight' ? 1 : -1);
+                selectTab(next);
+                document.getElementById(`ajustes-tab-${next}`)?.focus();
+              }
+            }}>
+            {tabLabel(id)}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id="ajustes-panel" aria-labelledby={`ajustes-tab-${tab}`} className="ajustes__panel">
+
+      {tab === 'bots' && <Seccion titulo={t('Bots')} descripcion={t('Register the bots ARGUS can use and choose which one to work with.')}>
         <div className="ajustes__fila">
           <Input
             etiqueta={t('Bot token')}
@@ -356,9 +390,9 @@ export const SettingsView: React.FC = () => {
         {testResult === 'error' && (
           <div className="ajustes__error"><AlertCircle size={16} /> {t('Invalid token or gateway error.')}</div>
         )}
-      </Seccion>
+      </Seccion>}
 
-      <Seccion titulo={t('This server')} descripcion={t('ARGUS-specific settings for the active server.')}>
+      {tab ==='bots' && <Seccion titulo={t('This server')} descripcion={t('ARGUS-specific settings for the active server.')}>
         {!activeGuildId ? (
           <EstadoVacio titulo={t('No server selected')} descripcion={t('Pick a server in the left column to configure it.')} />
         ) : !guildSettings ? (
@@ -398,9 +432,9 @@ export const SettingsView: React.FC = () => {
             </div>
           </>
         )}
-      </Seccion>
+      </Seccion>}
 
-      <Seccion ancha titulo="MCP" descripcion={t('Connect Claude Code or another MCP client to your bots with the argus-mcp binary. It works with ARGUS closed.')}>
+      {tab ==='ai' && <Seccion ancha titulo="MCP" descripcion={t('Connect Claude Code or another MCP client to your bots with the argus-mcp binary. It works with ARGUS closed.')}>
         {!rutaMcpBin ? (
           <Cargando lineas={2} />
         ) : (
@@ -447,9 +481,9 @@ export const SettingsView: React.FC = () => {
             <SkillInstall />
           </>
         )}
-      </Seccion>
+      </Seccion>}
 
-      <Seccion ancha titulo={t('Appearance')} descripcion={t('Choose the interface theme and mode. It applies instantly and is saved.')}>
+      {tab ==='appearance' && <Seccion ancha titulo={t('Appearance')} descripcion={t('Choose the interface theme and mode. It applies instantly and is saved.')}>
         <div className="temas-rejilla" role="radiogroup" aria-label={t('Interface theme')}>
           {TEMAS.flatMap((tema) => {
             const variantes = [{ modo: '', nombre: nombreTema(tema.id) }];
@@ -502,9 +536,9 @@ export const SettingsView: React.FC = () => {
             <option key={i.id} value={i.id}>{i.nombre}</option>
           ))}
         </Select>
-      </Seccion>
+      </Seccion>}
 
-      <Seccion ancha titulo={t('AI time limit')} descripcion={t('Maximum time per AI request, from 1 to 30 minutes.')}>
+      {tab ==='ai' && <Seccion ancha titulo={t('AI time limit')} descripcion={t('Maximum time per AI request, from 1 to 30 minutes.')}>
         <Input etiqueta={t('App assistant (minutes)')} type="number" min={1} max={30} step={1}
           value={formData.ai_time_limit_minutes}
           onChange={(e) => handleChange('ai_time_limit_minutes', Number(e.target.value))} />
@@ -512,8 +546,8 @@ export const SettingsView: React.FC = () => {
           value={formData.ai_order_time_limit_minutes}
           onChange={(e) => handleChange('ai_order_time_limit_minutes', Number(e.target.value))} />
         <Button onClick={handleSave} cargando={saving}>{t('Save settings')}</Button>
-      </Seccion>
-      <Seccion ancha titulo={t('About')} descripcion={t('ARGUS version {version}', { version: __APP_VERSION__ })}>
+      </Seccion>}
+      {tab === 'appearance' && <Seccion ancha titulo={t('About')} descripcion={t('ARGUS version {version}', { version: __APP_VERSION__ })}>
         <Interruptor titulo={t('Check for updates at startup')} ayuda={t('Updates are installed only when you click Update.')} checked={config.auto_update} onChange={async (auto_update) => {
           try {
             await saveConfig({ ...config, auto_update });
@@ -525,42 +559,37 @@ export const SettingsView: React.FC = () => {
         <Button cargando={updateState.checking} disabled={updateState.installing} onClick={() => void updates.check(true)}>{t('Check for updates')}</Button>
         {updateState.status === 'current' && <p role="status">{t('You are up to date.')}</p>}
         {updateState.status === 'unavailable' && <p role="status">{t('Could not check for updates. Try again when you are online.')}</p>}
-      </Seccion>
-      <Diagnostics />
-      <DiagnosticReport />
-      <BackupSettings />
+      </Seccion>}
+      {tab === 'diagnostics' && <Diagnostics />}
+      {tab === 'diagnostics' && <DiagnosticReport />}
+      {tab === 'backups' && <BackupSettings />}
 
-      <Seccion ancha titulo={t('External services')} descripcion={t('Configuration of external services')}>
-        {!activeGuildId && <p>{t('Select a server to enable connectors.')}</p>}
-        {externalServices.map(service => <article key={service.id}>
-          <h4>{service.service} — {t('Not implemented')} / {t('Not tested')}</h4>
-          <p>{t('Method')}: {t(service.method)}</p>
-          <p>{t('Requirements')}: {t(service.requirements)}</p>
-          <p>{t('Permissions')}: {t(service.permissions)}</p>
-          <p>{t('Read tools')}: {t(service.readTools)}</p>
-          <p>{t('Write tools')}: {t(service.writeTools)}</p>
-          <p>{t('Limitations')}: {t(service.limitations)}</p>
-          <label><input type="checkbox" disabled={!activeGuildId || !guildSettings || savingGuild} checked={guildSettings?.enabled_connectors?.includes(service.id) ?? false} onChange={async e => {
-            if (!activeGuildId || !guildSettings) return;
-            const next = { ...guildSettings, enabled_connectors: toggleConnector(guildSettings.enabled_connectors ?? [], service.id, e.target.checked) };
-            setSavingGuild(true);
-            try { await saveGuildSettings(activeGuildId, next); setGuildSettings(next); }
-            catch { showNotification(t('Could not save connector selection.'), 'error'); }
-            finally { setSavingGuild(false); }
-          }} /> {t('Enable for this server')}</label>
-        </article>)}
-        <ConnectorsPanel guildId={activeGuildId} notify={showNotification} />
+      {tab === 'connectors' && <ConnectorsPanel
+        guildId={activeGuildId}
+        notify={showNotification}
+        enabled={guildSettings?.enabled_connectors ?? []}
+        toggleDisabled={!activeGuildId || !guildSettings || savingGuild}
+        onToggle={async (id, on) => {
+          if (!activeGuildId || !guildSettings) return;
+          const next = { ...guildSettings, enabled_connectors: toggleConnector(guildSettings.enabled_connectors ?? [], id, on) };
+          setSavingGuild(true);
+          try { await saveGuildSettings(activeGuildId, next); setGuildSettings(next); }
+          catch { showNotification(t('Could not save connector selection.'), 'error'); }
+          finally { setSavingGuild(false); }
+        }}
+      />}
+      {tab === 'connectors' && <Seccion ancha titulo={t('Manual configuration')} descripcion={t('For services without an available configuration API or MCP.')}>
         <p>{t('When a service has no available configuration API or MCP, configure it manually in its official panel. Consult the provider’s official documentation for the correct panel and steps.')}</p>
         <p>{t('ARGUS cannot read or change that service’s settings or verify the result. Check the settings in the official panel after saving.')}</p>
         <h4>{t('Future browser recipes')}</h4>
         <p>{t('Browser recipes are not available. They would be a separate, optional feature, never installed or enabled by default or used as a substitute for MCP.')}</p>
         <p>{t('A future recipe must use a visible browser, let you log in yourself, show its date and warn that it may be outdated, and ask for confirmation before saving. ARGUS must not access your password or simulate your Discord user session.')}</p>
-      </Seccion>
+      </Seccion>}
 
-      <Seccion ancha titulo={t('Background service')} descripcion={t('Optional ARGUS process without a window that keeps the active bot connected. It needs this computer to be on and online. Closing the window and stopping the service are different actions.')}>
+      {tab === 'service' && <Seccion ancha titulo={t('Background service')} descripcion={t('Optional ARGUS process without a window that keeps the active bot connected. It needs this computer to be on and online. Closing the window and stopping the service are different actions.')}>
         <ServiceControls />
-      </Seccion>
-      <Seccion ancha titulo={t('General')}descripcion={t('Application behavior and the server it starts with.')}>
+      </Seccion>}
+      {tab === 'bots' && <Seccion ancha titulo={t('General')} descripcion={t('Application behavior and the server it starts with.')}>
         <Input
           etiqueta={t('Active server ID')}
           ayuda={t('Right-click the server → Copy ID (with Discord developer mode on).')}
@@ -577,7 +606,8 @@ export const SettingsView: React.FC = () => {
             {!saving && <Save size={14} />} {saving ? t('Saving…') : t('Save settings')}
           </Button>
         </div>
-      </Seccion>
+      </Seccion>}
+      </div>
     </div>
   );
 };

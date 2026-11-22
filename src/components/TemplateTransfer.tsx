@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Search, Upload } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { Button, Card } from './ui';
+import { Badge, Button, Card, EstadoVacio, Input } from './ui';
+import { filterTemplates, readTemplateFile, splitTags } from '../templateLibrary';
 import { t } from '../i18n';
 
 type Template = { id: string; name: string; description: string; tags: string; data: string; version: number; created_at: string; updated_at: string };
@@ -37,13 +39,14 @@ export function TemplateTransfer() {
     try { await invoke('proponer_plantilla', { templateId: selected, guildId }); setPropuesta(t('The proposal is ready in the assistant above: review it and press Apply.')); }
     catch (e) { setError(`${t('Could not prepare the template proposal.')} ${String(e)}`); } finally { setBusy(false); }
   };
+  const fileRef = useRef<HTMLInputElement>(null);
   const choose = async (file: File | undefined) => {
     setPreview(null); setData(''); setError('');
     if (!file) return;
-    if (file.size > 1048576) { setError(t('Invalid or unsupported template file')); return; }
     setBusy(true);
-    try { const text = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()); const result = await invoke<Preview>('preview_template_file', { data: text }); setData(text); setPreview(result); }
-    catch { setError(t('Invalid or unsupported template file')); } finally { setBusy(false); }
+    const r = await readTemplateFile(file, (text) => invoke<Preview>('preview_template_file', { data: text }));
+    if (r.ok) { setData(r.data); setPreview(r.preview); } else setError(t('Invalid or unsupported template file'));
+    setBusy(false);
   };
   const save = async () => {
     if (!preview || (preview.name_exists && !window.confirm(t('A template with this name already exists. Import another copy?')))) return;
@@ -88,8 +91,25 @@ export function TemplateTransfer() {
   };
   return <Card><h3>{t('Template library')}</h3><p>{t('Import and export portable templates.')}</p>
     {error && <p role="alert">{error}</p>}
-    <label>{t('Search by name or tag')} <input value={query} onChange={e => setQuery(e.target.value)} /></label>
-    {items.filter(item => [item.name, item.tags].some(value => value.toLocaleLowerCase().includes(query.toLocaleLowerCase().trim()))).map(item => <p key={item.id}>{item.name} <Button variante="secundario" disabled={busy} onClick={() => void selectTarget(item.id)}>{t('Preview for server')}</Button> {item.tags && <small>({item.tags})</small>} {item.description && <small>— {item.description}</small>} <small>· {new Date(item.created_at).toLocaleString()}</small> <Button variante="secundario" disabled={busy} onClick={() => setEditing({ ...item })}>{t('Edit')}</Button> <Button variante="secundario" disabled={busy} onClick={() => void duplicate(item)}>{t('Duplicate')}</Button> <Button variante="secundario" disabled={busy} onClick={() => void remove(item)}>{t('Delete')}</Button> <Button variante="secundario" disabled={busy} onClick={() => void download(item.id)}>{t('Export')}</Button></p>)}
+    <label className="vista__buscar plantillas__buscar">
+      <Search size={16} aria-hidden="true" />
+      <Input type="search" aria-label={t('Search by name or tag')} placeholder={t('Search by name or tag')} value={query} onChange={e => setQuery(e.target.value)} />
+    </label>
+    {items.length === 0 ? <EstadoVacio titulo={t('No templates yet')} descripcion={t('Save one from a plan or a snapshot, or import a file.')} /> : <div className="plantillas__lista">
+      {filterTemplates(items, query).map(item => <article key={item.id} className="plantillas__tarjeta">
+        <h4>{item.name}</h4>
+        {item.description && <p className="plantillas__desc">{item.description}</p>}
+        <div className="plantillas__etiquetas">{splitTags(item.tags).map(tag => <Badge key={tag} tono="acento">{tag}</Badge>)}</div>
+        <small className="plantillas__fecha">{new Date(item.created_at).toLocaleString()}</small>
+        <div className="plantillas__acciones">
+          <Button tamano="sm" disabled={busy} onClick={() => void selectTarget(item.id)}>{t('Preview for server')}</Button>
+          <Button tamano="sm" variante="secundario" disabled={busy} onClick={() => setEditing({ ...item })}>{t('Edit')}</Button>
+          <Button tamano="sm" variante="secundario" disabled={busy} onClick={() => void duplicate(item)}>{t('Duplicate')}</Button>
+          <Button tamano="sm" variante="secundario" disabled={busy} onClick={() => void download(item.id)}>{t('Export')}</Button>
+          <Button tamano="sm" variante="peligro" disabled={busy} onClick={() => void remove(item)}>{t('Delete')}</Button>
+        </div>
+      </article>)}
+    </div>}
     {selected && <div><h4>{t('Preview for server')}</h4>
       <label>{t('Server')} <select value={guildId} onChange={e => { setGuildId(e.target.value); setTarget(null); }}><option value="">{t('Select a server')}</option>{guilds.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></label>
       <Button disabled={!guildId || busy} onClick={() => void previewTarget()}>{t('Preview')}</Button>
@@ -106,7 +126,10 @@ export function TemplateTransfer() {
       <label>{t('Structure (portable JSON)')} <textarea rows={16} value={editing.data} onChange={e => setEditing({ ...editing, data: e.target.value })} /></label>
       <Button disabled={busy} onClick={() => void persist()}>{t('Save')}</Button> <Button variante="secundario" onClick={() => setEditing(null)}>{t('Cancel')}</Button>
     </div>}
-    <label>{t('Choose a template file')} <input type="file" accept="application/json,.json" disabled={busy} onChange={e => { void choose(e.target.files?.[0]); e.target.value = ''; }} /></label>
+    <div className="plantillas__importar">
+      <input ref={fileRef} type="file" hidden accept="application/json,.json" disabled={busy} onChange={e => { void choose(e.target.files?.[0]); e.target.value = ''; }} />
+      <Button variante="secundario" disabled={busy} onClick={() => fileRef.current?.click()}><Upload size={14} aria-hidden="true" /> {t('Import template file')}</Button>
+    </div>
     {preview && <div><h4>{t('Import preview')}</h4><strong>{preview.document.name}</strong><p>{preview.document.description}</p>
       {preview.name_exists && <p>{t('A template with this name already exists.')}</p>}
       <h5>{t('Roles')}</h5><ul>{preview.document.roles.map(r => <li key={r.key}>{r.name} ({r.key})</li>)}</ul>

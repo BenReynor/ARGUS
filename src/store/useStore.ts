@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { setIdioma, t } from '../i18n';
-import { nombreOficialPermiso } from '../i18n/permisos';
+import { setIdioma, t, idiomaActual } from '../i18n';
+import { nombrePermiso } from '../i18n/permisos';
+import { recuentoMiembros, type RecuentoMiembros } from '../miembros';
 import { guildInfo, saveConfig as guardarConfigBackend, botPermissions, getGuildSettings, refreshServerMap as cargarMapaRest, setActiveGuild as fijarGuildBackend } from '../api/tauri';
 import type { GuildSettings, Config, UiSettings, BotStatus, ServerMap, Channel, Member, Role, Guild } from '../types';
 
@@ -29,7 +30,7 @@ export const PERMISOS_REQUERIDOS: string[] = [
 /** Texto que explica por qué una acción está desactivada, o null si se puede usar. */
 export const motivoPermisoAusente = (permissions: string[] | null, requerido: string): string | null =>
   permissions && !permissions.includes(requerido)
-    ? t('The bot does not have the “{permission}” permission on this server', { permission: nombreOficialPermiso(requerido) })
+    ? t('The bot does not have the “{permission}” permission on this server', { permission: nombrePermiso(requerido, idiomaActual()) })
     : null;
 
 export type ToastType = 'info' | 'success' | 'error' | 'warning';
@@ -341,6 +342,15 @@ export const useLoadGuildPanel =() => useStore((s) => s.loadGuildPanel);
 export const useActiveGuildId = () => useStore((s) => s.activeGuildId);
 export const useSetActiveGuildId = () => useStore((s) => s.setActiveGuildId);
 export const useServerMap = () => useStore((s) => s.serverMap);
+
+/** Recuento de miembros compartido por el Panel y la cabecera (misma fuente y mismo aviso de aproximación). */
+export const useRecuentoMiembros = (): RecuentoMiembros | null => {
+  const serverMap = useStore((s) => s.serverMap);
+  const guildPanel = useStore((s) => s.guildPanel);
+  const botStatus = useStore((s) => s.botStatus);
+  const total = guildPanel.guild?.member_count ?? serverMap?.guild.member_count ?? botStatus.member_count ?? null;
+  return recuentoMiembros(serverMap ? serverMap.members.length : null, total);
+};
 export const useActiveTab = () => useStore((s) => s.activeTab);
 export const useSetActiveTab = () => useStore((s) => s.setActiveTab);
 export const useSelectedChannel = () => useStore((s) => s.selectedChannel);

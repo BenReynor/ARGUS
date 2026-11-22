@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertCircle, CheckCircle, Clock, HelpCircle, Loader, MinusCircle, XCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle, Clock, HelpCircle, Inbox, Loader, MinusCircle, XCircle } from 'lucide-react';
+import { CabeceraVista } from './EstadoVista';
 import { listOperations } from '../api/tauri';
 import { emptyFilters, filterOperations, operationProgress, readFilters, saveFilters } from '../activity';
 import type { ActivityFilters, Operation } from '../activity';
 import { useStore } from '../store/useStore';
 import { t } from '../i18n';
-import { Badge, Button, Select } from './ui';
+import { Badge, Button, EstadoVacio, Select } from './ui';
 import './Vistas.css';
 
 function Status({ status }: { status: string }) {
@@ -61,17 +62,21 @@ export function ActivityView() {
   const types = [...new Set(operations.flatMap(op => op.steps.map(step => step.action)))].sort();
   const servers = [...new Set(operations.map(op => op.guild_id))].sort();
   const statuses = [...new Set(operations.map(op => op.status))].sort();
+  const visibles = filterOperations(operations, filters);
   return <div className="vista">
-    <h2>{t('Activity')}</h2>
-    {!bot ? <p>{t('Select a bot to see its activity.')}</p> : <>
-      <div className="logs__filtros">
+    <CabeceraVista titulo={t('Activity')} />
+    {!bot ? <EstadoVacio icono={<Inbox size={32} aria-hidden="true" />} titulo={t('Select a bot to see its activity.')} /> : <>
+      <div className="actividad__filtros" role="group" aria-label={t('Filters')}>
         <label>{t('Type')} <Select value={filters.type} onChange={e => update('type', e.target.value)}><option value="">{t('All types')}</option>{types.map(type => <option key={type} value={type}>{actionLabel(type)}</option>)}</Select></label>
         <label>{t('Server')} <Select value={filters.guild} onChange={e => update('guild', e.target.value)}><option value="">{t('All servers')}</option>{servers.map(id => <option key={id} value={id}>{guilds.find(g => g.id === id)?.name ?? id}</option>)}</Select></label>
         <label>{t('Status')} <Select value={filters.status} onChange={e => update('status', e.target.value)}><option value="">{t('All statuses')}</option>{statuses.map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}</Select></label>
-        <Button onClick={() => setReload(n => n + 1)}>{t('Refresh')}</Button>
+        <Button className="actividad__refrescar" onClick={() => setReload(n => n + 1)}>{t('Refresh')}</Button>
       </div>
-      {loading ? <p>{t('Loading activity…')}</p> : error ? <p role="alert">{t('Could not load activity.')}</p> : filterOperations(operations, filters).length === 0 ? <p>{t('No activity matches these filters.')}</p> : <ul>{filterOperations(operations, filters).map(op => <li key={op.id}>
-        <p><Status status={op.status} /> · {guilds.find(g => g.id === op.guild_id)?.name ?? op.guild_id} · <time dateTime={op.started_at}>{new Date(op.started_at).toLocaleString()}</time> · <button onClick={() => selectOperation(op.id)} aria-expanded={selectedId === op.id}>{t('View operation')}</button></p>
+      {loading ? <p>{t('Loading activity…')}</p> : error ? <p role="alert">{t('Could not load activity.')}</p> : visibles.length === 0 ? <EstadoVacio icono={<Inbox size={32} aria-hidden="true" />} titulo={t('No activity matches these filters.')} /> : <ul className="actividad__tarjetas">{visibles.map(op => <li key={op.id} className={`actividad__tarjeta${selectedId === op.id ? ' actividad__tarjeta--sel' : ''}`}>
+        <Status status={op.status} />
+        <span className="actividad__servidor">{guilds.find(g => g.id === op.guild_id)?.name ?? op.guild_id}</span>
+        <time className="actividad__fecha" dateTime={op.started_at}>{new Date(op.started_at).toLocaleString()}</time>
+        <Button variante="secundario" tamano="sm" onClick={() => selectOperation(op.id)} aria-expanded={selectedId === op.id}>{t('View operation')}</Button>
       </li>)}</ul>}
       {selectedId && !loading && !selected && <p role="status">{t('Operation not found for the selected bot.')}</p>}
       {selected && <OperationDetail operation={selected} />}

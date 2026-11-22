@@ -264,6 +264,15 @@ cargo test  --manifest-path src-tauri/Cargo.toml
 npm run build            # tsc + vite build
 ```
 
+`npm run e2e:capturas` recorre toda la interfaz (cada vista de la barra lateral,
+cada pestaña del Asistente y de Miembros, y Config por secciones) en Chromium sin
+ventana (el que Playwright ya tiene en `~/.cache/ms-playwright`) sobre Vite con un
+backend de Tauri simulado y datos demo (`scripts/e2e-mock.mjs`). Guarda un PNG por
+pantalla en `E2E_CAPTURAS` (por defecto `argus-capturas` en el tmp del sistema) y
+falla si hay errores de JavaScript, comandos `invoke` sin simular, texto técnico
+(`undefined`, `NaN`, `[object Object]`) o IDs de Discord crudos de 17–20 dígitos
+visibles. No forma parte de `npm test`.
+
 Los tests no usan la red ni tokens: el cliente de Discord apunta a un Discord
 falso local. Hay tests opcionales contra un servidor real en
 [`docs/PRUEBA_REAL.md`](docs/PRUEBA_REAL.md). El CI corre todo en Linux y

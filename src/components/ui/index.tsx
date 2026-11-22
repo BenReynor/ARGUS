@@ -93,8 +93,9 @@ export const Avatar: React.FC<{ src?: string | null; nombre: string; tamano?: nu
   );
 };
 
-export const EstadoVacio: React.FC<{ titulo: string; descripcion?: string; children?: React.ReactNode }> = ({ titulo, descripcion, children }) => (
+export const EstadoVacio: React.FC<{ titulo: string; descripcion?: string; icono?: React.ReactNode; children?: React.ReactNode }> = ({ titulo, descripcion, icono, children }) => (
   <div className="ui-estado">
+    {icono}
     <span className="ui-estado__titulo">{titulo}</span>
     {descripcion && <span>{descripcion}</span>}
     {children}
