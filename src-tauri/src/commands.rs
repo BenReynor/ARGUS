@@ -863,6 +863,39 @@ pub async fn permission_audit(
     serde_json::from_str(&report).map_err(|e| e.to_string())
 }
 
+/// Corrección de un hallazgo de la auditoría como propuesta para aprobar.
+#[tauri::command]
+pub async fn prepare_audit_correction(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    finding: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let config = { state.config.lock().map_err(|e| e.to_string())?.clone() };
+    let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
+    let st = state.clone();
+    let idioma = crate::i18n::idioma(&state);
+    let r = crate::mcp::ArgusMcp::con_contexto(pool, None, config)
+        .preparar_correccion_json(&guild_id, &finding)
+        .await
+        .map(|mut c| {
+            if let Some(t) = c["propuesta"]["resumen"].as_str() {
+                c["propuesta"]["resumen"] = crate::i18n::tr(&idioma, t).into();
+            }
+            for a in c["propuesta"]["acciones"]
+                .as_array_mut()
+                .into_iter()
+                .flatten()
+            {
+                if let Some(t) = a["descripcion"].as_str() {
+                    a["descripcion"] = crate::i18n::tr(&idioma, t).into();
+                }
+            }
+            c
+        });
+    crate::i18n::localizar_error(&st, r)
+}
+
 #[tauri::command]
 pub async fn audit_log(
     state: State<'_, AppState>,

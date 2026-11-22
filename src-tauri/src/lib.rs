@@ -174,6 +174,7 @@ pub fn run() {
             update_guild_discord,
             audit_log,
             permission_audit,
+            prepare_audit_correction,
             channel_messages,
             delete_message,
             bulk_delete_messages,

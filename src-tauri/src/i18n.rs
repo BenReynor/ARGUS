@@ -222,6 +222,8 @@ const CATALOGO_ES: &[(&str, &str)] = &[
     ("Build from the structured plan: {n} actions", "Construir desde el plan estructurado: {n} acciones"),
     ("Apply template «{p}»: {n} actions", "Aplicar la plantilla «{p}»: {n} acciones"),
     ("Create role «{r}»", "Crear el rol «{r}»"),
+    ("Remove {p} from role «{r}»", "Quitar {p} del rol «{r}»"),
+    ("Remove {p} from a channel overwrite", "Quitar {p} de un permiso de canal"),
     ("Create category «{c}»", "Crear la categoría «{c}»"),
     ("Create channel «{c}» in «{cat}»", "Crear el canal «{c}» en «{cat}»"),
     ("Create channel «{c}»", "Crear el canal «{c}»"),

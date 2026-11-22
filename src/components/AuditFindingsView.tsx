@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { permissionAudit } from '../api/tauri';
-import { filterFindings, findingRole, findingSeverity } from '../auditFindings';
-import type { AuditReport, Finding } from '../auditFindings';
+import { invoke } from '@tauri-apps/api/core';
+import { aplicarPropuesta, permissionAudit } from '../api/tauri';
+import { canCorrect, correctionOutcome, filterFindings, findingRole, findingSeverity } from '../auditFindings';
+import type { AuditReport, Finding, PreparedCorrection } from '../auditFindings';
 import { useActiveGuildId, useServerMap, useStore } from '../store/useStore';
 import { Button, Card, Cargando, ErrorPanel, EstadoVacio, Select } from './ui';
 import { t } from '../i18n';
@@ -46,9 +47,12 @@ export const AuditFindingsView: React.FC = () => {
   const [channel, setChannel] = useState('');
   const [role, setRole] = useState('');
   const [severity, setSeverity] = useState('');
+  const [correction, setCorrection] = useState<PreparedCorrection | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ kind: 'verified' | 'partial' | 'error'; text: string } | null>(null);
   useEffect(() => {
     let current = true;
-    setReport(null); setError(''); setChannel(''); setRole(''); setSeverity('');
+    setReport(null); setError(''); setChannel(''); setRole(''); setSeverity(''); setCorrection(null); setResult(null);
     if (!guild || !bot) { setLoading(false); return () => { current = false; }; }
     setLoading(true);
     permissionAudit(guild).then(result => { if (current) setReport(result); })
@@ -61,6 +65,28 @@ export const AuditFindingsView: React.FC = () => {
   const channelName = (id: string) => channels.find(c => c.id === id)?.name ?? id;
   const roleName = (id: string) => roles.find(r => r.id === id)?.name ?? id;
   const retry = () => setRefresh(n => n + 1);
+  const prepare = async (f: Finding) => {
+    if (!guild || busy) return;
+    setBusy(true); setResult(null); setCorrection(null);
+    try { setCorrection(await invoke<PreparedCorrection>('prepare_audit_correction', { guildId: guild, finding: f })); }
+    catch (e) { setResult({ kind: 'error', text: `${t('No correction can be offered.')} ${String(e)}` }); }
+    finally { setBusy(false); }
+  };
+  const approve = async () => {
+    if (!correction || !guild || busy) return;
+    const prepared = correction;
+    setBusy(true); setResult(null);
+    let done = 0; let total = 0;
+    try { const r = await aplicarPropuesta(prepared.propuesta); done = r.hechas; total = r.total; } catch { /* resultado parcial */ }
+    setCorrection(null);
+    let after: AuditReport | null = null;
+    try { after = await permissionAudit(guild); setReport(after); } catch { after = null; }
+    const outcome = correctionOutcome(after, prepared.hallazgo, done, total);
+    setResult(outcome === 'verified'
+      ? { kind: 'verified', text: t('Correction verified: the finding is no longer present.') }
+      : { kind: 'partial', text: t('Partial result: the correction or its verification could not be completed.') });
+    setBusy(false);
+  };
   const renderFinding = (f: Finding, index: number) => {
     const roleId = findingRole(f);
     return <Card key={index}>
@@ -78,6 +104,7 @@ export const AuditFindingsView: React.FC = () => {
       <p><strong>{t('Impact')}:</strong> {f.tipo === 'privacy_discrepancy'
         ? f.actual_can_view ? t('This member can view a channel expected to be private.') : t('This member cannot view a channel they were expected to access.')
         : impact(f)}</p>
+      {canCorrect(f) && <Button variante="secundario" disabled={busy} onClick={() => void prepare(f)}>{t('Prepare correction')}</Button>}
       <p>{t('Checked at')}: <time dateTime={f.checked_at}>{new Date(f.checked_at).toLocaleString()}</time></p>
     </Card>;
   };
@@ -98,6 +125,16 @@ export const AuditFindingsView: React.FC = () => {
         <Select etiqueta={t('Role')} value={role} onChange={e => setRole(e.target.value)}><option value="">{t('All roles')}</option>{roleIds.map(id => <option key={id} value={id}>{roleName(id)}</option>)}</Select>
         <Select etiqueta={t('Severity')} value={severity} onChange={e => setSeverity(e.target.value)}><option value="">{t('All severities')}</option><option value="high">{t('High')}</option><option value="medium">{t('Medium')}</option></Select>
       </div>
+      {result && <p role={result.kind === 'verified' ? 'status' : 'alert'}>{result.text}</p>}
+      {correction && <Card>
+        <h3>{t('Proposed correction')}</h3>
+        <p>{correction.propuesta.resumen}</p>
+        <p><strong>{t('Before')}:</strong> {correction.antes.join(', ') || t('None')}</p>
+        <p><strong>{t('After')}:</strong> {correction.despues.join(', ') || t('None')}</p>
+        {correction.validacion.errores.length > 0 && <ul role="alert">{correction.validacion.errores.map((e, i) => <li key={i}>{e.mensaje}</li>)}</ul>}
+        <Button disabled={busy || correction.validacion.errores.length > 0} onClick={() => void approve()}>{t('Approve and apply')}</Button>{' '}
+        <Button variante="secundario" disabled={busy} onClick={() => setCorrection(null)}>{t('Discard')}</Button>
+      </Card>}
       {filtered.length ? filtered.map(renderFinding) : <EstadoVacio titulo={t('No findings match these filters')} />}
     </>}
   </div>;

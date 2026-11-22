@@ -16,3 +16,15 @@ test('channel, role and severity filters intersect and distinguish member overwr
   deepStrictEqual(filterFindings(findings, { channel: 'c1', role: 'r1', severity: 'medium' }), [findings[1]]);
   deepStrictEqual(filterFindings(findings, { channel: 'c1', role: 'r1', severity: 'high' }), []);
 });
+
+test('a correction is verified only when the re-audit no longer shows the finding', async () => {
+  const { correctionOutcome, canCorrect } = await import('../src/auditFindings.ts');
+  const finding: Finding = { tipo: 'role_grant', role_id: 'r1', permission_bit: 13, checked_at: 'now' };
+  const clean = { guild_id: 'g', checked_at: 'now', incomplete: false, missing_data: [], findings: [] };
+  deepStrictEqual(correctionOutcome(clean, finding, 1, 1), 'verified');
+  deepStrictEqual(correctionOutcome({ ...clean, findings: [{ ...finding }] }, finding, 1, 1), 'partial');
+  deepStrictEqual(correctionOutcome({ ...clean, incomplete: true }, finding, 1, 1), 'partial');
+  deepStrictEqual(correctionOutcome(clean, finding, 0, 1), 'partial');
+  deepStrictEqual(correctionOutcome(null, finding, 1, 1), 'partial');
+  deepStrictEqual(canCorrect({ tipo: 'privacy_discrepancy', checked_at: 'now' }), false);
+});

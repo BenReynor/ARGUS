@@ -1103,6 +1103,131 @@ impl ArgusMcp {
     }
 
     /// Point-in-time, read-only permission audit. Missing inputs remain explicitly unknown.
+    /// Prepara la corrección de un hallazgo de la auditoría como propuesta del
+    /// motor (sin aplicarla). Rehace la auditoría para trabajar con datos
+    /// frescos y se niega si el bot no podría aplicarla (permiso o jerarquía):
+    /// nunca se ofrece una acción que supere al bot.
+    pub async fn preparar_correccion_json(
+        &self,
+        guild_id: &str,
+        hallazgo: &serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let informe: serde_json::Value =
+            serde_json::from_str(&self.informe_permisos_json(Some(guild_id)).await?)
+                .map_err(|e| e.to_string())?;
+        if informe["incomplete"] == true {
+            return Err("The audit is incomplete; a correction cannot be prepared".into());
+        }
+        let mismo = |f: &&serde_json::Value| {
+            [
+                "tipo",
+                "role_id",
+                "channel_id",
+                "target_id",
+                "permission_bit",
+            ]
+            .iter()
+            .all(|k| f[*k] == hallazgo[*k])
+        };
+        let actual = informe["findings"]
+            .as_array()
+            .and_then(|f| f.iter().find(mismo))
+            .ok_or("The finding is no longer present; run the audit again")?;
+        let bit = actual["permission_bit"]
+            .as_u64()
+            .filter(|b| *b < 53)
+            .ok_or("Invalid finding")?;
+        let bits = |v: &serde_json::Value| v.as_str().and_then(|t| t.parse::<u64>().ok());
+        let token = commands::token_del_bot_activo(&self.state)?;
+        commands::exigir_permiso(&self.state, guild_id, "Gestionar roles", self.url()).await?;
+        let (accion, antes, despues) = match actual["tipo"].as_str() {
+            Some("role_grant") => {
+                let role_id = actual["role_id"].as_str().ok_or("Invalid finding")?;
+                if role_id == guild_id {
+                    // @everyone: no hay jerarquía, pero el bot debe poder gestionar roles.
+                } else {
+                    commands::exigir_jerarquia(
+                        &self.state,
+                        guild_id,
+                        &[(role_id, None)],
+                        self.url(),
+                    )
+                    .await?;
+                }
+                let antes = bits(&actual["evidence_bits"]).ok_or("Invalid finding")?;
+                let despues = antes & !(1u64 << bit);
+                (
+                    crate::propuesta::Accion {
+                        herramienta: "editar_rol".into(),
+                        args: json!({"guild_id": guild_id, "role_id": role_id, "permisos": despues.to_string()}),
+                        descripcion: format!(
+                            "Remove {} from role «{}»",
+                            actual["permission"].as_str().unwrap_or_default(),
+                            actual["role_name"].as_str().unwrap_or(role_id)
+                        ),
+                    },
+                    antes,
+                    despues,
+                )
+            }
+            Some("channel_overwrite_grant") => {
+                let channel_id = actual["channel_id"].as_str().ok_or("Invalid finding")?;
+                let target_id = actual["target_id"].as_str().ok_or("Invalid finding")?;
+                let tipo = match actual["target_type"].as_u64() {
+                    Some(0) => "rol",
+                    Some(1) => "miembro",
+                    _ => return Err("Invalid finding".into()),
+                };
+                if tipo == "rol" && target_id != guild_id {
+                    commands::exigir_jerarquia(
+                        &self.state,
+                        guild_id,
+                        &[(target_id, None)],
+                        self.url(),
+                    )
+                    .await?;
+                }
+                let canal = crate::discord::read_channel(&token, self.url(), channel_id).await?;
+                let ow = canal
+                    .overwrites
+                    .iter()
+                    .flatten()
+                    .find(|o| o.id == target_id)
+                    .ok_or("The channel overwrite no longer exists; run the audit again")?;
+                let antes = ow.allow.parse::<u64>().map_err(|_| "Invalid overwrite")?;
+                let despues = antes & !(1u64 << bit);
+                (
+                    crate::propuesta::Accion {
+                        herramienta: "permiso_canal".into(),
+                        args: json!({
+                            "guild_id": guild_id, "channel_id": channel_id, "target_id": target_id,
+                            "tipo": tipo, "permitir": despues.to_string(), "denegar": ow.deny,
+                        }),
+                        descripcion: format!(
+                            "Remove {} from a channel overwrite",
+                            actual["permission"].as_str().unwrap_or_default()
+                        ),
+                    },
+                    antes,
+                    despues,
+                )
+            }
+            _ => return Err("This finding has no automatic correction".into()),
+        };
+        let propuesta = crate::propuesta::Propuesta {
+            resumen: accion.descripcion.clone(),
+            acciones: vec![accion],
+        };
+        let validacion = crate::propuesta::validar_en_estado(&self.state, &propuesta);
+        Ok(json!({
+            "hallazgo": actual,
+            "propuesta": propuesta,
+            "validacion": validacion,
+            "antes": crate::discord::nombres_api_de_permisos(antes),
+            "despues": crate::discord::nombres_api_de_permisos(despues),
+        }))
+    }
+
     pub async fn informe_permisos_json(&self, guild_id: Option<&str>) -> Result<String, String> {
         self.informe_permisos_con_expectativas_json(guild_id, &[])
             .await
@@ -5847,6 +5972,109 @@ mod tests {
             .iter()
             .all(|r| r.method.as_str() == "GET"));
         assert_eq!(mcp.state.get_active_guild().as_deref(), Some("555"));
+    }
+
+    #[tokio::test]
+    async fn correccion_de_rol_sale_del_motor_sin_tocar_discord() {
+        let (_d, mcp, server) = mcp_con_servidor(TODO, true).await;
+        prohibir_cambios(&server).await;
+        let informe = v(mcp.informe_permisos_json(None).await.unwrap());
+        assert_eq!(informe["incomplete"], false, "{informe}");
+        let hallazgo = informe["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["tipo"] == "role_grant" && f["role_id"] == "700")
+            .unwrap()
+            .clone();
+        let c = mcp
+            .preparar_correccion_json("555", &hallazgo)
+            .await
+            .unwrap();
+        let accion = &c["propuesta"]["acciones"][0];
+        assert_eq!(accion["herramienta"], "editar_rol");
+        assert_eq!(accion["args"]["role_id"], "700");
+        assert_eq!(accion["args"]["permisos"], "0");
+        assert_eq!(c["antes"], json!(["ManageMessages"]));
+        assert_eq!(c["despues"], json!([]));
+        assert!(
+            c["validacion"]["errores"].as_array().unwrap().is_empty(),
+            "{c}"
+        );
+        // Preparar no escribe nada: la propuesta espera la aprobación.
+        assert!(server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .all(|r| r.method.as_str() == "GET"));
+        // Un hallazgo que ya no está (descartado o resuelto) no se prepara.
+        let mut viejo = hallazgo.clone();
+        viejo["permission_bit"] = json!(3);
+        assert!(mcp
+            .preparar_correccion_json("555", &viejo)
+            .await
+            .unwrap_err()
+            .contains("no longer present"));
+    }
+
+    #[tokio::test]
+    async fn correccion_que_supera_la_jerarquia_del_bot_no_se_ofrece() {
+        let (_d, mcp, server) = mcp_con_servidor(TODO, true).await;
+        prohibir_cambios(&server).await;
+        // «Alto» está por encima del rol del bot y concede ManageMessages.
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                rol("555", "@everyone", 0, 0),
+                rol("600", "Bot", 5, TODO),
+                rol("700", "Moderadores", 3, 0),
+                rol("900", "Alto", 9, 8192)
+            ])))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        let informe = v(mcp.informe_permisos_json(None).await.unwrap());
+        let hallazgo = informe["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["tipo"] == "role_grant" && f["role_id"] == "900")
+            .unwrap()
+            .clone();
+        let e = mcp
+            .preparar_correccion_json("555", &hallazgo)
+            .await
+            .unwrap_err();
+        assert!(e.contains("above the bot"), "{e}");
+    }
+
+    #[tokio::test]
+    async fn correccion_sin_gestionar_roles_no_se_ofrece() {
+        let (_d, mcp, server) = mcp_con_servidor(GESTIONAR_CANALES, true).await;
+        prohibir_cambios(&server).await;
+        let hallazgo = json!({"tipo":"role_grant","role_id":"700","permission_bit":13});
+        let informe = v(mcp.informe_permisos_json(None).await.unwrap());
+        if informe["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["role_id"] == "700" && f["permission_bit"] == 13)
+        {
+            let e = mcp
+                .preparar_correccion_json("555", &hallazgo)
+                .await
+                .unwrap_err();
+            assert!(e.contains("Gestionar roles"), "{e}");
+            assert!(server
+                .received_requests()
+                .await
+                .unwrap()
+                .iter()
+                .all(|r| r.method.as_str() == "GET"));
+        } else {
+            panic!("fixture should report the Moderadores grant: {informe}");
+        }
     }
 
     #[tokio::test]

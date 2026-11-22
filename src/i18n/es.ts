@@ -3,6 +3,14 @@
 export const NOMBRE_ES = 'Español';
 
 export const es: Record<string, string> = {
+  "No correction can be offered.": "No se puede ofrecer una corrección.",
+  "Correction verified: the finding is no longer present.": "Corrección verificada: el hallazgo ya no aparece.",
+  "Partial result: the correction or its verification could not be completed.": "Resultado parcial: no se pudo completar la corrección o su comprobación.",
+  "Prepare correction": "Preparar corrección",
+  "Proposed correction": "Corrección propuesta",
+  "Before": "Antes",
+  "After": "Después",
+  "Approve and apply": "Aprobar y aplicar",
   "The proposal is ready in the assistant above: review it and press Apply.": "La propuesta está lista en el asistente de arriba: revísala y pulsa Aplicar.",
   "Could not prepare the template proposal.": "No se pudo preparar la propuesta de la plantilla.",
   "Prepare proposal to apply": "Preparar propuesta para aplicar",
