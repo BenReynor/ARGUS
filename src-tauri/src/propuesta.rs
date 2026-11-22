@@ -29,6 +29,7 @@ pub const ACCIONES_DESTRUCTIVAS: &[&str] = &[
     "borrar_invitacion",
     "borrar_webhook",
     "enviar_mensaje",
+    "crear_post_foro",
     "enviar_dm",
     "avisar",
 ];
@@ -85,7 +86,7 @@ impl Propuesta {
                 "expulsar" => permisos.expulsar,
                 "banear" | "desbanear" => permisos.banear,
                 "borrar_mensaje" | "borrar_mensajes" => permisos.borrar_mensajes,
-                "avisar" | "enviar_mensaje" | "enviar_dm" | "fijar_mensaje"
+                "avisar" | "enviar_mensaje" | "crear_post_foro" | "enviar_dm" | "fijar_mensaje"
                 | "desfijar_mensaje" => permisos.avisos,
                 _ => false,
             };
@@ -340,7 +341,7 @@ fn referencias(herramienta: &str, args: &Value) -> Vec<(&'static str, Ref)> {
     match herramienta {
         "crear_canal" => vec![("categoria_id", Ref::Categoria)],
         "editar_canal" => vec![("channel_id", Ref::Canal), ("categoria_id", Ref::Categoria)],
-        "borrar_canal" | "crear_invitacion" | "crear_webhook" | "enviar_mensaje"
+        "borrar_canal" | "crear_invitacion" | "crear_webhook" | "enviar_mensaje" | "crear_post_foro"
         | "borrar_mensaje" | "borrar_mensajes" | "fijar_mensaje" | "desfijar_mensaje" => {
             vec![("channel_id", Ref::Canal)]
         }
@@ -718,6 +719,7 @@ mod tests {
                 &[
                     "avisar",
                     "enviar_mensaje",
+                    "crear_post_foro",
                     "enviar_dm",
                     "fijar_mensaje",
                     "desfijar_mensaje",

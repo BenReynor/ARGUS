@@ -1852,10 +1852,37 @@ pub async fn enviar_a_canal(
     content: &str,
     base_url: Option<&str>,
 ) -> Result<String, String> {
+    enviar_a_canal_resp(state, channel_id, content, None, base_url).await
+}
+
+/// Como [`enviar_a_canal`]; con `reply_to` el mensaje responde a ese mensaje.
+pub async fn enviar_a_canal_resp(
+    state: &AppState,
+    channel_id: &str,
+    content: &str,
+    reply_to: Option<&str>,
+    base_url: Option<&str>,
+) -> Result<String, String> {
     crate::discord::validar_contenido(content)?;
     let token = token_del_bot_activo(state)?;
-    let id = crate::discord::send_channel_message(&token, base_url, channel_id, content).await?;
+    let id =
+        crate::discord::send_channel_reply(&token, base_url, channel_id, content, reply_to).await?;
     Ok(format!("Message sent to channel {channel_id} (id {id})"))
+}
+
+/// Crea un post en un canal de foro con el bot activo.
+pub async fn crear_post_en_foro(
+    state: &AppState,
+    channel_id: &str,
+    title: &str,
+    content: &str,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    crate::discord::validar_contenido(content)?;
+    let token = token_del_bot_activo(state)?;
+    let id =
+        crate::discord::create_forum_post(&token, base_url, channel_id, title, content).await?;
+    Ok(format!("Post created in forum {channel_id} (id {id})"))
 }
 
 #[tauri::command]
@@ -3321,6 +3348,57 @@ mod tests {
             .await
             .expect("envío");
         assert!(r.contains("900"), "{r}");
+    }
+
+    #[tokio::test]
+    async fn responde_a_un_mensaje_con_message_reference() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/channels/42/messages"))
+            .and(wiremock::matchers::body_partial_json(serde_json::json!({
+                "content": "de acuerdo",
+                "message_reference": {"message_id": "555"}
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mensaje_json("902", "42")))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-resp");
+        let addr = server.address().to_string();
+        let r = enviar_a_canal_resp(&state, "42", "de acuerdo", Some("555"), Some(&addr))
+            .await
+            .expect("respuesta");
+        assert!(r.contains("902"), "{r}");
+    }
+
+    #[tokio::test]
+    async fn crea_un_post_en_un_foro_con_titulo_y_mensaje() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/channels/42/threads"))
+            .and(wiremock::matchers::body_partial_json(serde_json::json!({
+                "name": "Liga de ajedrez",
+                "message": {"content": "Propongo un torneo"}
+            })))
+            .respond_with(ResponseTemplate::new(201).set_body_json({
+                let mut v = mensaje_json("903", "777");
+                v["name"] = serde_json::json!("Liga de ajedrez");
+                v["type"] = serde_json::json!(11);
+                v["id"] = serde_json::json!("777");
+                v["message"] = mensaje_json("903", "777");
+                v
+            }))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-foro");
+        let addr = server.address().to_string();
+        let r = crear_post_en_foro(&state, "42", "Liga de ajedrez", "Propongo un torneo", Some(&addr))
+            .await
+            .expect("post");
+        assert!(r.contains("777"), "{r}");
+        let vacio = crear_post_en_foro(&state, "42", "  ", "texto", Some(&addr)).await;
+        assert!(vacio.is_err());
     }
 
     #[tokio::test]

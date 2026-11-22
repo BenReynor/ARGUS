@@ -145,7 +145,8 @@ optional parameter.
 
 | Tool | Parameters | Description |
 |---|---|---|
-| `enviar_mensaje` | `channel_id`, `contenido` (≤ 2000) | Sends a message to a channel. |
+| `enviar_mensaje` | `channel_id`, `contenido` (≤ 2000), `responder_a?` (message ID) | Sends a message to a channel; with `responder_a` it replies to that message. |
+| `crear_post_foro` | `channel_id`, `titulo` (≤ 100), `contenido` (≤ 2000) | Creates a post in a forum channel. |
 | `enviar_dm` | `user_id`, `contenido` (≤ 2000) | Direct message to a user. |
 | `avisar` | `user_id` (ID or name), `motivo`, `mensaje_id?`, `dm?` (default true), `guild_id?` | Saves a warning; with `dm` sends the user the reason and their warning count (if the DM fails the warning is kept and the result says so). |
 | `borrar_mensaje` | `guild_id?`, `channel_id`, `message_id` | Deletes a message. |

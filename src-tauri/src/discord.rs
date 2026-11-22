@@ -420,11 +420,58 @@ pub async fn send_channel_message(
     channel_id: &str,
     content: &str,
 ) -> Result<String, String> {
+    send_channel_reply(token, base_url, channel_id, content, None).await
+}
+
+/// Como [`send_channel_message`], pero con `reply_to` el mensaje sale como
+/// respuesta a ese mensaje del mismo canal.
+pub async fn send_channel_reply(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+    content: &str,
+    reply_to: Option<&str>,
+) -> Result<String, String> {
     validar_contenido(content)?;
     let cid = parse_id(channel_id, "channel")?;
     let client = build_client(token, base_url);
-    let mensaje = client
+    let mut peticion = client
         .create_message(cid)
+        .content(content)
+        .map_err(|e| format!("Invalid message: {e}"))?;
+    if let Some(mid) = reply_to {
+        peticion = peticion.reply(parse_id(mid, "message")?);
+    }
+    let mensaje = peticion
+        .await
+        .map_err(traducir_error)?
+        .model()
+        .await
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
+    Ok(mensaje.id.to_string())
+}
+
+/// Crea un post en un canal de foro (`POST /channels/{id}/threads`) con un
+/// título y un primer mensaje. Devuelve el id del post (hilo).
+pub async fn create_forum_post(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+    title: &str,
+    content: &str,
+) -> Result<String, String> {
+    validar_contenido(content)?;
+    if title.trim().is_empty() {
+        return Err("The post title cannot be empty".to_string());
+    }
+    if title.chars().count() > 100 {
+        return Err("The post title is too long (the maximum is 100 characters)".to_string());
+    }
+    let cid = parse_id(channel_id, "channel")?;
+    let client = build_client(token, base_url);
+    let post = client
+        .create_forum_thread(cid, title.trim())
+        .message()
         .content(content)
         .map_err(|e| format!("Invalid message: {e}"))?
         .await
@@ -432,7 +479,7 @@ pub async fn send_channel_message(
         .model()
         .await
         .map_err(|e| format!("Invalid response from Discord: {e}"))?;
-    Ok(mensaje.id.to_string())
+    Ok(post.channel.id.to_string())
 }
 
 /// Abre (o recupera) el DM con un usuario (`POST /users/@me/channels`) y le

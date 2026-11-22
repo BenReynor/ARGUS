@@ -210,6 +210,19 @@ pub struct EnviarMensajeParams {
     pub channel_id: String,
     /// Texto del mensaje (hasta 2000 caracteres).
     pub contenido: String,
+    /// ID de un mensaje de ese canal al que se responde (opcional).
+    pub responder_a: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct CrearPostForoParams {
+    /// ID del canal de foro.
+    pub channel_id: String,
+    /// Título del post (1–100 caracteres).
+    pub titulo: String,
+    /// Texto del primer mensaje del post (hasta 2000 caracteres).
+    pub contenido: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1731,11 +1744,38 @@ impl ArgusMcp {
         &self,
         channel_id: &str,
         contenido: &str,
+        responder_a: Option<&str>,
     ) -> Result<String, String> {
         self.preparar().await?;
-        let texto = commands::enviar_a_canal(&self.state, channel_id.trim(), contenido, self.url())
-            .await
-            .map_err(|e| self.limpiar(e))?;
+        let reply = responder_a.map(str::trim).filter(|m| !m.is_empty());
+        let texto = commands::enviar_a_canal_resp(
+            &self.state,
+            channel_id.trim(),
+            contenido,
+            reply,
+            self.url(),
+        )
+        .await
+        .map_err(|e| self.limpiar(e))?;
+        self.mensaje(texto)
+    }
+
+    pub async fn crear_post_foro_json(
+        &self,
+        channel_id: &str,
+        titulo: &str,
+        contenido: &str,
+    ) -> Result<String, String> {
+        self.preparar().await?;
+        let texto = commands::crear_post_en_foro(
+            &self.state,
+            channel_id.trim(),
+            titulo,
+            contenido,
+            self.url(),
+        )
+        .await
+        .map_err(|e| self.limpiar(e))?;
         self.mensaje(texto)
     }
 
@@ -2523,6 +2563,7 @@ pub const HERRAMIENTAS_ESCRITURA: &[&str] = &[
     "aplicar_restauracion",
     "elegir_servidor",
     "enviar_mensaje",
+    "crear_post_foro",
     "enviar_dm",
     "avisar",
     "borrar_mensaje",
@@ -2586,6 +2627,7 @@ pub fn validar_accion(nombre: &str, args: &serde_json::Value) -> Result<(), Stri
         "aplicar_restauracion" => ok::<ApplyRestoreParams>(nombre, args),
         "elegir_servidor" => ok::<ElegirServidorParams>(nombre, args),
         "enviar_mensaje" => ok::<EnviarMensajeParams>(nombre, args),
+        "crear_post_foro" => ok::<CrearPostForoParams>(nombre, args),
         "enviar_dm" => ok::<EnviarDmParams>(nombre, args),
         "avisar" => ok::<AvisarParams>(nombre, args),
         "borrar_mensaje" | "fijar_mensaje" | "desfijar_mensaje" => {
@@ -2635,6 +2677,7 @@ pub fn esquema_args(nombre: &str) -> Option<serde_json::Value> {
         "aplicar_restauracion" => de::<ApplyRestoreParams>(),
         "elegir_servidor" => de::<ElegirServidorParams>(),
         "enviar_mensaje" => de::<EnviarMensajeParams>(),
+        "crear_post_foro" => de::<CrearPostForoParams>(),
         "enviar_dm" => de::<EnviarDmParams>(),
         "avisar" => de::<AvisarParams>(),
         "borrar_mensaje" | "fijar_mensaje" | "desfijar_mensaje" => de::<MensajeParams>(),
@@ -3229,7 +3272,8 @@ impl ArgusMcp {
             }
             "enviar_mensaje" => {
                 let p: EnviarMensajeParams = args_de(nombre, args)?;
-                self.enviar_mensaje_json(&p.channel_id, &p.contenido).await
+                self.enviar_mensaje_json(&p.channel_id, &p.contenido, p.responder_a.as_deref())
+                    .await
             }
             "enviar_dm" => {
                 let p: EnviarDmParams = args_de(nombre, args)?;
@@ -3684,13 +3728,29 @@ impl ArgusMcp {
 
     #[tool(
         name = "enviar_mensaje",
-        description = "Sends a text message (up to 2000 characters) to a channel as the active bot. Requires permission to send messages in that channel."
+        description = "Sends a text message (up to 2000 characters) to a channel as the active bot; with responder_a it replies to that message. Requires permission to send messages in that channel."
     )]
     async fn enviar_mensaje(
         &self,
         Parameters(p): Parameters<EnviarMensajeParams>,
     ) -> Result<String, String> {
-        let r = self.enviar_mensaje_json(&p.channel_id, &p.contenido).await;
+        let r = self
+            .enviar_mensaje_json(&p.channel_id, &p.contenido, p.responder_a.as_deref())
+            .await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "crear_post_foro",
+        description = "Creates a post (thread) in a forum channel as the active bot, with a title (up to 100 characters) and a first message (up to 2000 characters). Requires permission to create posts in that forum."
+    )]
+    async fn crear_post_foro(
+        &self,
+        Parameters(p): Parameters<CrearPostForoParams>,
+    ) -> Result<String, String> {
+        let r = self
+            .crear_post_foro_json(&p.channel_id, &p.titulo, &p.contenido)
+            .await;
         self.salida(r)
     }
 
@@ -5346,13 +5406,13 @@ mod tests {
             1,
         )
         .await;
-        let r = v(mcp.enviar_mensaje_json("11", "hola").await.unwrap());
+        let r = v(mcp.enviar_mensaje_json("11", "hola", None).await.unwrap());
         assert!(r["mensaje"].as_str().unwrap().contains("900"));
         let r = v(mcp.enviar_dm_json("1001", "hola").await.unwrap());
         assert!(r["mensaje"].as_str().unwrap().contains("901"));
         // Mismos errores que la app: vacío o demasiado largo no llegan a Discord.
         let largo = "a".repeat(2001);
-        let e = mcp.enviar_mensaje_json("11", &largo).await.unwrap_err();
+        let e = mcp.enviar_mensaje_json("11", &largo, None).await.unwrap_err();
         assert!(e.contains("too long"), "{e}");
         assert!(mcp.enviar_dm_json("1001", "  ").await.is_err());
     }
@@ -6093,7 +6153,7 @@ mod tests {
         let (_dir, pool) = bd_temporal().await;
         let discord = discord_falso().await;
         let sin_bot = servidor(pool, &discord).await;
-        let e = sin_bot.enviar_mensaje_json("11", "hola").await;
+        let e = sin_bot.enviar_mensaje_json("11", "hola", None).await;
         assert_eq!(e.unwrap_err(), SIN_BOT);
         let e = sin_bot.enviar_dm_json("1", "hola").await;
         assert_eq!(e.unwrap_err(), SIN_BOT);
@@ -6128,6 +6188,7 @@ mod tests {
         let nombres: Vec<_> = tools.iter().map(|t| t.name.to_string()).collect();
         for n in [
             "enviar_mensaje",
+            "crear_post_foro",
             "enviar_dm",
             "borrar_mensaje",
             "borrar_mensajes",
