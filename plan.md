@@ -699,7 +699,7 @@ Verificación manual:
 - [x] Servicio: proceso sin ventana con una sola conexión por bot
   criterio: bloqueo de propietario con un lock de archivo del sistema por bot (se libera solo si el proceso muere) que también toma el arranque del Gateway de la interfaz; modo de ARGUS sin ventana, desactivado por defecto y que solo arranca al habilitarlo; un bloqueo de propietario impide dos conexiones al Gateway con el mismo bot (servicio e interfaz incluidos); mantiene los límites, confirmaciones y resultados de las fases anteriores; tests con Gateway falso de doble arranque y parada ordenada; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Servicio: canal local con la interfaz
+- [x] Servicio: canal local con la interfaz
   criterio: la interfaz y el servicio comparten estado por un canal local autenticado y con permisos del usuario, sin enviar tokens; abrir o cerrar la interfaz no pierde ni repite operaciones ni avisos; tests de reconexión de la interfaz; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Servicio: controles y arranque opcional
