@@ -37,6 +37,7 @@ pub mod propuesta;
 pub mod responder;
 pub mod servicio;
 pub mod servicio_control;
+pub mod skill;
 pub mod snapshots;
 pub mod state;
 pub mod sync;
@@ -233,6 +234,8 @@ fn ejecutar(sin_ventana: bool) {
             set_active_bot,
             invite_url,
             ruta_mcp,
+            skill::skill_destino,
+            skill::instalar_skill,
             connector_states,
             connect_connector,
             disconnect_connector,

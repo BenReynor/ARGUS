@@ -73,6 +73,8 @@ export const updateBot = (bot: BotConfig) => invoke<string>('update_bot', { bot 
 export const setActiveBot = (botId: string) => invoke<string>('set_active_bot', { botId });
 export const inviteUrl = () => invoke<string>('invite_url');
 export const rutaMcp = () => invoke<string>('ruta_mcp');
+export const skillDestino = (agent: string) => invoke<{ path: string; exists: boolean }>('skill_destino', { agent });
+export const instalarSkill = (agent: string, overwrite: boolean) => invoke<string>('instalar_skill', { agent, overwrite });
 // Conectores: la credencial solo viaja hacia el backend; nunca vuelve.
 export type ConnectorStateDto = { service: string; accepts_credential: boolean; status: string; account: string | null; expires_at: number | null };
 export const connectorStates = (guildId: string) => invoke<ConnectorStateDto[]>('connector_states', { guildId });

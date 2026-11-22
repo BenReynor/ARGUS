@@ -9,6 +9,7 @@ import './Vistas.css';
 import { BackupSettings } from './BackupSettings';
 import { DiagnosticReport } from './DiagnosticReport';
 import { ConnectorsPanel } from './ConnectorsPanel';
+import { SkillInstall } from './SkillInstall';
 import { Diagnostics } from './Diagnostics';
 import { ServiceControls } from './ServiceControls';
 import { externalServices, toggleConnector } from '../externalServices';
@@ -443,6 +444,7 @@ export const SettingsView: React.FC = () => {
             <p className="ajustes__aviso">
               <AlertCircle size={14} /> {t('MCP can do anything the active bot’s permissions allow: use it only with trusted clients.')}
             </p>
+            <SkillInstall />
           </>
         )}
       </Seccion>

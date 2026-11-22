@@ -4086,6 +4086,15 @@ impl ServerHandler for ArgusMcp {
     }
 }
 
+/// Names of every tool registered by the MCP server (without connector tools).
+pub fn nombres_registrados() -> Vec<String> {
+    ArgusMcp::tool_router()
+        .list_all()
+        .iter()
+        .map(|t| t.name.to_string())
+        .collect()
+}
+
 /// Instructions returned by `get_info`: what the server can do and how writes work.
 pub const INSTRUCCIONES: &str = "Manage Discord with the bots registered in ARGUS. \
 Start with `estado` to see the active bot and server.\n\
