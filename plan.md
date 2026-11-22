@@ -754,7 +754,7 @@ en los tests. Cada tarea termina ejecutando `npm run e2e:capturas` sin errores.
 - [x] Config en pestañas y diagnóstico compacto
   criterio: Config se divide en pestañas o un índice lateral (Bots y servidor, Apariencia e idioma, IA y MCP, Diagnóstico, Copias de configuración, Conectores, Servicio) que recuerda la última abierta; el diagnóstico es una tabla compacta (componente, estado con icono+texto, última comprobación, botón pequeño de reintentar con icono) en vez de un botón grande por línea; «Servicios externos» y «Conectores» se unen en una sola tarjeta por servicio con su estado, capacidades y conectar/desconectar; ninguna función existente se pierde; tests de navegación entre pestañas y de que cada sección sigue presente; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Copias de seguridad ordenadas y zona peligrosa aparte
+- [x] Copias de seguridad ordenadas y zona peligrosa aparte
   criterio: la vista separa claramente «Snapshots» (crear, importar, programación automática alineada con su casilla, lista) de una «Zona peligrosa» plegada por defecto al final con «Expulsar a todos los miembros», con borde y texto de advertencia; botones con separación y alineados; mismo comportamiento y confirmaciones que ahora; tests de que la zona peligrosa empieza plegada y conserva sus pasos de verificación; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Asistente: etiquetas y biblioteca de plantillas
@@ -765,6 +765,9 @@ en los tests. Cada tarea termina ejecutando `npm run e2e:capturas` sin errores.
 
 - [ ] Panel más útil
   criterio: el Panel añade, solo lectura y con enlaces a cada vista: estado del bot y del Gateway con acción para encender, último snapshot y si los automáticos están activos, resumen de la última auditoría (o invitación a ejecutarla) y las últimas operaciones de Actividad; la lista de permisos del bot en dos columnas; sin llamadas extra a Discord al abrirlo más allá de las que ya hace; tests con datos simulados y estados vacíos; Lo no especificado NO es motivo de rechazo.
+
+- [ ] Actividad en tarjetas y capturas de cada pestaña de Config
+  criterio: la lista de Actividad deja de ser una lista con viñetas: cada operación es una fila o tarjeta compacta con estado (icono+texto+color), servidor, fecha y un botón «Ver operación» del diseño (no texto con fondo gris); `npm run e2e:capturas` captura también cada pestaña de Config (Bots y servidor, Apariencia e idioma, IA y MCP, Diagnóstico, Copias de configuración, Conectores, Servicio) y abre el detalle de una operación de Actividad; Lo no especificado NO es motivo de rechazo.
 
 ## Ideas fuera de esta etapa
 
