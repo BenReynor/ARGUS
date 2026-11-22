@@ -12,6 +12,7 @@ pub mod adaptadores;
 pub mod agregador;
 pub mod asistente;
 pub mod backup;
+pub mod canal;
 pub mod chat;
 pub mod commands;
 pub mod conectores;
@@ -262,6 +263,7 @@ fn ejecutar(sin_ventana: bool) {
             propuesta::validar_propuesta,
             propuesta::aplicar_propuesta,
             propuesta::cancelar_asistente,
+            canal::leer_canal_servicio,
             servicio::get_service_enabled,
             servicio::set_service_enabled,
             adaptadores::preparar_accion_conector,

@@ -70,14 +70,37 @@ pub fn arrancar_sin_ventana(handle: AppHandle) {
             return;
         }
         let state = handle.state::<AppState>();
-        if let Err(e) = crate::commands::conectar_bot_servicio(&handle, &state).await {
-            tracing::error!("Service could not connect: {e}");
-            handle.exit(1);
-            return;
+        // Canal local con la interfaz: el estado y los avisos viven aquí.
+        let buzon = crate::canal::Buzon::new();
+        let canal = match carpeta_locks(&handle) {
+            Ok(c) => crate::canal::Servidor::iniciar(&c, buzon.clone())
+                .await
+                .ok(),
+            Err(_) => None,
+        };
+        match crate::commands::conectar_bot_servicio(&handle, &state).await {
+            Ok(st) => {
+                buzon.fijar_estado(
+                    serde_json::json!({ "running": true, "connected": st.connected }),
+                );
+                buzon.publicar("aviso", "Service connected");
+            }
+            Err(e) => {
+                tracing::error!("Service could not connect: {e}");
+                if let Some(c) = canal {
+                    c.detener();
+                }
+                handle.exit(1);
+                return;
+            }
         }
         let _ = tokio::signal::ctrl_c().await;
         tracing::info!("Service stopping");
+        buzon.fijar_estado(serde_json::json!({ "running": false, "connected": false }));
         crate::commands::detener_conexion(&state).await;
+        if let Some(c) = canal {
+            c.detener();
+        }
         handle.exit(0);
     });
 }

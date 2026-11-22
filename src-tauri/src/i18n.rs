@@ -338,6 +338,8 @@ const CATALOGO_ES: &[(&str, &str)] = &[
     ("Error encrypting the token: {}", "Error cifrando token: {}"),
     ("No active bot. Choose one in Settings.", "No hay un bot activo. Elige uno en Configuración."),
     ("No bot selected", "No hay bot seleccionado"),
+    ("The service is not running", "El servicio no está en marcha"),
+    ("Service authentication failed", "Falló la autenticación con el servicio"),
     ("This bot already has a Gateway connection in another ARGUS process (service or interface)", "Este bot ya tiene una conexión al Gateway en otro proceso de ARGUS (servicio o interfaz)"),
     ("Could not find the data folder", "No se encontró la carpeta de datos"),
     ("Active server changed", "Guild activa cambiada"),
