@@ -681,7 +681,7 @@ Verificación manual:
 - [x] Conectores: lectura de varios MCP con aislamiento
   criterio: capa de agregación dentro del MCP de ARGUS (la que ya usan los tres agentes), probada con MCP falsos en proceso; solo se exponen las herramientas de lectura que el catálogo versionado lista para cada conector, con nombres `conector__herramienta`; los agentes consultan solo las herramientas de lectura de los conectores habilitados, mediante una capa con nombres sin colisiones y límites por conector; escrituras y herramientas desconocidas no llegan al modelo; la misma política para Claude, Codex y OpenCode; un conector caído no cambia el estado de los otros; tests con dos MCP falsos, herramientas homónimas, caída y cancelación; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Conectores: propuestas para configurar otros bots
+- [x] Conectores: propuestas para configurar otros bots
   criterio: trait de adaptador tipado probado con un adaptador falso (sin servicio real); una acción para otro bot identifica conector, cuenta, servidor, cambios y permisos; la IA la prepara como propuesta y un adaptador controlado la ejecuta solo tras aprobación, validando de nuevo el destino; el adaptador verifica lo comprobable y, si no puede, muestra «no verificado»; nunca pasa una escritura arbitraria del modelo; tests con adaptador falso, cuenta incorrecta, respuesta parcial y escritura directa rechazada; Lo no especificado NO es motivo de rechazo.
 
 - [x] Servicios sin API o MCP de configuración disponible
