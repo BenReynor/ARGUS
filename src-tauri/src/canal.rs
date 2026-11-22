@@ -30,8 +30,8 @@ pub const ARCHIVO_CANAL: &str = "service-channel.json";
 /// Máximo de eventos retenidos para un consumidor ausente.
 const MAX_EVENTOS: usize = 1000;
 const MAX_LINEA: usize = 64 * 1024;
-const NO_ACTIVO: &str = "The service is not running";
-const AUTH_FALLIDA: &str = "Service authentication failed";
+pub const NO_ACTIVO: &str = "The service is not running";
+pub const AUTH_FALLIDA: &str = "Service authentication failed";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Evento {
@@ -51,11 +51,16 @@ struct Interior {
 
 /// Estado compartido del servicio: lo que la interfaz lee por el canal.
 #[derive(Debug, Clone, Default)]
-pub struct Buzon(Arc<Mutex<Interior>>);
+pub struct Buzon(Arc<Mutex<Interior>>, Arc<tokio::sync::Notify>);
 
 impl Buzon {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Se completa cuando la interfaz pide detener el servicio (op `stop`).
+    pub async fn esperar_parada(&self) {
+        self.1.notified().await;
     }
 
     pub fn publicar(&self, tipo: &str, texto: &str) -> u64 {
@@ -228,6 +233,10 @@ async fn atender(socket: TcpStream, buzon: Buzon, secreto: String) -> Result<(),
                 buzon.confirmar(consumidor, hasta);
                 serde_json::json!({ "ok": true })
             }
+            Some("stop") => {
+                buzon.1.notify_one();
+                serde_json::json!({ "ok": true })
+            }
             _ => serde_json::json!({ "ok": false, "error": "op" }),
         };
         wr.write_all((r.to_string() + "\n").as_bytes())
@@ -319,6 +328,13 @@ impl Cliente {
         )
         .await
         .map(|_| ())
+    }
+
+    /// Pide al servicio una parada ordenada.
+    pub async fn parar(&self) -> Result<(), String> {
+        self.pedir(serde_json::json!({ "op": "stop" }))
+            .await
+            .map(|_| ())
     }
 
     /// Lee y confirma de una vez lo entregado.

@@ -36,6 +36,7 @@ pub mod plan_estructurado;
 pub mod propuesta;
 pub mod responder;
 pub mod servicio;
+pub mod servicio_control;
 pub mod snapshots;
 pub mod state;
 pub mod sync;
@@ -266,6 +267,11 @@ fn ejecutar(sin_ventana: bool) {
             canal::leer_canal_servicio,
             servicio::get_service_enabled,
             servicio::set_service_enabled,
+            servicio_control::servicio_estado,
+            servicio_control::servicio_iniciar,
+            servicio_control::servicio_detener,
+            servicio_control::servicio_set_autoarranque,
+            diagnostico::diagnostico_servicio,
             adaptadores::preparar_accion_conector,
             adaptadores::aprobar_accion_conector,
             asistente::listar_agentes_ia,

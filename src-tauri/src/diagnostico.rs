@@ -306,6 +306,65 @@ pub async fn diagnostico_discord(
     .await)
 }
 
+/// Distingue servicio detenido, interfaz desconectada del servicio y Gateway
+/// del servicio caído. Solo lee por el canal local; no modifica nada.
+fn evaluar_servicio(lectura: &Result<crate::canal::Lectura, String>, language: &str) -> Vec<Check> {
+    use crate::operaciones::{CORRECT, FAILED, UNVERIFIED};
+    let (process, interface, gateway) = match lectura {
+        Ok(l) => {
+            let gateway = match l.estado.get("connected").and_then(|v| v.as_bool()) {
+                Some(true) => (CORRECT, "The service's Gateway is connected."),
+                Some(false) => (FAILED, "The service's Gateway is down. Check the bot token and the network, then restart the service."),
+                None => (UNVERIFIED, "The service did not report its Gateway state."),
+            };
+            (
+                (CORRECT, "The service is running."),
+                (CORRECT, "The interface is connected to the service."),
+                gateway,
+            )
+        }
+        Err(e) if e == crate::canal::NO_ACTIVO => (
+            (
+                FAILED,
+                "The service is stopped. Start it from Settings → Service.",
+            ),
+            (UNVERIFIED, "Not checked: the service is stopped."),
+            (UNVERIFIED, "Not checked: the service is stopped."),
+        ),
+        Err(_) => (
+            (UNVERIFIED, "The service process could not be confirmed."),
+            (
+                FAILED,
+                "The interface is disconnected from the service. Stop and start the service again.",
+            ),
+            (
+                UNVERIFIED,
+                "Not checked: the interface cannot reach the service.",
+            ),
+        ),
+    };
+    vec![
+        check("service_process", process.0, process.1, language),
+        check("service_interface", interface.0, interface.1, language),
+        check("service_gateway", gateway.0, gateway.1, language),
+    ]
+}
+
+#[tauri::command]
+pub async fn diagnostico_servicio(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: Option<String>,
+) -> Result<Vec<Check>, String> {
+    let language = i18n::idioma(&state);
+    let carpeta = crate::servicio::carpeta_locks(&app)?;
+    let lectura = crate::canal::Cliente::new(&carpeta, "status").leer().await;
+    Ok(evaluar_servicio(&lectura, &language)
+        .into_iter()
+        .filter(|c| name.as_deref().is_none_or(|n| c.name == n))
+        .collect())
+}
+
 #[tauri::command]
 pub fn cancelar_diagnostico_discord(state: State<'_, AppState>) {
     let _ = state.diagnostic_cancel.send(());
@@ -660,6 +719,56 @@ pub async fn diagnostico_agentes(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn estados(r: &Result<crate::canal::Lectura, String>) -> Vec<(&'static str, &'static str)> {
+        evaluar_servicio(r, "en")
+            .iter()
+            .map(|c| (c.name, c.status))
+            .collect()
+    }
+
+    #[test]
+    fn service_diagnosis_distinguishes_stopped_interface_and_gateway() {
+        let lectura = |connected: serde_json::Value| {
+            Ok(crate::canal::Lectura {
+                estado: serde_json::json!({ "running": true, "connected": connected }),
+                eventos: vec![],
+            })
+        };
+        // Servicio detenido.
+        assert_eq!(
+            estados(&Err(crate::canal::NO_ACTIVO.into())),
+            [
+                ("service_process", "failed"),
+                ("service_interface", "unverified"),
+                ("service_gateway", "unverified")
+            ]
+        );
+        // Interfaz desconectada: el canal existe pero no se puede usar.
+        assert_eq!(
+            estados(&Err(crate::canal::AUTH_FALLIDA.into())),
+            [
+                ("service_process", "unverified"),
+                ("service_interface", "failed"),
+                ("service_gateway", "unverified")
+            ]
+        );
+        // Gateway caído con servicio e interfaz bien.
+        assert_eq!(
+            estados(&lectura(serde_json::json!(false))),
+            [
+                ("service_process", "correct"),
+                ("service_interface", "correct"),
+                ("service_gateway", "failed")
+            ]
+        );
+        assert_eq!(estados(&lectura(serde_json::json!(true)))[2].1, "correct");
+        assert_eq!(
+            estados(&lectura(serde_json::Value::Null))[2].1,
+            "unverified"
+        );
+    }
+
     use wiremock::{
         matchers::{method, path},
         Mock, MockServer, ResponseTemplate,

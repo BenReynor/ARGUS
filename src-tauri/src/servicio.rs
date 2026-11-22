@@ -78,8 +78,12 @@ pub fn arrancar_sin_ventana(handle: AppHandle) {
                 .ok(),
             Err(_) => None,
         };
+        let carpeta = carpeta_locks(&handle).ok();
         match crate::commands::conectar_bot_servicio(&handle, &state).await {
             Ok(st) => {
+                if let Some(c) = &carpeta {
+                    crate::servicio_control::limpiar_error(c);
+                }
                 buzon.fijar_estado(
                     serde_json::json!({ "running": true, "connected": st.connected }),
                 );
@@ -87,6 +91,9 @@ pub fn arrancar_sin_ventana(handle: AppHandle) {
             }
             Err(e) => {
                 tracing::error!("Service could not connect: {e}");
+                if let Some(c) = &carpeta {
+                    crate::servicio_control::guardar_error(c, &e);
+                }
                 if let Some(c) = canal {
                     c.detener();
                 }
@@ -94,7 +101,11 @@ pub fn arrancar_sin_ventana(handle: AppHandle) {
                 return;
             }
         }
-        let _ = tokio::signal::ctrl_c().await;
+        // Termina con Ctrl+C o con la orden de parada de la interfaz.
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = buzon.esperar_parada() => {}
+        }
         tracing::info!("Service stopping");
         buzon.fijar_estado(serde_json::json!({ "running": false, "connected": false }));
         crate::commands::detener_conexion(&state).await;

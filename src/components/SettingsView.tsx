@@ -9,6 +9,7 @@ import './Vistas.css';
 import { BackupSettings } from './BackupSettings';
 import { DiagnosticReport } from './DiagnosticReport';
 import { Diagnostics } from './Diagnostics';
+import { ServiceControls } from './ServiceControls';
 import { externalServices, toggleConnector } from '../externalServices';
 import { Save, Trash2, Plus, Server, CheckCircle, AlertCircle, Eye, EyeOff, Copy } from 'lucide-react';
 import { TEMAS, aplicarTema } from '../temas';
@@ -552,7 +553,10 @@ export const SettingsView: React.FC = () => {
         <p>{t('A future recipe must use a visible browser, let you log in yourself, show its date and warn that it may be outdated, and ask for confirmation before saving. ARGUS must not access your password or simulate your Discord user session.')}</p>
       </Seccion>
 
-      <Seccion ancha titulo={t('General')} descripcion={t('Application behavior and the server it starts with.')}>
+      <Seccion ancha titulo={t('Background service')} descripcion={t('Optional ARGUS process without a window that keeps the active bot connected. It needs this computer to be on and online. Closing the window and stopping the service are different actions.')}>
+        <ServiceControls />
+      </Seccion>
+      <Seccion ancha titulo={t('General')}descripcion={t('Application behavior and the server it starts with.')}>
         <Input
           etiqueta={t('Active server ID')}
           ayuda={t('Right-click the server → Copy ID (with Discord developer mode on).')}
@@ -563,7 +567,7 @@ export const SettingsView: React.FC = () => {
           placeholder={t('Server ID')}
         />
         <Interruptor titulo={t('Auto-start the bot when ARGUS opens')} ayuda={t('Connects the active bot as soon as the app starts.')} checked={formData.auto_start} onChange={(v) => handleChange('auto_start', v)} />
-        <Interruptor titulo={t('Minimize to the tray when closing the window')} ayuda={t('When enabled, closing hides ARGUS in the tray and a running bot keeps working. When disabled, closing quits ARGUS and stops the bot. Quit from the tray also stops ARGUS and the bot. An independent service is not available yet.')} checked={formData.minimize_to_tray} onChange={(v) => handleChange('minimize_to_tray', v)} />
+        <Interruptor titulo={t('Minimize to the tray when closing the window')} ayuda={t('When enabled, closing hides ARGUS in the tray and a running bot keeps working. When disabled, closing quits ARGUS and stops the bot. Quit from the tray also stops ARGUS and the bot. Only the optional background service keeps the bot running without the interface.')} checked={formData.minimize_to_tray} onChange={(v) => handleChange('minimize_to_tray', v)} />
         <div>
           <Button onClick={handleSave} cargando={saving}>
             {!saving && <Save size={14} />} {saving ? t('Saving…') : t('Save settings')}
