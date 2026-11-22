@@ -763,7 +763,7 @@ en los tests. Cada tarea termina ejecutando `npm run e2e:capturas` sin errores.
 - [x] Coherencia de datos y textos
   criterio: los nombres de permisos se muestran traducidos en Roles, Servidor y Auditoría (inglés solo si el idioma es inglés); el número de miembros es coherente entre Panel y cabecera (misma fuente, y si uno es aproximado se indica igual en ambos); revisar que no quedan textos en inglés sin t() en las vistas; tests de la traducción de permisos y del recuento; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Panel más útil
+- [x] Panel más útil
   criterio: el Panel añade, solo lectura y con enlaces a cada vista: estado del bot y del Gateway con acción para encender, último snapshot y si los automáticos están activos, resumen de la última auditoría (o invitación a ejecutarla) y las últimas operaciones de Actividad; la lista de permisos del bot en dos columnas; sin llamadas extra a Discord al abrirlo más allá de las que ya hace; tests con datos simulados y estados vacíos; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Actividad en tarjetas y capturas de cada pestaña de Config
