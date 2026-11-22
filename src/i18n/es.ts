@@ -3,6 +3,9 @@
 export const NOMBRE_ES = 'Español';
 
 export const es: Record<string, string> = {
+  "The proposal is ready in the assistant above: review it and press Apply.": "La propuesta está lista en el asistente de arriba: revísala y pulsa Aplicar.",
+  "Could not prepare the template proposal.": "No se pudo preparar la propuesta de la plantilla.",
+  "Prepare proposal to apply": "Preparar propuesta para aplicar",
   "Save as template": "Guardar como plantilla",
   "Template name": "Nombre de la plantilla",
   "Could not save the template.": "No se pudo guardar la plantilla.",

@@ -33,6 +33,7 @@ pub mod responder;
 pub mod snapshots;
 pub mod state;
 pub mod sync;
+mod template_aplicar;
 mod template_guardar;
 mod template_transfer;
 #[cfg(test)]
@@ -219,6 +220,7 @@ pub fn run() {
             template_transfer::export_template_file,
             template_guardar::crear_plantilla_desde_snapshot,
             template_guardar::crear_plantilla_desde_plan,
+            template_aplicar::proponer_plantilla,
             list_templates,
             save_template,
             delete_template,

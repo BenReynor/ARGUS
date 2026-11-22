@@ -31,6 +31,12 @@ export function TemplateTransfer() {
     try { setTarget(await invoke<TargetPreview>('preview_template_target', { templateId: selected, guildId })); }
     catch { setError(t('Could not preview this template for the selected server.')); } finally { setBusy(false); }
   };
+  const [propuesta, setPropuesta] = useState('');
+  const apply = async () => {
+    setBusy(true); setError(''); setPropuesta('');
+    try { await invoke('proponer_plantilla', { templateId: selected, guildId }); setPropuesta(t('The proposal is ready in the assistant above: review it and press Apply.')); }
+    catch (e) { setError(`${t('Could not prepare the template proposal.')} ${String(e)}`); } finally { setBusy(false); }
+  };
   const choose = async (file: File | undefined) => {
     setPreview(null); setData(''); setError('');
     if (!file) return;
@@ -90,7 +96,9 @@ export function TemplateTransfer() {
       {target && <div><h5>{t('Template tree')}</h5><ul>{target.document.roles.map(r => <li key={r.key}>{r.name}</li>)}{target.document.channels.filter(c => !c.parent).map(c => <li key={c.key}>{c.name} ({c.kind})<ul>{target.document.channels.filter(child => child.parent === c.key).map(child => <li key={child.key}>{child.name} ({child.kind})</li>)}</ul></li>)}</ul>
       <h5>{t('Differences')}</h5><ul>{target.differences.map((d, i) => <li key={i}>{d}</li>)}</ul>
       <h5>{t('Conflicts')}</h5>{target.conflicts.length ? <ul>{target.conflicts.map((c, i) => <li key={i}>{c}</li>)}</ul> : <p>{t('No conflicts')}</p>}
-      <h5>{t('Planned actions')}</h5><pre>{JSON.stringify(target.actions, null, 2)}</pre></div>}</div>}
+      <h5>{t('Planned actions')}</h5><pre>{JSON.stringify(target.actions, null, 2)}</pre>
+      <Button disabled={busy} onClick={() => void apply()}>{t('Prepare proposal to apply')}</Button>
+      {propuesta && <p role="status">{propuesta}</p>}</div>}</div>}
     {editing && <div>
       <label>{t('Name')} <input value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} /></label>
       <label>{t('Description')} <input value={editing.description} onChange={e => setEditing({ ...editing, description: e.target.value })} /></label>

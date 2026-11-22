@@ -5194,6 +5194,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn plantilla_aplicada_se_detiene_al_cancelar_sin_mas_escrituras() {
+        let (_d, mcp, server) = mcp_con_servidor(TODO, true).await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(rol("1000", "Staff", 1, 8192)))
+            .expect(1)
+            .mount(&server)
+            .await;
+        roles_con_nuevos(&server, &[rol("1000", "Staff", 1, 8192)]).await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id":"31", "type":4, "guild_id":"555", "name":"Grupo", "position":1
+            })))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let documento = crate::template_transfer::parse(r#"{"format":"argus-template","version":1,"name":"T","description":"","roles":[{"key":"staff","name":"Staff","color":12,"permissions":8192}],"channels":[{"key":"group","name":"Grupo","kind":"category","parent":null,"overwrites":[{"role":"staff","allow":1024,"deny":0}]},{"key":"chat","name":"chat","kind":"text","parent":"group","overwrites":[]}]}"#).unwrap();
+        let p = crate::template_aplicar::propuesta_de_documento(&documento);
+        assert_eq!(p.acciones.len(), 3);
+        let cancelar = AtomicBool::new(false);
+        let resumen = mcp
+            .ejecutar_propuesta_con(&p, &cancelar, &mut |_, r| {
+                assert_eq!(r.herramienta, "crear_rol");
+                cancelar.store(true, Ordering::SeqCst);
+            })
+            .await
+            .unwrap();
+        assert_eq!(resumen.hechas, 1);
+        assert_eq!(resumen.canceladas, 2, "{resumen:?}");
+        let bot = mcp.state.get_active_bot().unwrap();
+        let history = crate::operaciones::listar(&mcp.pool, &bot.id, "555")
+            .await
+            .unwrap();
+        assert_eq!(history.len(), 1);
+        assert_ne!(
+            history[0].status, "correct",
+            "a cancelled template is not a success"
+        );
+    }
+
+    #[tokio::test]
     async fn propuesta_verifica_canal_por_id_devuelto() {
         let (_d, mcp, server) = mcp_con_servidor(GESTIONAR_CANALES, true).await;
         let channel = json!({"id":"801", "type":0, "guild_id":"555", "name":"nuevo", "position":1});
