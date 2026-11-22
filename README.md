@@ -260,6 +260,15 @@ cargo test  --manifest-path src-tauri/Cargo.toml
 npm run build            # tsc + vite build
 ```
 
+`npm run e2e:capturas` walks through the whole interface (every sidebar view and
+every Assistant and Members tab, plus the Settings page by sections) in headless
+Chromium (the one Playwright already has in `~/.cache/ms-playwright`) against
+Vite with a simulated Tauri backend and demo data (`scripts/e2e-mock.mjs`). It
+saves one PNG per screen in `E2E_CAPTURAS` (default: `argus-capturas` in the
+system temp folder) and fails on JavaScript errors, unsimulated `invoke`
+commands, technical text (`undefined`, `NaN`, `[object Object]`) or raw 17–20
+digit Discord IDs on screen. It is not part of `npm test`.
+
 Tests use neither the network nor tokens: the Discord client points to a local
 fake Discord. There are optional tests against a real server in
 [`docs/PRUEBA_REAL.md`](docs/PRUEBA_REAL.md). CI runs everything on Linux and
