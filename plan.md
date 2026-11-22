@@ -678,7 +678,7 @@ Verificación manual:
 - [x] Conectores: credenciales en el llavero
   criterio: almacén genérico de credenciales de conectores (no hace falta ningún servicio real: se prueba con un conector falso del catálogo); el usuario activa un conector y su credencial (clave de API o token del propio servicio) se guarda cifrada con el llavero, asociada al servicio, cuenta y servidor; desconectar la borra y deja de ofrecer sus herramientas; nunca pide el token privado de un bot ajeno ni automatiza cuentas personales; ninguna credencial aparece en diagnósticos, logs ni prompts; OAuth queda para más adelante; tests con autorización falsa, expiración y revocación; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Conectores: lectura de varios MCP con aislamiento
+- [x] Conectores: lectura de varios MCP con aislamiento
   criterio: capa de agregación dentro del MCP de ARGUS (la que ya usan los tres agentes), probada con MCP falsos en proceso; solo se exponen las herramientas de lectura que el catálogo versionado lista para cada conector, con nombres `conector__herramienta`; los agentes consultan solo las herramientas de lectura de los conectores habilitados, mediante una capa con nombres sin colisiones y límites por conector; escrituras y herramientas desconocidas no llegan al modelo; la misma política para Claude, Codex y OpenCode; un conector caído no cambia el estado de los otros; tests con dos MCP falsos, herramientas homónimas, caída y cancelación; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Conectores: propuestas para configurar otros bots
