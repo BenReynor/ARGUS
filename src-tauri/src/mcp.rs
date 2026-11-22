@@ -2562,16 +2562,19 @@ impl ArgusMcp {
         let inciertas: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM operation_steps WHERE operation_id=? AND status = 'unverified' AND reason LIKE '%timed out%'")
             .bind(&id).fetch_one(&self.pool).await.map_err(|e| e.to_string())?;
         let (estado, razon) = match &resultado {
-            Err(_) => ("failed", preparacion.as_deref().unwrap()),
+            Err(_) => (crate::operaciones::FAILED, preparacion.as_deref().unwrap()),
             Ok(r) if inciertas > 0 && r.hechas == 0 => (
-                "unverified",
+                crate::operaciones::UNVERIFIED,
                 "The outcome of a timed-out creation is unknown",
             ),
             Ok(r) if r.hechas > 0 && (r.fallidas > 0 || r.omitidas > 0 || r.canceladas > 0) => (
-                "partial",
+                crate::operaciones::PARTIAL,
                 "Some actions were accepted; others were not completed",
             ),
-            Ok(r) if r.fallidas > 0 => ("failed", "No actions were accepted; at least one failed"),
+            Ok(r) if r.fallidas > 0 => (
+                crate::operaciones::FAILED,
+                "No actions were accepted; at least one failed",
+            ),
             Ok(r) if r.canceladas > 0 => (
                 "cancelled",
                 "Operation stopped before all steps were attempted",
@@ -2581,9 +2584,12 @@ impl ArgusMcp {
                 let pendientes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM operation_steps WHERE operation_id=? AND status != 'correct'")
                     .bind(&id).fetch_one(&self.pool).await.map_err(|e| e.to_string())?;
                 if pendientes == 0 {
-                    ("correct", "All results verified")
+                    (crate::operaciones::CORRECT, "All results verified")
                 } else {
-                    ("unverified", "Some results have not been verified")
+                    (
+                        crate::operaciones::UNVERIFIED,
+                        "Some results have not been verified",
+                    )
                 }
             }
         };
@@ -2673,16 +2679,16 @@ impl ArgusMcp {
             let motivo = crate::operaciones::motivo_seguro(&r.mensaje);
             let (status, reason) = match r.estado {
                 EstadoAccion::Ok => (
-                    "unverified",
+                    crate::operaciones::UNVERIFIED,
                     "Discord accepted the action; the result has not been verified",
                 ),
                 EstadoAccion::Error
                     if a.herramienta == "crear_canal"
                         && r.mensaje.contains("create request timed out") =>
                 {
-                    ("unverified", motivo.as_str())
+                    (crate::operaciones::UNVERIFIED, motivo.as_str())
                 }
-                EstadoAccion::Error => ("failed", motivo.as_str()),
+                EstadoAccion::Error => (crate::operaciones::FAILED, motivo.as_str()),
                 EstadoAccion::Omitida => ("skipped", "A required reference could not be resolved"),
             };
             crate::operaciones::paso(&self.pool, id, indice, status, Some(reason))
@@ -2758,7 +2764,7 @@ impl ArgusMcp {
                         &self.pool,
                         id,
                         indice,
-                        "unverified",
+                        crate::operaciones::UNVERIFIED,
                         Some(&self.limpiar(e)),
                     )
                     .await

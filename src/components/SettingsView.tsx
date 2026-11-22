@@ -8,6 +8,7 @@ import { Button, Input, Select, Card, Cargando, EstadoVacio } from './ui';
 import './Vistas.css';
 import { BackupSettings } from './BackupSettings';
 import { DiagnosticReport } from './DiagnosticReport';
+import { Diagnostics } from './Diagnostics';
 import { externalServices, toggleConnector } from '../externalServices';
 import { Save, Trash2, Plus, Server, CheckCircle, AlertCircle, Eye, EyeOff, Copy } from 'lucide-react';
 import { TEMAS, aplicarTema } from '../temas';
@@ -521,6 +522,7 @@ export const SettingsView: React.FC = () => {
         {updateState.status === 'current' && <p role="status">{t('You are up to date.')}</p>}
         {updateState.status === 'unavailable' && <p role="status">{t('Could not check for updates. Try again when you are online.')}</p>}
       </Seccion>
+      <Diagnostics />
       <DiagnosticReport />
       <BackupSettings />
 

@@ -417,6 +417,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
       setPropuesta(ev);
     } catch (e) {
       setConstruccion(null);
+      setErrorAplicar(t('Could not build from the plan'));
       showNotification(mensajeError(e, t('Could not build from the plan')), 'error');
     } finally {
       setConstruyendo(false);
@@ -598,6 +599,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
                   {construyendo ? <Loader2 size={14} className="asistente__giro" /> : <Hammer size={14} />} {construyendo ? t('Building…') : t('Build from plan')}
                 </Button>
               )}
+              {errorAplicar && <Button tamano="sm" onClick={() => useStore.getState().setActiveTab('settings')}>{t('Run diagnostics')}</Button>}
               {planPrevio !== null && (
                 <Button variante="secundario" tamano="sm" onClick={deshacerPlan}><Undo2 size={14} /> {t('Undo')}</Button>
               )}
@@ -875,7 +877,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
                     {t('Done: {done}, failed: {failed}, skipped: {skipped}, cancelled: {cancelled}', { done: resumen.hechas, failed: resumen.fallidas, skipped: resumen.omitidas, cancelled: resumen.canceladas })}
                   </p>
                 )}
-                {errorAplicar && <p className="asistente__error" role="alert">{errorAplicar}</p>}
+                {(errorAplicar || (resumen && (resumen.fallidas > 0))) && <div><p className="asistente__error" role="alert">{errorAplicar}</p><Button onClick={() => useStore.getState().setActiveTab('settings')}>{t('Run diagnostics')}</Button></div>}
                 <div className="asistente__acciones">
                   {aplicando ? (
                     <Button variante="peligro" onClick={detener} disabled={deteniendo}><Square size={14} /> {deteniendo ? t('Stopping after the current action…') : t('Stop')}</Button>

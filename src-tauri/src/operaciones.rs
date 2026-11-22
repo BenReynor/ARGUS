@@ -1,6 +1,12 @@
 //! Registro persistente de propuestas. Nunca guarda argumentos ni respuestas de Discord.
 use sqlx::{Row, SqlitePool};
 
+// Estados compartidos por el historial y el diagnóstico.
+pub const CORRECT: &str = "correct";
+pub const PARTIAL: &str = "partial";
+pub const FAILED: &str = "failed";
+pub const UNVERIFIED: &str = "unverified";
+
 /// Conserva categorías de error conocidas, nunca texto arbitrario de Discord o
 /// argumentos, que pueden incluir contenido de mensajes o credenciales.
 pub fn motivo_seguro(error: &str) -> String {

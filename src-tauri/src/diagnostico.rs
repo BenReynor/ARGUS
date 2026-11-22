@@ -9,24 +9,15 @@ use sqlx::SqlitePool;
 use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum Status {
-    Correct,
-    Warning,
-    Failed,
-    NotChecked,
-}
-
 #[derive(Debug, Serialize)]
 pub struct Check {
     name: &'static str,
-    status: Status,
+    status: &'static str,
     explanation: String,
     checked_at: String,
 }
 
-fn check(name: &'static str, status: Status, explanation: &str, language: &str) -> Check {
+fn check(name: &'static str, status: &'static str, explanation: &str, language: &str) -> Check {
     Check {
         name,
         status,
@@ -35,33 +26,48 @@ fn check(name: &'static str, status: Status, explanation: &str, language: &str) 
     }
 }
 
-async fn run(pool: Option<&SqlitePool>, keyring_available: bool, language: &str) -> Vec<Check> {
-    let accessible = match pool {
-        Some(pool) => matches!(
-            tokio::time::timeout(
-                Duration::from_secs(3),
-                sqlx::query("SELECT 1").execute(pool)
-            )
-            .await,
-            Ok(Ok(_))
-        ),
-        None => false,
+async fn run(
+    pool: Option<&SqlitePool>,
+    keyring_available: bool,
+    language: &str,
+    only: Option<&str>,
+) -> Vec<Check> {
+    if only == Some("keyring") {
+        return vec![keyring_check(keyring_available, language)];
+    }
+    let accessible = if only == Some("configuration") {
+        pool.is_some()
+    } else {
+        match pool {
+            Some(pool) => matches!(
+                tokio::time::timeout(
+                    Duration::from_secs(3),
+                    sqlx::query("SELECT 1").execute(pool)
+                )
+                .await,
+                Ok(Ok(_))
+            ),
+            None => false,
+        }
     };
     let database = if accessible {
         check(
             "database",
-            Status::Correct,
+            crate::operaciones::CORRECT,
             "Database is accessible.",
             language,
         )
     } else {
         check(
             "database",
-            Status::Failed,
+            crate::operaciones::FAILED,
             "Database is unavailable. Check access to the application database and restart ARGUS.",
             language,
         )
     };
+    if only == Some("database") {
+        return vec![database];
+    }
     let config = if accessible {
         match tokio::time::timeout(
             Duration::from_secs(3),
@@ -72,26 +78,26 @@ async fn run(pool: Option<&SqlitePool>, keyring_available: bool, language: &str)
             Ok(Ok(Some(value))) => match serde_json::from_str::<Config>(&value) {
                 Ok(config) if config.validate_ai_time_limits().is_ok() => check(
                     "configuration",
-                    Status::Correct,
+                    crate::operaciones::CORRECT,
                     "Saved configuration is valid.",
                     language,
                 ),
                 _ => check(
                     "configuration",
-                    Status::Failed,
+                    crate::operaciones::FAILED,
                     "Saved configuration is invalid. Review and save the application settings.",
                     language,
                 ),
             },
             Ok(Ok(None)) => check(
                 "configuration",
-                Status::Warning,
+                crate::operaciones::PARTIAL,
                 "No saved configuration exists; defaults are in use.",
                 language,
             ),
             _ => check(
                 "configuration",
-                Status::Failed,
+                crate::operaciones::FAILED,
                 "Configuration could not be read. Check the application database.",
                 language,
             ),
@@ -99,28 +105,35 @@ async fn run(pool: Option<&SqlitePool>, keyring_available: bool, language: &str)
     } else {
         check(
             "configuration",
-            Status::NotChecked,
+            crate::operaciones::UNVERIFIED,
             "Configuration could not be checked because the database is unavailable.",
             language,
         )
     };
-    let keyring = if keyring_available {
+    if only == Some("configuration") {
+        return vec![config];
+    }
+    vec![config, database, keyring_check(keyring_available, language)]
+}
+
+fn keyring_check(keyring_available: bool, language: &str) -> Check {
+    if keyring_available {
         check(
             "keyring",
-            Status::Correct,
+            crate::operaciones::CORRECT,
             "The system keyring was available when encryption was initialized.",
             language,
         )
     } else {
-        check("keyring", Status::Warning, "The system keyring was unavailable when encryption was initialized. Unlock it and restart ARGUS.", language)
-    };
-    vec![config, database, keyring]
+        check("keyring", crate::operaciones::PARTIAL, "The system keyring was unavailable when encryption was initialized. Unlock it and restart ARGUS.", language)
+    }
 }
 
 #[tauri::command]
 pub async fn diagnostico_local(
     app: AppHandle,
     state: State<'_, AppState>,
+    name: Option<String>,
 ) -> Result<Vec<Check>, String> {
     let language = state
         .config
@@ -130,7 +143,13 @@ pub async fn diagnostico_local(
     let pool = app
         .try_state::<SqlitePool>()
         .map(|pool| pool.inner().clone());
-    Ok(run(pool.as_ref(), crypto::keyring_available(), &language).await)
+    Ok(run(
+        pool.as_ref(),
+        crypto::keyring_available(),
+        &language,
+        name.as_deref(),
+    )
+    .await)
 }
 
 // The timeout covers all REST calls together; dropping the future cancels them.
@@ -143,49 +162,60 @@ async fn discord_checks(
     language: &str,
     mut cancel: tokio::sync::broadcast::Receiver<()>,
     timeout: Duration,
+    only: Option<&str>,
 ) -> Vec<Check> {
     let gateway = if gateway_up {
         check(
             "gateway",
-            Status::Correct,
+            crate::operaciones::CORRECT,
             "The active bot Gateway is connected.",
             language,
         )
     } else {
         check(
             "gateway",
-            Status::Failed,
+            crate::operaciones::FAILED,
             "The active bot Gateway is disconnected. Start or reconnect the bot.",
             language,
         )
     };
+    if only == Some("gateway") {
+        return vec![gateway];
+    }
     let permissions = tokio::select! {
         biased;
-        _ = cancel.recv() => check("build_permissions", Status::NotChecked, "Permission check cancelled.", language),
+        _ = cancel.recv() => check("build_permissions", crate::operaciones::UNVERIFIED, "Permission check cancelled.", language),
         result = tokio::time::timeout(timeout, crate::discord::fetch_bot_permissions(token, base_url, guild, bot)) => {
             match result {
                 Ok(Ok(permissions)) => {
                     let missing: Vec<&str> = [("Ver canales", "View Channels"), ("Gestionar canales", "Manage Channels"), ("Gestionar roles", "Manage Roles")]
                         .into_iter().filter_map(|(internal, display)| (!permissions.iter().any(|p| p == internal)).then_some(display)).collect();
                     if missing.is_empty() {
-                        check("build_permissions", Status::Correct, "The bot has the server permissions required to build.", language)
+                        check("build_permissions", crate::operaciones::CORRECT, "The bot has the server permissions required to build.", language)
                     } else {
                         let names = missing.into_iter().map(|name| i18n::tr(language, name)).collect::<Vec<_>>().join(", ");
-                        let mut c = check("build_permissions", Status::Warning, "Missing building permissions. Grant the bot:", language);
+                        let mut c = check("build_permissions", crate::operaciones::PARTIAL, "Missing building permissions. Grant the bot:", language);
                         c.explanation.push_str(&format!(" {names}"));
                         c
                     }
                 }
-                Ok(Err(_)) => check("build_permissions", Status::Failed, "Could not read bot permissions. Check the network and server access.", language),
-                Err(_) => check("build_permissions", Status::Failed, "Permission check timed out. Check the network and retry.", language),
+                Ok(Err(_)) => check("build_permissions", crate::operaciones::FAILED, "Could not read bot permissions. Check the network and server access.", language),
+                Err(_) => check("build_permissions", crate::operaciones::FAILED, "Permission check timed out. Check the network and retry.", language),
             }
         }
     };
-    vec![gateway, permissions]
+    if only == Some("build_permissions") {
+        vec![permissions]
+    } else {
+        vec![gateway, permissions]
+    }
 }
 
 #[tauri::command]
-pub async fn diagnostico_discord(state: State<'_, AppState>) -> Result<Vec<Check>, String> {
+pub async fn diagnostico_discord(
+    state: State<'_, AppState>,
+    name: Option<String>,
+) -> Result<Vec<Check>, String> {
     let (bot, guild, language) = {
         let config = state
             .config
@@ -214,17 +244,33 @@ pub async fn diagnostico_discord(state: State<'_, AppState>) -> Result<Vec<Check
             .lock()
             .map(|task| task.as_ref().is_some_and(|task| !task.is_finished()))
             .unwrap_or(false);
+    if name.as_deref() == Some("gateway") {
+        return Ok(vec![check(
+            "gateway",
+            if gateway_up {
+                crate::operaciones::CORRECT
+            } else {
+                crate::operaciones::FAILED
+            },
+            if gateway_up {
+                "The active bot Gateway is connected."
+            } else {
+                "The active bot Gateway is disconnected. Start or reconnect the bot."
+            },
+            &language,
+        )]);
+    }
     let cancel = state.diagnostic_cancel.subscribe();
     let token = match crypto::decrypt(&bot.token_ciphertext) {
         Ok(token) => token,
         Err(_) => {
-            return Ok(vec![
+            let checks = vec![
                 check(
                     "gateway",
                     if gateway_up {
-                        Status::Correct
+                        crate::operaciones::CORRECT
                     } else {
-                        Status::Failed
+                        crate::operaciones::FAILED
                     },
                     if gateway_up {
                         "The active bot Gateway is connected."
@@ -235,11 +281,15 @@ pub async fn diagnostico_discord(state: State<'_, AppState>) -> Result<Vec<Check
                 ),
                 check(
                     "build_permissions",
-                    Status::Failed,
+                    crate::operaciones::FAILED,
                     "Could not access the bot credential. Check the keyring.",
                     &language,
                 ),
-            ])
+            ];
+            return Ok(checks
+                .into_iter()
+                .filter(|c| name.as_deref().is_none_or(|n| c.name == n))
+                .collect());
         }
     };
     Ok(discord_checks(
@@ -251,6 +301,7 @@ pub async fn diagnostico_discord(state: State<'_, AppState>) -> Result<Vec<Check
         &language,
         cancel,
         Duration::from_secs(10),
+        name.as_deref(),
     )
     .await)
 }
@@ -304,6 +355,7 @@ async fn mcp_checks(
     path: &std::path::Path,
     cancel: &mut tokio::sync::broadcast::Receiver<()>,
     timeout: Duration,
+    session_only: bool,
 ) -> (Result<bool, &'static str>, Result<bool, &'static str>) {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     let mut child = match tokio::process::Command::new(path)
@@ -334,6 +386,9 @@ async fn mcp_checks(
         }
         if !session {
             return Ok(false);
+        }
+        if session_only {
+            return Ok(true);
         }
         stdin.write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}\n").await.map_err(|_| "failed")?;
         while let Some(line) = lines.next_line().await.map_err(|_| "failed")? {
@@ -367,6 +422,7 @@ async fn agent_checks(
     language: &str,
     cancel: &mut tokio::sync::broadcast::Receiver<()>,
     timeout: Duration,
+    only: Option<&str>,
 ) -> Vec<Check> {
     let names = match name {
         "claude" => ["claude_binary", "claude_session", "claude_response"],
@@ -378,31 +434,42 @@ async fn agent_checks(
         return vec![
             check(
                 names[0],
-                Status::Failed,
+                crate::operaciones::FAILED,
                 "Binary not found. Install or configure it.",
                 language,
             ),
             check(
                 names[1],
-                Status::NotChecked,
+                crate::operaciones::UNVERIFIED,
                 "Session was not checked.",
                 language,
             ),
             check(
                 names[2],
-                Status::NotChecked,
+                crate::operaciones::UNVERIFIED,
                 "Response was not checked.",
                 language,
             ),
-        ];
+        ]
+        .into_iter()
+        .filter(|c| only.is_none_or(|n| c.name == n))
+        .collect();
     };
-    let binary = check(names[0], Status::Correct, "Binary found.", language);
+    let binary = check(
+        names[0],
+        crate::operaciones::CORRECT,
+        "Binary found.",
+        language,
+    );
+    if only == Some(names[0]) {
+        return vec![binary];
+    }
     if name == "mcp" {
-        let (session, response) = mcp_checks(&path, cancel, timeout).await;
+        let (session, response) = mcp_checks(&path, cancel, timeout, only == Some(names[1])).await;
         let result = |name, outcome| match outcome {
             Ok(true) => check(
                 name,
-                Status::Correct,
+                crate::operaciones::CORRECT,
                 if name == names[1] {
                     "Session available."
                 } else {
@@ -412,7 +479,7 @@ async fn agent_checks(
             ),
             Ok(false) => check(
                 name,
-                Status::Failed,
+                crate::operaciones::FAILED,
                 if name == names[1] {
                     "MCP session unavailable. Check its initialization."
                 } else {
@@ -426,54 +493,67 @@ async fn agent_checks(
             binary,
             result(names[1], session),
             result(names[2], response),
-        ];
+        ]
+        .into_iter()
+        .filter(|c| only.is_none_or(|n| c.name == n))
+        .collect();
     }
-    let session = {
-        let args: &[&str] = match name {
-            "claude" => &["auth", "status", "--json"],
-            "codex" => &["login", "status"],
-            _ => &["auth", "list"],
-        };
-        match process_check(&path, args, None, cancel, timeout).await {
-            Ok(output) => {
-                let text = String::from_utf8_lossy(&output.stdout);
-                let available = output.status.success()
-                    && match name {
-                        "claude" => serde_json::from_slice::<serde_json::Value>(&output.stdout)
-                            .ok()
-                            .and_then(|v| v["loggedIn"].as_bool())
-                            .unwrap_or(false),
-                        "opencode" => {
-                            !text.to_lowercase().contains("0 credentials")
-                                && !text.trim().is_empty()
-                        }
-                        _ => true,
-                    };
-                check(
-                    names[1],
-                    if available {
-                        Status::Correct
-                    } else {
-                        Status::Warning
-                    },
-                    if available {
-                        "Session available."
-                    } else {
-                        "No session available. Sign in separately if needed."
-                    },
-                    language,
-                )
+    let session = if only == Some(names[2]) {
+        None
+    } else {
+        Some({
+            let args: &[&str] = match name {
+                "claude" => &["auth", "status", "--json"],
+                "codex" => &["login", "status"],
+                _ => &["auth", "list"],
+            };
+            match process_check(&path, args, None, cancel, timeout).await {
+                Ok(output) => {
+                    let text = String::from_utf8_lossy(&output.stdout);
+                    let available = output.status.success()
+                        && match name {
+                            "claude" => serde_json::from_slice::<serde_json::Value>(&output.stdout)
+                                .ok()
+                                .and_then(|v| v["loggedIn"].as_bool())
+                                .unwrap_or(false),
+                            "opencode" => {
+                                !text.to_lowercase().contains("0 credentials")
+                                    && !text.trim().is_empty()
+                            }
+                            _ => true,
+                        };
+                    check(
+                        names[1],
+                        if available {
+                            crate::operaciones::CORRECT
+                        } else {
+                            crate::operaciones::PARTIAL
+                        },
+                        if available {
+                            "Session available."
+                        } else {
+                            "No session available. Sign in separately if needed."
+                        },
+                        language,
+                    )
+                }
+                Err(reason) => process_failure(names[1], reason, language),
             }
-            Err(reason) => process_failure(names[1], reason, language),
-        }
+        })
     };
-    if session.status == Status::NotChecked {
+    if only == Some(names[1]) {
+        return vec![session.unwrap()];
+    }
+    if session
+        .as_ref()
+        .is_some_and(|s| s.status == crate::operaciones::UNVERIFIED)
+    {
         return vec![
             binary,
-            session,
+            session.unwrap(),
             check(
                 names[2],
-                Status::NotChecked,
+                crate::operaciones::UNVERIFIED,
                 "Process check cancelled.",
                 language,
             ),
@@ -483,35 +563,44 @@ async fn agent_checks(
         .await
         .map(|o| o.status.success() && !o.stdout.is_empty());
     let response = match response {
-        Ok(true) => check(names[2], Status::Correct, "Process responded.", language),
+        Ok(true) => check(
+            names[2],
+            crate::operaciones::CORRECT,
+            "Process responded.",
+            language,
+        ),
         Ok(false) => check(
             names[2],
-            Status::Failed,
+            crate::operaciones::FAILED,
             "Process did not respond. Check its installation.",
             language,
         ),
         Err(reason) => process_failure(names[2], reason, language),
     };
-    vec![binary, session, response]
+    if only == Some(names[2]) {
+        vec![response]
+    } else {
+        vec![binary, session.unwrap(), response]
+    }
 }
 
 fn process_failure(name: &'static str, reason: &str, language: &str) -> Check {
     match reason {
         "cancelled" => check(
             name,
-            Status::NotChecked,
+            crate::operaciones::UNVERIFIED,
             "Process check cancelled.",
             language,
         ),
         "timeout" => check(
             name,
-            Status::Failed,
+            crate::operaciones::FAILED,
             "Process check timed out. Retry or check the installation.",
             language,
         ),
         _ => check(
             name,
-            Status::Failed,
+            crate::operaciones::FAILED,
             "Process could not be started. Check its installation.",
             language,
         ),
@@ -519,16 +608,27 @@ fn process_failure(name: &'static str, reason: &str, language: &str) -> Check {
 }
 
 #[tauri::command]
-pub async fn diagnostico_agentes(state: State<'_, AppState>) -> Result<Vec<Check>, String> {
+pub async fn diagnostico_agentes(
+    state: State<'_, AppState>,
+    name: Option<String>,
+) -> Result<Vec<Check>, String> {
     let language = state
         .config
         .lock()
         .map(|c| c.ui_language.clone())
         .unwrap_or_else(|_| "en".into());
+    let name_filter = name.clone();
     let dirs = crate::asistente::carpetas_busqueda();
     let mut cancel = state.diagnostic_cancel.subscribe();
     let mut checks = Vec::new();
-    for name in ["claude", "codex", "opencode", "mcp"] {
+    for agent in ["claude", "codex", "opencode", "mcp"] {
+        if name
+            .as_ref()
+            .is_some_and(|target| !target.starts_with(&format!("{agent}_")))
+        {
+            continue;
+        }
+        let name = agent;
         let path = if name == "mcp" {
             crate::commands::ruta_del_mcp()
                 .ok()
@@ -537,7 +637,15 @@ pub async fn diagnostico_agentes(state: State<'_, AppState>) -> Result<Vec<Check
         } else {
             crate::asistente::buscar_binario(name, &dirs)
         };
-        let result = agent_checks(name, path, &language, &mut cancel, Duration::from_secs(5)).await;
+        let result = agent_checks(
+            name,
+            path,
+            &language,
+            &mut cancel,
+            Duration::from_secs(5),
+            name_filter.as_deref(),
+        )
+        .await;
         let cancelled = result
             .iter()
             .any(|c| c.explanation == i18n::tr(&language, "Process check cancelled."));
@@ -559,6 +667,66 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
+    async fn retry_runs_only_selected_agent_check() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("argus-retry-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("agent");
+        let log = dir.join("calls");
+        std::fs::write(
+            &path,
+            format!(
+                "#!/bin/sh\necho \"$*\" >> '{}'{nl}echo ok{nl}",
+                log.display(),
+                nl = "\n"
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let (_tx, mut rx) = tokio::sync::broadcast::channel(4);
+        for target in ["codex_binary", "codex_session", "codex_response"] {
+            let checks = agent_checks(
+                "codex",
+                Some(path.clone()),
+                "en",
+                &mut rx,
+                Duration::from_secs(1),
+                Some(target),
+            )
+            .await;
+            assert_eq!(checks.len(), 1);
+            assert_eq!(checks[0].name, target);
+        }
+        assert_eq!(
+            std::fs::read_to_string(log).unwrap(),
+            "login status\n--version\n"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn retry_gateway_does_not_request_permissions() {
+        let server = MockServer::start().await;
+        let (_tx, rx) = tokio::sync::broadcast::channel(1);
+        let checks = discord_checks(
+            "fake",
+            Some(&server.address().to_string()),
+            "123",
+            "555",
+            true,
+            "en",
+            rx,
+            Duration::from_secs(1),
+            Some("gateway"),
+        )
+        .await;
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].name, "gateway");
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
     async fn fake_agents_missing_session_binary_hang_and_cancel() {
         use std::os::unix::fs::PermissionsExt;
         let dir = std::env::temp_dir().join(format!("argus-diagnostic-{}", std::process::id()));
@@ -573,16 +741,25 @@ mod tests {
             "en",
             &mut rx,
             Duration::from_secs(1),
+            None,
         )
         .await;
         assert_eq!(
             [&checks[0].status, &checks[1].status, &checks[2].status],
-            [&Status::Correct, &Status::Warning, &Status::Correct]
+            [
+                &crate::operaciones::CORRECT,
+                &crate::operaciones::PARTIAL,
+                &crate::operaciones::CORRECT
+            ]
         );
-        let checks = agent_checks("codex", None, "en", &mut rx, Duration::from_secs(1)).await;
+        let checks = agent_checks("codex", None, "en", &mut rx, Duration::from_secs(1), None).await;
         assert_eq!(
             [&checks[0].status, &checks[1].status, &checks[2].status],
-            [&Status::Failed, &Status::NotChecked, &Status::NotChecked]
+            [
+                &crate::operaciones::FAILED,
+                &crate::operaciones::UNVERIFIED,
+                &crate::operaciones::UNVERIFIED
+            ]
         );
         std::fs::write(&path, "#!/bin/sh\nexec sleep 10\n").unwrap();
         let checks = agent_checks(
@@ -591,14 +768,23 @@ mod tests {
             "en",
             &mut rx,
             Duration::from_millis(30),
+            None,
         )
         .await;
         assert!(checks[1].explanation.contains("timed out"));
         assert!(checks[2].explanation.contains("timed out"));
         tx.send(()).unwrap();
-        let checks = agent_checks("codex", Some(path), "en", &mut rx, Duration::from_secs(2)).await;
-        assert_eq!(checks[1].status, Status::NotChecked);
-        assert_eq!(checks[2].status, Status::NotChecked);
+        let checks = agent_checks(
+            "codex",
+            Some(path),
+            "en",
+            &mut rx,
+            Duration::from_secs(2),
+            None,
+        )
+        .await;
+        assert_eq!(checks[1].status, crate::operaciones::UNVERIFIED);
+        assert_eq!(checks[2].status, crate::operaciones::UNVERIFIED);
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -629,11 +815,16 @@ echo '{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}'
             "en",
             &mut rx,
             Duration::from_secs(1),
+            None,
         )
         .await;
         assert_eq!(
             [&checks[0].status, &checks[1].status, &checks[2].status],
-            [&Status::Correct, &Status::Correct, &Status::Correct]
+            [
+                &crate::operaciones::CORRECT,
+                &crate::operaciones::CORRECT,
+                &crate::operaciones::CORRECT
+            ]
         );
         write_fake(
             "#!/bin/sh
@@ -647,10 +838,11 @@ echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{}}'
             "en",
             &mut rx,
             Duration::from_secs(1),
+            None,
         )
         .await;
-        assert_eq!(checks[1].status, Status::Failed);
-        assert_eq!(checks[2].status, Status::Failed);
+        assert_eq!(checks[1].status, crate::operaciones::FAILED);
+        assert_eq!(checks[2].status, crate::operaciones::FAILED);
         write_fake(
             "#!/bin/sh
 read line
@@ -658,9 +850,16 @@ echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}'
 exec sleep 10
 ",
         );
-        let checks =
-            agent_checks("mcp", Some(path), "en", &mut rx, Duration::from_millis(40)).await;
-        assert_eq!(checks[1].status, Status::Correct);
+        let checks = agent_checks(
+            "mcp",
+            Some(path),
+            "en",
+            &mut rx,
+            Duration::from_millis(40),
+            None,
+        )
+        .await;
+        assert_eq!(checks[1].status, crate::operaciones::CORRECT);
         assert!(checks[2].explanation.contains("timed out"));
         std::fs::remove_dir_all(dir).unwrap();
     }
@@ -696,10 +895,11 @@ exec sleep 10
             "en",
             rx,
             Duration::from_secs(20),
+            None,
         )
         .await;
-        assert_eq!(checks[0].status, Status::Failed);
-        assert_eq!(checks[1].status, Status::Warning);
+        assert_eq!(checks[0].status, crate::operaciones::FAILED);
+        assert_eq!(checks[1].status, crate::operaciones::PARTIAL);
         assert!(checks[1].explanation.contains("Manage Roles"));
         assert!(server
             .received_requests()
@@ -725,9 +925,10 @@ exec sleep 10
             "en",
             rx,
             Duration::from_millis(200),
+            None,
         )
         .await;
-        assert_eq!(checks[1].status, Status::Failed);
+        assert_eq!(checks[1].status, crate::operaciones::FAILED);
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/api/v10/guilds/555"))
@@ -744,6 +945,7 @@ exec sleep 10
             "en",
             tx.subscribe(),
             Duration::from_millis(30),
+            None,
         )
         .await;
         assert!(checks[1].explanation.contains("timed out"));
@@ -758,18 +960,19 @@ exec sleep 10
             "en",
             rx,
             Duration::from_secs(1),
+            None,
         )
         .await;
-        assert_eq!(checks[1].status, Status::NotChecked);
+        assert_eq!(checks[1].status, crate::operaciones::UNVERIFIED);
     }
     #[tokio::test]
     async fn inaccessible_database_and_missing_keyring_are_reported_without_secrets() {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
         pool.close().await;
-        let checks = run(Some(&pool), false, "en").await;
-        assert_eq!(checks[0].status, Status::NotChecked);
-        assert_eq!(checks[1].status, Status::Failed);
-        assert_eq!(checks[2].status, Status::Warning);
+        let checks = run(Some(&pool), false, "en", None).await;
+        assert_eq!(checks[0].status, crate::operaciones::UNVERIFIED);
+        assert_eq!(checks[1].status, crate::operaciones::FAILED);
+        assert_eq!(checks[2].status, crate::operaciones::PARTIAL);
         assert!(checks.iter().all(|c| !c.explanation.is_empty()
             && chrono::DateTime::parse_from_rfc3339(&c.checked_at).is_ok()));
     }
@@ -785,10 +988,10 @@ exec sleep 10
             .execute(&pool)
             .await
             .unwrap();
-        let checks = run(Some(&pool), true, "es").await;
-        assert_eq!(checks[0].status, Status::Failed);
-        assert_eq!(checks[1].status, Status::Correct);
-        assert_eq!(checks[2].status, Status::Correct);
+        let checks = run(Some(&pool), true, "es", None).await;
+        assert_eq!(checks[0].status, crate::operaciones::FAILED);
+        assert_eq!(checks[1].status, crate::operaciones::CORRECT);
+        assert_eq!(checks[2].status, crate::operaciones::CORRECT);
         assert!(!serde_json::to_string(&checks)
             .unwrap()
             .contains("secret-password-token"));
