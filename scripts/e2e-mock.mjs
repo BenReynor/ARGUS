@@ -3,7 +3,7 @@
 // invoke que no esté aquí se anota en window.__e2eSinSimular y el recorrido falla.
 
 /** Se serializa y ejecuta dentro de la página: no puede usar variables de fuera. */
-function backendSimulado() {
+function backendSimulado(idioma) {
   const ahora = new Date('2026-11-20T12:00:00Z').getTime();
   const iso = (dias) => new Date(ahora - dias * 86400000).toISOString();
 
@@ -62,10 +62,10 @@ function backendSimulado() {
     plan_provider: 'claude', ask_provider: 'claude', cli_agents: {}, ai_time_limit_minutes: 10, ai_order_time_limit_minutes: 10,
     context_limit_per_user: 20, context_limit_per_channel: 50, auto_cleanup_enabled: false, archive_retention_months: 6,
     vigilance: { preset: 'default', enabled_events: [], filters: {} }, backup: { enabled: true, interval_hours: 24, retention_count: 7 },
-    language: 'en', auto_update: false, telemetry_opt_in: false, anti_spam_cooldown_secs: 5,
+    language: idioma, auto_update: false, telemetry_opt_in: false, anti_spam_cooldown_secs: 5,
     responder_triggers: { mention: true, slash_command: true, prefix: null, allowed_channels: [], blocked_channels: [], respond_to_bots: false, respond_in_dms: false },
     alerts: { enabled: true, sound: false, only_when_unfocused: true, telegram_enabled: false, telegram_events: [] },
-    auto_sync_map: true, sync_interval_secs: 300, bot_engine: 'twilight', ui_theme: 'discord', ui_mode: 'dark', ui_language: 'en',
+    auto_sync_map: true, sync_interval_secs: 300, bot_engine: 'twilight', ui_theme: 'discord', ui_mode: 'dark', ui_language: idioma,
   };
   const estadoBot = { running: true, connected: true, bot_name: 'Demo Bot', guild_name: guild.name, guild_id: GUILD, member_count: 64, latency_ms: 42, last_error: null, warning: null };
   const ajustesGuild = {
@@ -85,7 +85,7 @@ function backendSimulado() {
     findings: [
       { tipo: 'role_grant', role_id: roles[3].id, role_name: 'Helper', permission: 'Administrator', permission_bit: 3, permissions_bits: '8', checked_at: iso(0) },
       { tipo: 'channel_overwrite_grant', channel_id: '500000000000000011', target_id: roles[5].id, target_type: 0, permission: 'Manage Messages', permission_bit: 13, evidence_bits: '8192', checked_at: iso(0) },
-      { tipo: 'privacy_discrepancy', channel_id: '500000000000000012', member_id: miembros[20].user_id, expected_can_view: false, actual_can_view: true, expectation_source: 'plan', expectation_evidence: 'logs is staff only', checked_at: iso(0) },
+      { tipo: 'privacy_discrepancy', channel_id: '500000000000000012', expected_can_view: false, actual_can_view: true, expectation_source: 'plan', expectation_evidence: 'logs is staff only', checked_at: iso(0) },
     ],
   };
   const operaciones = [
@@ -117,7 +117,7 @@ function backendSimulado() {
     listar_agentes_ia: () => [{ agente: 'claude', ruta: '/usr/bin/claude', modelos: ['sonnet', 'opus', 'haiku'] }],
     listar_avisos_recientes: () => [], leer_plan_servidor: () => '# Demo plan\n\n## Information\n- text: rules\n- text: announcements\n', leer_contexto_servidor: () => 'A friendly community about art and games.',
     guardar_plan_servidor: vacio, guardar_contexto_servidor: vacio, leer_conversacion: vacio, guardar_conversacion: vacio, nueva_conversacion: vacio,
-    resumir_plan: () => ({ categorias: 2, canales: 5, roles: 3 }), coste_descripciones_plan: () => ({ descripciones: 0, llamadas: 0, confirmar: false }),
+    resumir_plan: () => ({ categorias: 2, canales: 5, roles: 3, texto_libre: 0, tiene_estructura: true, avisos: [] }), coste_descripciones_plan: () => ({ descripciones: 0, llamadas: 0, confirmar: false }),
     list_templates: () => [], invite_url: () => 'https://discord.com/oauth2/authorize?client_id=demo', ruta_mcp: () => '/opt/argus/argus-mcp',
     skill_destino: () => ({ path: '/home/demo/.claude/skills/argus', exists: false }),
     connector_states: () => [], backup_schedule: () => ({ enabled: false, conversations: false, folder: '' }),
@@ -147,6 +147,6 @@ function backendSimulado() {
   };
 }
 
-export async function instalarMock(pagina) {
-  await pagina.addInitScript(backendSimulado);
+export async function instalarMock(pagina, idioma = 'en') {
+  await pagina.addInitScript(backendSimulado, idioma);
 }
