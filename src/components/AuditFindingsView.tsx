@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ShieldAlert, TriangleAlert } from 'lucide-react';
+import { saveAuditSummary } from '../panel';
 import { aplicarPropuesta, permissionAudit } from '../api/tauri';
 import { canCorrect, correctionOutcome, filterFindings, findingRole, findingSeverity, groupFindings, summarize } from '../auditFindings';
 import type { AuditReport, Finding, PreparedCorrection } from '../auditFindings';
@@ -58,7 +59,7 @@ export const AuditFindingsView: React.FC = () => {
     setReport(null); setError(''); setChannel(''); setRole(''); setSeverity(''); setCorrection(null); setResult(null);
     if (!guild || !bot) { setLoading(false); return () => { current = false; }; }
     setLoading(true);
-    permissionAudit(guild).then(result => { if (current) setReport(result); })
+    permissionAudit(guild).then(result => { saveAuditSummary(localStorage, bot, guild, result); if (current) setReport(result); })
       .catch(e => { if (current) setError(typeof e === 'string' ? e : t('Could not run the permission audit')); })
       .finally(() => { if (current) setLoading(false); });
     return () => { current = false; };

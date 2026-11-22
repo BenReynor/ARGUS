@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useServerMap, useBotStatus, useAddLog, useShowNotification, useSetActiveTab, useConfig, useActiveGuildId, useGuildPanel, useLoadGuildPanel, PERMISOS_REQUERIDOS, useRecuentoMiembros } from '../store/useStore';
-import { resyncMap, onSyncProgress } from '../api/tauri';
+import { resyncMap, onSyncProgress, startBot, serverSnapshots, listOperations } from '../api/tauri';
+import type { ServerSnapshotItem } from '../api/tauri';
+import type { Operation } from '../activity';
+import { latestSnapshot, readAuditSummary, recentOperations } from '../panel';
 import type { SyncProgress } from '../api/tauri';
 import { Avatar, Badge, Button, Card, Cargando, EstadoVacio, ErrorPanel } from './ui';
 import { CabeceraVista } from './EstadoVista';
@@ -44,7 +47,23 @@ const explicacionPermiso = (permiso: string): string => {
   }
 };
 
-const ahora = () => new Date().toLocaleTimeString();
+const estadoOperacion = (status: string): string => {
+  switch (status) {
+    case 'pending': return t('Pending');
+    case 'in_progress': return t('In progress');
+    case 'verifying': return t('Verifying');
+    case 'correct': return t('Verified');
+    case 'unverified': return t('Unverified');
+    case 'partial': return t('Partial');
+    case 'failed': return t('Failed');
+    case 'skipped': return t('Skipped');
+    case 'cancelled': return t('Cancelled');
+    case 'interrupted': return t('Interrupted');
+    default: return t('Unknown status');
+  }
+};
+
+const ahora =() => new Date().toLocaleTimeString();
 
 export const Dashboard: React.FC = () => {
   const serverMap = useServerMap();
@@ -60,6 +79,10 @@ export const Dashboard: React.FC = () => {
   const [resyncing, setResyncing] = useState(false);
   const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [actividad, setActividad] = useState<Actividad[]>([]);
+  const [snapshots, setSnapshots] = useState<ServerSnapshotItem[] | null>(null);
+  const [autoSnap, setAutoSnap] = useState<boolean | null>(null);
+  const [operaciones, setOperaciones] = useState<Operation[] | null>(null);
+  const [encendiendo, setEncendiendo] = useState(false);
   const anterior = useRef<{ canales: number; roles: number; miembros: number } | null>(null);
 
   useEffect(() => {
@@ -68,6 +91,24 @@ export const Dashboard: React.FC = () => {
       desuscribir.then((fn) => fn()).catch(() => {});
     };
   }, []);
+
+  // Solo lectura local (SQLite): ni snapshots ni operaciones llaman a Discord.
+  const botId = config.active_bot_id;
+  useEffect(() => {
+    setSnapshots(null); setAutoSnap(null); setOperaciones(null);
+    if (!botId || !activeGuildId) return;
+    let activo = true;
+    serverSnapshots(botId, activeGuildId, { op: 'list' })
+      .then((l) => { if (activo) { setSnapshots(l.snapshots); setAutoSnap(l.schedule.enabled); } })
+      .catch(() => { if (activo) setSnapshots([]); });
+    listOperations().then((o) => { if (activo) setOperaciones(o); }).catch(() => { if (activo) setOperaciones([]); });
+    return () => { activo = false; };
+  }, [botId, activeGuildId]);
+
+  const encender = async () => {
+    setEncendiendo(true);
+    try { await startBot(); } catch (e) { showNotification(String(e), 'error'); } finally { setEncendiendo(false); }
+  };
 
   // Sin categorías (tipo 4), igual que la vista Canales.
   const canales = serverMap?.channels.filter((c) => c.channel_type !== 4).length ?? 0;
@@ -208,6 +249,58 @@ export const Dashboard: React.FC = () => {
         {faltan.length > 0 && (
           <p className="dash__permiso-nota">{t('{count} permissions missing: grant them to the bot role in Discord to enable those actions.', { count: faltan.length })}</p>
         )}
+      </Card>
+
+      <Card titulo={t('Bot and Gateway')}>
+        <div className="dash__fila">
+          <Badge tono={botStatus.running ? 'exito' : 'neutro'}>{botStatus.running ? t('Bot on') : t('Bot off')}</Badge>
+          <Badge tono={enVivo ? 'exito' : 'peligro'}>{enVivo ? t('● Gateway live') : t('○ Gateway disconnected')}</Badge>
+          {!botStatus.running && <Button variante="secundario" cargando={encendiendo} onClick={encender}>{t('Turn on')}</Button>}
+          <Button variante="secundario" onClick={() => setActiveTab('settings')}>{t('Go to Settings')}</Button>
+        </div>
+      </Card>
+
+      <Card titulo={t('Latest snapshot')}>
+        {snapshots === null ? <Cargando lineas={1} /> : (
+          <div className="dash__fila">
+            <span>{(() => { const u = latestSnapshot(snapshots); return u ? `${u.name} · ${new Date(u.created_at).toLocaleString()}` : t('No snapshots yet.'); })()}</span>
+            {autoSnap !== null && <Badge tono={autoSnap ? 'exito' : 'neutro'}>{autoSnap ? t('Automatic snapshots on') : t('Automatic snapshots off')}</Badge>}
+            <Button variante="secundario" onClick={() => setActiveTab('backups')}>{t('Open snapshots')}</Button>
+          </div>
+        )}
+      </Card>
+
+      <Card titulo={t('Last audit')}>
+        {(() => {
+          const a = botId ? readAuditSummary(localStorage, botId, activeGuildId) : null;
+          return (
+            <div className="dash__fila">
+              <span>{a
+                ? t('{total} findings ({high} high) · {date}', { total: a.summary.total, high: a.summary.high, date: new Date(a.checked_at).toLocaleString() })
+                : t('The permission audit has not been run yet.')}</span>
+              <Button variante="secundario" onClick={() => setActiveTab('permission-audit')}>{a ? t('Open audit') : t('Run audit')}</Button>
+            </div>
+          );
+        })()}
+      </Card>
+
+      <Card titulo={t('Latest operations')}>
+        {operaciones === null ? <Cargando lineas={2} /> : (() => {
+          const ult = recentOperations(operaciones, activeGuildId);
+          return ult.length === 0 ? (
+            <span className="dash__kpi-etiqueta">{t('No operations yet.')}</span>
+          ) : (
+            <ul className="dash__actividad">
+              {ult.map((o) => (
+                <li key={o.id}>
+                  <span className="dash__hora">{new Date(o.started_at).toLocaleString()}</span>
+                  <span>{estadoOperacion(o.status)}</span>
+                </li>
+              ))}
+            </ul>
+          );
+        })()}
+        <Button variante="secundario" onClick={() => setActiveTab('activity')}>{t('Open activity')}</Button>
       </Card>
 
       <Card titulo={t('Synchronization')}>
