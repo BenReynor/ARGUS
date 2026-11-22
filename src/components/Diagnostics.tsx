@@ -5,7 +5,17 @@ import { operationProgress } from '../activity';
 import { allCorrect, groups, groupsToRun, initialChecks, mergeChecks } from '../diagnostics';
 import type { DiagnosticCheck } from '../diagnostics';
 import { Button, Card } from './ui';
+import { CheckCircle, XCircle, AlertCircle, Loader2, CircleDashed, RefreshCw } from 'lucide-react';
 
+function statusIcon(status: string): any {
+  switch (status) {
+    case 'correct': return CheckCircle;
+    case 'failed': return XCircle;
+    case 'partial': case 'unverified': return AlertCircle;
+    case 'in_progress': return Loader2;
+    default: return CircleDashed;
+  }
+}
 function label(name: string) {
  const labels: Record<string, string> = {
   configuration: t('Configuration'), database: t('Database'), keyring: t('Keyring'),
@@ -45,10 +55,22 @@ export function Diagnostics() {
     {busy && <Button onClick={() => { cancelled.current = true; void invoke('cancelar_diagnostico_discord'); }}>{t('Cancel')}</Button>}
     <p role="status">{t('Checks completed: {done} of {total}', { done: progress.done, total: progress.total })}</p>
     {allCorrect(checks) && <p>{t('All checks passed.')}</p>}
-    <ul>{checks.map(c => <li key={c.name}><strong>{label(c.name)}</strong> — {t(c.status)}
-      {c.checked_at && <> · {t('Last checked')}: {new Date(c.checked_at).toLocaleString()}</>}
-      {c.explanation && <p>{c.explanation}</p>}
-      <Button disabled={busy} onClick={() => void run(c.name)}>{t('Retry check')}</Button>
-    </li>)}</ul>
+    <table className="diag-tabla">
+      <thead><tr>
+        <th scope="col">{t('Component')}</th>
+        <th scope="col">{t('Status')}</th>
+        <th scope="col">{t('Last checked')}</th>
+        <th scope="col"><span className="vista__solo-lector">{t('Retry check')}</span></th>
+      </tr></thead>
+      <tbody>{checks.map(c => {
+        const Icono = statusIcon(c.status);
+        return <tr key={c.name} data-testid={`diag-${c.name}`}>
+          <th scope="row">{label(c.name)}{c.explanation && <small className="diag-tabla__nota">{c.explanation}</small>}</th>
+          <td><span className={`diag-estado diag-estado--${c.status}`}><Icono size={14} aria-hidden="true" /> {t(c.status)}</span></td>
+          <td>{c.checked_at ? new Date(c.checked_at).toLocaleString() : '—'}</td>
+          <td><Button variante="secundario" tamano="sm" disabled={busy} title={t('Retry check')} aria-label={`${t('Retry check')}: ${label(c.name)}`} onClick={() => void run(c.name)}><RefreshCw size={14} /></Button></td>
+        </tr>;
+      })}</tbody>
+    </table>
   </Card>;
 }

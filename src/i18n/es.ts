@@ -1296,4 +1296,12 @@ export const es: Record<string, string> = {
   "How to use it": "Cómo se usa",
   "Limits": "Límites",
   "No manual section matches your search": "Ninguna sección del manual coincide con tu búsqueda",
+  "Settings sections": "Secciones de Config",
+  "Bots and server": "Bots y servidor",
+  "Appearance and language": "Apariencia e idioma",
+  "AI and MCP": "IA y MCP",
+  "Configuration backups": "Copias de configuración",
+  "Manual configuration": "Configuración manual",
+  "For services without an available configuration API or MCP.": "Para servicios sin API de configuración ni MCP disponibles.",
+  "Component": "Componente",
 };
