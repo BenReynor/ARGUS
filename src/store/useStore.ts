@@ -33,7 +33,7 @@ export const motivoPermisoAusente = (permissions: string[] | null, requerido: st
     : null;
 
 export type ToastType = 'info' | 'success' | 'error' | 'warning';
-export interface ToastItem { id: number; message: string; type: ToastType }
+export interface ToastItem { id: number; message: string; type: ToastType; operationId?: string; botId?: string }
 export interface LogEntry { ts: string; texto: string }
 
 let siguienteToast = 1;
@@ -73,7 +73,7 @@ interface AppState {
   refreshServerMap: () => Promise<void>;
 
   // UI state
-  activeTab: 'backups' | 'dashboard' | 'channels' | 'members' | 'roles' | 'servidor' | 'asistente' | 'settings' | 'logs';
+  activeTab: 'permission-audit' | 'activity' | 'backups' | 'dashboard' | 'channels' | 'members' | 'roles' | 'servidor' | 'asistente' | 'settings' | 'logs';
   setActiveTab: (tab: AppState['activeTab']) => void;
   
   selectedChannel: Channel | null;
@@ -89,7 +89,9 @@ interface AppState {
 
   // Notifications
   notifications: ToastItem[];
-  showNotification: (message: string, type: ToastType) => void;
+  showNotification: (message: string, type: ToastType, operationId?: string, botId?: string) => void;
+  activityOperationId: string | null;
+  openActivityOperation: (id: string) => void;
   hideNotification: (id: number) => void;
 
   // Loading states
@@ -280,9 +282,11 @@ export const useStore = create<AppState>()(
 
       // Notifications
       notifications: [],
-      showNotification: (message, type) =>
+      activityOperationId: null,
+      openActivityOperation: (id) => set({ activeTab: 'activity', activityOperationId: id }),
+      showNotification: (message, type, operationId, botId) =>
         set((state) => ({
-          notifications: [...state.notifications, { id: siguienteToast++, message, type }].slice(-MAX_TOASTS),
+          notifications: [...state.notifications, { id: siguienteToast++, message, type, operationId, botId }].slice(-MAX_TOASTS),
         })),
       hideNotification: (id) => set((state) => ({ notifications: state.notifications.filter((n) => n.id !== id) })),
 

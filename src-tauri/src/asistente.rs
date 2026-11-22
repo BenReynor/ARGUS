@@ -1265,7 +1265,9 @@ pub fn prompt_asistente_con_mapa(
         plan
     };
     let mut p = format!(
-        "For permissions, use informe_permisos, explain the evidence and its limitations; never claim the server is safe from a partial report. If requested, prepare a correction proposal for user review and Apply, including destructive confirmations. Never execute it yourself.\n\nFor snapshot restoration, use listar_snapshots, comparar_snapshot and info_restauracion. Explain every conflict and unavailable item in plain language. Never claim restoration is done. In Execute mode return the exact reviewed restore action as a proposal and ask the user to confirm before applying. Never call aplicar_restauracion directly.\n\nYou are the assistant built into ARGUS, a desktop app to administer Discord servers \
+        "For the template library, use listar_plantillas and consultar_plantilla to discover and read templates yourself. When basing a plan on one, state its name. To suggest a new library version, return a complete portable JSON document in a ```argus-template block. The user must review and accept it; never apply it or overwrite the original.
+
+For permissions, use informe_permisos, explain the evidence and its limitations; never claim the server is safe from a partial report. If requested, prepare a correction proposal for user review and Apply, including destructive confirmations. Never execute it yourself.\n\nFor snapshot restoration, use listar_snapshots, comparar_snapshot and info_restauracion. Explain every conflict and unavailable item in plain language. Never claim restoration is done. In Execute mode return the exact reviewed restore action as a proposal and ask the user to confirm before applying. Never call aplicar_restauracion directly.\n\nYou are the assistant built into ARGUS, a desktop app to administer Discord servers \
 with the user's own bot. You reach the server through the ARGUS MCP tools.\n\n\
 ## Active server\n\
 The active server is \"{nombre}\" (id {id}). Pass guild_id \"{id}\" in every tool \
@@ -2414,6 +2416,24 @@ mod tests_ejecucion {
             nombre: nombre.into(),
             ok,
         }
+    }
+
+    #[tokio::test]
+    async fn agente_falso_informa_consultas_de_plantillas_y_plan() {
+        let (_, eventos) = correr(
+            "biblioteca_falsa",
+            "codex",
+            r#"cat <<'EOF'
+{"type":"item.completed","item":{"id":"t1","type":"mcp_tool_call","tool":"listar_plantillas","status":"completed","result":{"isError":false}}}
+{"type":"item.completed","item":{"id":"t2","type":"mcp_tool_call","tool":"consultar_plantilla","status":"completed","result":{"isError":false}}}
+{"type":"item.completed","item":{"id":"a1","type":"agent_message","text":"Plan basado en Example.\n```argus-template\n{}\n```"}}
+{"type":"turn.completed"}
+EOF"#,
+        )
+        .await;
+        assert!(eventos.contains(&herr("t1", "listar_plantillas", Some(true))));
+        assert!(eventos.contains(&herr("t2", "consultar_plantilla", Some(true))));
+        assert!(eventos.iter().any(|e| matches!(e, EventoAsistente::Texto { texto } if texto.contains("Plan basado en Example") && texto.contains("argus-template"))));
     }
 
     #[tokio::test]

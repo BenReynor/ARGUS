@@ -90,6 +90,7 @@ fn conversador(
 ) -> Conversador {
     let app_limite = app.clone();
     let app_idioma = app.clone();
+    let app_aplicar = app.clone();
     let app = app.clone();
     let pool_chat = pool.clone();
     let pool_aplicar = pool.clone();
@@ -139,11 +140,21 @@ fn conversador(
                 })
                 .unwrap_or_default()
         }),
-        aplicar: Arc::new(move |propuesta, cancelar| {
+        aplicar: Arc::new(move |propuesta, cancelar, guild| {
             let pool = pool_aplicar.clone();
+            let config = app_aplicar
+                .try_state::<crate::state::AppState>()
+                .map(|state| {
+                    let mut config = state.config.lock().unwrap().clone();
+                    config.active_bot_id = Some(bot_id.to_string());
+                    config.active_guild_id = Some(guild.to_string());
+                    config
+                });
             Box::pin(async move {
                 let pool = pool.ok_or_else(|| "The database is not available".to_string())?;
-                let mcp = crate::mcp::ArgusMcp::nuevo(pool, None).await?;
+                let config =
+                    config.ok_or_else(|| "Application state is unavailable".to_string())?;
+                let mcp = crate::mcp::ArgusMcp::con_contexto(pool, None, config);
                 Ok(mcp
                     .ejecutar_propuesta_con(&propuesta, &cancelar, &mut |_, _| {})
                     .await?
@@ -250,6 +261,7 @@ pub fn lanzar(
     estado: Arc<Mutex<crate::state::BotStatus>>,
     pool: Option<sqlx::SqlitePool>,
     bot_id: String,
+    health: Arc<Mutex<Option<(String, bool)>>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let conversador = bot_id
@@ -272,6 +284,25 @@ pub fn lanzar(
         loop {
             match shard.next_event().await {
                 Ok(evento) => {
+                    if matches!(&evento, Event::Ready(_) | Event::Resumed) {
+                        if let Some((id, connected)) = health.lock().unwrap().as_mut() {
+                            if id == &bot_id {
+                                *connected = true;
+                            }
+                        }
+                    }
+                    if matches!(
+                        &evento,
+                        Event::GatewayClose(_)
+                            | Event::GatewayInvalidateSession(_)
+                            | Event::GatewayReconnect
+                    ) {
+                        if let Some((id, connected)) = health.lock().unwrap().as_mut() {
+                            if id == &bot_id {
+                                *connected = false;
+                            }
+                        }
+                    }
                     if let (Event::MessageCreate(m), Some(conv), Some(pool)) =
                         (&evento, &conversador, &pool)
                     {
@@ -404,6 +435,11 @@ pub fn lanzar(
                     }
                 }
                 Err(e) => {
+                    if let Some((id, connected)) = health.lock().unwrap().as_mut() {
+                        if id == &bot_id {
+                            *connected = false;
+                        }
+                    }
                     tracing::warn!("Gateway error: {e}");
                     if e.is_fatal() {
                         let nuevo = {
@@ -435,7 +471,8 @@ mod tests {
         assert!(!intents().contains(Intents::MESSAGE_CONTENT));
     }
 
-    #[tokio::test]
+    // Paused clock: the debounce is measured in virtual time, not wall time.
+    #[tokio::test(start_paused = true)]
     async fn los_avisos_seguidos_se_agrupan_en_uno() {
         use std::sync::atomic::{AtomicU32, Ordering};
         let notify = Arc::new(Notify::new());

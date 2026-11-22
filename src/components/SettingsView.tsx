@@ -8,7 +8,9 @@ import { Button, Input, Select, Card, Cargando, EstadoVacio } from './ui';
 import './Vistas.css';
 import { BackupSettings } from './BackupSettings';
 import { DiagnosticReport } from './DiagnosticReport';
-import { externalServices } from '../externalServices';
+import { Diagnostics } from './Diagnostics';
+import { ServiceControls } from './ServiceControls';
+import { externalServices, toggleConnector } from '../externalServices';
 import { Save, Trash2, Plus, Server, CheckCircle, AlertCircle, Eye, EyeOff, Copy } from 'lucide-react';
 import { TEMAS, aplicarTema } from '../temas';
 
@@ -521,11 +523,29 @@ export const SettingsView: React.FC = () => {
         {updateState.status === 'current' && <p role="status">{t('You are up to date.')}</p>}
         {updateState.status === 'unavailable' && <p role="status">{t('Could not check for updates. Try again when you are online.')}</p>}
       </Seccion>
+      <Diagnostics />
       <DiagnosticReport />
       <BackupSettings />
 
       <Seccion ancha titulo={t('External services')} descripcion={t('Configuration of external services')}>
-        {externalServices.length === 0 && <p role="status">{t('No external configuration connectors are currently available in ARGUS.')}</p>}
+        {!activeGuildId && <p>{t('Select a server to enable connectors.')}</p>}
+        {externalServices.map(service => <article key={service.id}>
+          <h4>{service.service} — {t('Not implemented')} / {t('Not tested')}</h4>
+          <p>{t('Method')}: {t(service.method)}</p>
+          <p>{t('Requirements')}: {t(service.requirements)}</p>
+          <p>{t('Permissions')}: {t(service.permissions)}</p>
+          <p>{t('Read tools')}: {t(service.readTools)}</p>
+          <p>{t('Write tools')}: {t(service.writeTools)}</p>
+          <p>{t('Limitations')}: {t(service.limitations)}</p>
+          <label><input type="checkbox" disabled={!activeGuildId || !guildSettings || savingGuild} checked={guildSettings?.enabled_connectors?.includes(service.id) ?? false} onChange={async e => {
+            if (!activeGuildId || !guildSettings) return;
+            const next = { ...guildSettings, enabled_connectors: toggleConnector(guildSettings.enabled_connectors ?? [], service.id, e.target.checked) };
+            setSavingGuild(true);
+            try { await saveGuildSettings(activeGuildId, next); setGuildSettings(next); }
+            catch { showNotification(t('Could not save connector selection.'), 'error'); }
+            finally { setSavingGuild(false); }
+          }} /> {t('Enable for this server')}</label>
+        </article>)}
         <p>{t('When a service has no available configuration API or MCP, configure it manually in its official panel. Consult the provider’s official documentation for the correct panel and steps.')}</p>
         <p>{t('ARGUS cannot read or change that service’s settings or verify the result. Check the settings in the official panel after saving.')}</p>
         <h4>{t('Future browser recipes')}</h4>
@@ -533,7 +553,10 @@ export const SettingsView: React.FC = () => {
         <p>{t('A future recipe must use a visible browser, let you log in yourself, show its date and warn that it may be outdated, and ask for confirmation before saving. ARGUS must not access your password or simulate your Discord user session.')}</p>
       </Seccion>
 
-      <Seccion ancha titulo={t('General')} descripcion={t('Application behavior and the server it starts with.')}>
+      <Seccion ancha titulo={t('Background service')} descripcion={t('Optional ARGUS process without a window that keeps the active bot connected. It needs this computer to be on and online. Closing the window and stopping the service are different actions.')}>
+        <ServiceControls />
+      </Seccion>
+      <Seccion ancha titulo={t('General')}descripcion={t('Application behavior and the server it starts with.')}>
         <Input
           etiqueta={t('Active server ID')}
           ayuda={t('Right-click the server → Copy ID (with Discord developer mode on).')}
@@ -544,7 +567,7 @@ export const SettingsView: React.FC = () => {
           placeholder={t('Server ID')}
         />
         <Interruptor titulo={t('Auto-start the bot when ARGUS opens')} ayuda={t('Connects the active bot as soon as the app starts.')} checked={formData.auto_start} onChange={(v) => handleChange('auto_start', v)} />
-        <Interruptor titulo={t('Minimize to the tray when closing the window')} ayuda={t('When enabled, closing hides ARGUS in the tray and a running bot keeps working. When disabled, closing quits ARGUS and stops the bot. Quit from the tray also stops ARGUS and the bot. An independent service is not available yet.')} checked={formData.minimize_to_tray} onChange={(v) => handleChange('minimize_to_tray', v)} />
+        <Interruptor titulo={t('Minimize to the tray when closing the window')} ayuda={t('When enabled, closing hides ARGUS in the tray and a running bot keeps working. When disabled, closing quits ARGUS and stops the bot. Quit from the tray also stops ARGUS and the bot. Only the optional background service keeps the bot running without the interface.')} checked={formData.minimize_to_tray} onChange={(v) => handleChange('minimize_to_tray', v)} />
         <div>
           <Button onClick={handleSave} cargando={saving}>
             {!saving && <Save size={14} />} {saving ? t('Saving…') : t('Save settings')}

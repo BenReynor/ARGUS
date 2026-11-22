@@ -203,3 +203,78 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - Síntoma: El agente no cumplió el criterio tras 2 intentos.
 - Causa: gate_fail en la iteración 1: [GATE] ✗ juez: criterio NO cumplido (La regresión cambia el servidor antes de la propuesta; durante ella vuelve a fijar el mismo servidor.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
 - Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-20 22:04 — Tarea bloqueada: Verificar canales y categorías tras crearlos o editarlos
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 2: [GATE] ✗ juez: criterio NO cumplido (La verificación no compara el tipo solicitado: puede marcar como verificado un canal creado con tipo incorrecto.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-20 22:18 — Tarea bloqueada: Verificar roles, posiciones y permisos
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 1: [GATE] ✗ juez: criterio NO cumplido (Falta un test de cambio de servidor a mitad de una operación de roles o permisos de canal.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-20 22:49 — Corregida en reintento: Diagnóstico de agentes y MCP
+- Síntoma: El gate falló antes de pasar: [GATE] ✗ juez: criterio NO cumplido (La sesión de MCP siempre queda sin comprobar; no se determina si está disponible.); [GATE] ✗ criterio: 98_criterio.sh falló
+- Causa: [GATE] ✗ juez: criterio NO cumplido (La sesión de MCP siempre queda sin comprobar; no se determina si está disponible.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                          
+- Prevención: Evita exactamente ese fallo y compruébalo con `.dedalo/estado/gate --solo 98_criterio.sh` antes de terminar (98_criterio.sh).
+
+## 2026-11-20 23:01 — Tarea bloqueada: Pantalla de diagnóstico
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: revisor_fail en la iteración 7: Los cambios cubren diagnóstico accesible, estados compartidos, progreso, reintentos y pruebas de resultados y cancelación; no veo secretos ni cambios ajenos evidentes. Hay un error en la vista: al fallar el diagnóstico global, los estados se marcan `unverified`, pero el botón de cada comprobación solo llama a `diagnostico_agentes`; reintentar comprobaciones de configuración, base de datos, keyring, Gateway o permisos las consulta al grupo incorrecto y no las actualiza.
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-20 23:09 — Tarea bloqueada: Plantillas propias: guardar desde el plan o desde un snapshot
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 8: [GATE] ✗ juez: criterio NO cumplido (La conversión rechaza snapshots válidos con canales de escenario u otros tipos no contemplados.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-20 23:22 — Tarea bloqueada: Aplicar una plantilla: ejecutar con el motor de propuestas
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 11: [GATE] ✗ juez: criterio NO cumplido (Solo existe la vista previa de la plantilla; falta conectarla al motor de propuestas y ejecutar su aplicación.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-20 23:32 — Corregida en reintento: Usar la biblioteca desde la IA
+- Síntoma: El gate falló antes de pasar: [GATE] ✗ juez: criterio NO cumplido (El test no ejecuta el descarte: solo comenta que no se guarda; tampoco prueba la interacción del agente falso.); [GATE] ✗ criterio: 98_criterio.sh falló
+- Causa: [GATE] ✗ juez: criterio NO cumplido (El test no ejecuta el descarte: solo comenta que no se guarda; tampoco prueba la interacción del agente falso.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64
+- Prevención: Evita exactamente ese fallo y compruébalo con `.dedalo/estado/gate --solo 98_criterio.sh` antes de terminar (98_criterio.sh).
+
+## 2026-11-20 23:54 — Tarea bloqueada: Auditoría: preparar y aplicar correcciones
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 16: [GATE] ✗ juez: criterio NO cumplido (La propuesta se construye manualmente en el frontend, sin generarla con el motor existente.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-21 18:25 — Tarea bloqueada: Conectores: catálogo y vista
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 1: [GATE] ✗ [rust] cargo test falló error: test failed, to rerun pass `--lib` [GATE] ✗ juez: criterio NO cumplido (GitHub figura implementado, pero no tiene conector; el diagnóstico solo comprueba la conectividad pública.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-21 18:36 — Tarea bloqueada: Conectores: credenciales en el llavero
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 2: [GATE] ✗ [rust] cargo test falló error: test failed, to rerun pass `--lib` |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-21 20:34 — Corregida en reintento: Conectores: catálogo y vista
+- Síntoma: El gate falló antes de pasar: [GATE] ✗ juez: criterio NO cumplido (Faltan pruebas con un catálogo falso; se prueba el catálogo real y un conector falso.); [GATE] ✗ criterio: 98_criterio.sh falló
+- Causa: [GATE] ✗ juez: criterio NO cumplido (Faltan pruebas con un catálogo falso; se prueba el catálogo real y un conector falso.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                      
+- Prevención: Evita exactamente ese fallo y compruébalo con `.dedalo/estado/gate --solo 98_criterio.sh` antes de terminar (98_criterio.sh).
+
+## 2026-11-21 20:39 — Tarea bloqueada: Conectores: credenciales en el llavero
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 2: [GATE] ✗ juez: criterio NO cumplido (La activación solo guarda una selección; faltan credenciales cifradas y pruebas de expiración y revocación.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-21 20:41 — Tarea bloqueada: Conectores: lectura de varios MCP con aislamiento
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 3: [GATE] ✗ juez: criterio NO cumplido (Los agentes solo configuran el MCP de ARGUS; falta la capa de conectores habilitados y sus pruebas.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-21 20:48 — Tarea bloqueada: Conectores: propuestas para configurar otros bots
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 4: [GATE] ✗ juez: criterio NO cumplido (El módulo aislado no conecta la IA ni la aprobación del usuario y carece del test de escritura directa rechazada.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-21 21:03 — Tarea bloqueada: Servicio: proceso sin ventana con una sola conexión por bot
+- Síntoma: El agente no cumplió el criterio tras 2 intentos.
+- Causa: gate_fail en la iteración 5: [GATE] ✗ juez: criterio NO cumplido (Falta el proceso sin ventana y su activación; las pruebas no usan un Gateway falso para doble arranque y parada.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
+- Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.

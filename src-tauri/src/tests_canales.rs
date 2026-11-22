@@ -13,6 +13,107 @@ const GESTIONAR_CANALES: u64 = 1 << 4;
 const ADMINISTRADOR: u64 = 1 << 3;
 const ESPERADO_SIN_PERMISO: &str = "The bot is missing the permission «Gestionar canales»";
 
+#[tokio::test]
+async fn timeout_al_crear_busca_sin_repetir_post() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v10/guilds/555/channels"))
+        .respond_with(
+            ResponseTemplate::new(201)
+                .set_delay(std::time::Duration::from_millis(10_000))
+                .set_body_json(canal_json("10", "nuevo", 0, None)),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v10/guilds/555/channels"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!([canal_json("10", "nuevo", 0, None)])),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let datos = DatosCanal {
+        name: Some("nuevo".into()),
+        ..Default::default()
+    };
+    let error = crate::discord::create_guild_channel(
+        "test",
+        Some(&server.address().to_string()),
+        "555",
+        &datos,
+    )
+    .await
+    .unwrap_err();
+    assert!(error.contains("matching channel exists"));
+    assert!(error.contains("before retrying"));
+}
+
+#[tokio::test]
+async fn timeout_al_crear_detecta_canal_reflejado_tarde() {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v10/guilds/555/channels"))
+        .respond_with(
+            ResponseTemplate::new(201)
+                .set_delay(std::time::Duration::from_millis(10_000))
+                .set_body_json(canal_json("10", "nuevo", 0, None)),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let count = Arc::new(AtomicUsize::new(0));
+    let visits = count.clone();
+    Mock::given(method("GET"))
+        .and(path("/api/v10/guilds/555/channels"))
+        .respond_with(move |_: &wiremock::Request| {
+            let channels = if visits.fetch_add(1, Ordering::SeqCst) == 0 {
+                serde_json::json!([])
+            } else {
+                serde_json::json!([canal_json("10", "nuevo", 0, None)])
+            };
+            ResponseTemplate::new(200).set_body_json(channels)
+        })
+        .expect(2)
+        .mount(&server)
+        .await;
+    let datos = DatosCanal {
+        name: Some("nuevo".into()),
+        ..Default::default()
+    };
+    let error = crate::discord::create_guild_channel(
+        "test",
+        Some(&server.address().to_string()),
+        "555",
+        &datos,
+    )
+    .await
+    .unwrap_err();
+    assert!(error.contains("matching channel exists"));
+    assert_eq!(count.load(Ordering::SeqCst), 2);
+    // A late Gateway event still updates the map after the ambiguous result.
+    use serde::de::DeserializeSeed;
+    let payload = serde_json::json!({"op": 0, "s": 1, "t": "CHANNEL_CREATE", "d": canal_json("10", "nuevo", 0, None)}).to_string();
+    let seed =
+        twilight_model::gateway::event::GatewayEventDeserializer::from_json(&payload).unwrap();
+    let mut decoder = serde_json::Deserializer::from_str(&payload);
+    let event = seed.deserialize(&mut decoder).unwrap();
+    let mut map = estado("test").get_map("555").unwrap();
+    crate::mapa::aplicar_evento(
+        &mut map,
+        &twilight_model::gateway::event::GatewayEvent::into(event),
+    )
+    .unwrap();
+    assert_eq!(map.channels.len(), 1);
+    assert_eq!(map.channels[0].id, "10");
+}
+
 fn estado(token: &str) -> AppState {
     let state = AppState::new();
     let now = Utc::now().to_rfc3339();

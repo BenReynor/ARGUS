@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
 import { serverSnapshots, type ServerSnapshotItem, type ServerSnapshotListing, type ServerSnapshotRequest } from '../api/tauri';
@@ -10,6 +11,7 @@ import { DiffView } from './DiffView';
 import { DepartedMembers } from './DepartedMembers';
 import { MassKick } from './MassKick';
 import { SnapshotRestore } from './SnapshotRestore';
+import { GuardarPlantilla, type PlantillaGuardada } from './GuardarPlantilla';
 
 export const BackupsView: React.FC = () => {
   const guildId = useActiveGuildId();
@@ -31,6 +33,7 @@ const ServerBackups: React.FC<{ botId: string; guildId: string }> = ({ botId, gu
   const [rename, setRename] = useState<ServerSnapshotItem | null>(null);
   const [name, setName] = useState('');
   const [deleting, setDeleting] = useState<ServerSnapshotItem | null>(null);
+  const [comoPlantilla, setComoPlantilla] = useState<ServerSnapshotItem | null>(null);
   const mounted = useRef(true);
   const lock = useRef(false);
   const filters = [{ name: 'ARGUS', extensions: ['argussnapshot'] }];
@@ -122,10 +125,13 @@ const ServerBackups: React.FC<{ botId: string; guildId: string }> = ({ botId, gu
         <Button variante="secundario" disabled={busy} onClick={() => setDeparted(snapshot)}>{t('Departed members')}</Button>
         <Button variante="secundario" disabled={busy || restoring !== null} onClick={() => setRestoring(snapshot)}>{t('Restore')}</Button>
         <Button variante="secundario" disabled={busy} onClick={() => { setRename(snapshot); setName(snapshot.name); }}>{t('Rename')}</Button>
+        <Button variante="secundario" disabled={busy} onClick={() => setComoPlantilla(snapshot)}>{t('Save as template')}</Button>
         <Button variante="secundario" disabled={busy} onClick={() => exportFile(snapshot.id)}>{t('Export snapshot')}</Button>
         <Button variante="peligro" disabled={busy} onClick={() => setDeleting(snapshot)}>{t('Delete')}</Button>
       </div>
     </Card>)}
+    <GuardarPlantilla abierto={comoPlantilla !== null} nombreInicial={comoPlantilla?.name ?? ''} onCerrar={() => setComoPlantilla(null)}
+      guardar={(nombre, descripcion, etiquetas) => invoke<PlantillaGuardada>('crear_plantilla_desde_snapshot', { botId, guildId, snapshotId: comoPlantilla?.id ?? '', nombre, descripcion, etiquetas })} />
     <Dialogo abierto={rename !== null} titulo={t('Rename snapshot')} onCerrar={() => { if (!busy) setRename(null); }} pie={<Button disabled={!name.trim() || busy} onClick={() => run(async () => rename ? { op: 'rename', id: rename.id, name } : null)}>{t('Save')}</Button>}>
       <Input etiqueta={t('Snapshot name')} maxLength={100} value={name} disabled={busy} onChange={e => setName(e.target.value)} />
       {error && <p role="alert">{error}</p>}

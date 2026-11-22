@@ -106,17 +106,36 @@ async fn conectar_bot(
     // Los tests pasan una URL base falsa: sin red real no hay Gateway.
     if let (true, true, Some(app)) = (resultado.is_ok(), base_url.is_none(), app) {
         let pool = db::get_pool(app).await.ok();
-        let tarea = crate::gateway::lanzar(
-            app.clone(),
-            token,
+        // Suelta (de forma ordenada) la conexión anterior y su lock antes de
+        // tomar el lock del bot: solo un propietario por bot.
+        detener_conexion(state).await;
+        let carpeta = crate::servicio::carpeta_locks(app)?;
+        let (mapas, estado, health, app_g, id) = (
             state.server_maps.clone(),
             state.bot_status.clone(),
-            pool,
+            state.gateway_health.clone(),
+            app.clone(),
             active_bot.id.clone(),
         );
-        let anterior = state.gateway_task.lock().unwrap().replace(tarea);
-        if let Some(anterior) = anterior {
-            anterior.abort();
+        let conexion = crate::conexion::Conexion::iniciar(&carpeta, &active_bot.id, |parar| {
+            *health.lock().unwrap() = Some((id.clone(), false));
+            let tarea =
+                crate::gateway::lanzar(app_g, token, mapas, estado, pool, id, health.clone());
+            crate::conexion::con_parada(tarea, parar)
+        });
+        match conexion {
+            Ok(c) => *state.gateway_task.lock().unwrap() = Some(c),
+            Err(e) => {
+                let nuevo = {
+                    let mut status = state.bot_status.lock().unwrap();
+                    status.running = false;
+                    status.connected = false;
+                    status.last_error = Some(e.clone());
+                    status.clone()
+                };
+                crate::gateway::emitir_estado(app, &nuevo);
+                return Err(e);
+            }
         }
     }
     let (nuevo, salida) = {
@@ -146,6 +165,21 @@ async fn conectar_bot(
     salida
 }
 
+/// Parada ordenada de la conexión al Gateway (si la hay) y liberación de su lock.
+pub async fn detener_conexion(state: &AppState) {
+    let conexion = state.gateway_task.lock().unwrap().take();
+    *state.gateway_health.lock().unwrap() = None;
+    if let Some(c) = conexion {
+        c.detener(crate::servicio::ESPERA_PARADA).await;
+    }
+}
+
+/// Conecta el bot activo desde el proceso sin ventana (mismas comprobaciones y
+/// mismo lock que la interfaz).
+pub async fn conectar_bot_servicio(app: &AppHandle, state: &AppState) -> Result<BotStatus, String> {
+    conectar_bot(Some(app), state, None).await
+}
+
 #[tauri::command]
 pub async fn stop_bot(app: AppHandle, state: State<'_, AppState>) -> Result<BotStatus, String> {
     let st = state.clone();
@@ -154,10 +188,7 @@ pub async fn stop_bot(app: AppHandle, state: State<'_, AppState>) -> Result<BotS
 }
 
 async fn stop_bot_en(app: AppHandle, state: State<'_, AppState>) -> Result<BotStatus, String> {
-    let tarea = state.gateway_task.lock().unwrap().take();
-    if let Some(tarea) = tarea {
-        tarea.abort();
-    }
+    detener_conexion(&state).await;
     let nuevo = {
         let mut status = state.bot_status.lock().unwrap();
         status.running = false;
@@ -346,7 +377,9 @@ pub async fn crear_canal(
     exigir_permiso(state, guild_id, PERMISO_GESTIONAR_CANALES, base_url).await?;
     let token = token_del_bot_activo(state)?;
     let canal = crate::discord::create_guild_channel(&token, base_url, guild_id, datos).await?;
-    refrescar_canales_del_mapa(state, guild_id, base_url).await?;
+    if let Err(e) = refrescar_canales_del_mapa(state, guild_id, base_url).await {
+        tracing::warn!("Could not refresh channels after accepted change: {}", e);
+    }
     Ok(canal)
 }
 
@@ -385,7 +418,9 @@ pub async fn editar_canal(
     exigir_permiso(state, guild_id, PERMISO_GESTIONAR_CANALES, base_url).await?;
     let token = token_del_bot_activo(state)?;
     let canal = crate::discord::update_channel(&token, base_url, channel_id, datos).await?;
-    refrescar_canales_del_mapa(state, guild_id, base_url).await?;
+    if let Err(e) = refrescar_canales_del_mapa(state, guild_id, base_url).await {
+        tracing::warn!("Could not refresh channels after accepted change: {}", e);
+    }
     Ok(canal)
 }
 
@@ -837,6 +872,53 @@ pub async fn guardar_ajustes_servidor(
     exigir_permiso(state, guild_id, "Gestionar servidor", base_url).await?;
     let token = token_del_bot_activo(state)?;
     crate::discord::update_guild_settings(&token, base_url, guild_id, ajustes).await
+}
+
+#[tauri::command]
+pub async fn permission_audit(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+) -> Result<serde_json::Value, String> {
+    let config = { state.config.lock().map_err(|e| e.to_string())?.clone() };
+    let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
+    let report = crate::mcp::ArgusMcp::con_contexto(pool, None, config)
+        .informe_permisos_json(Some(&guild_id))
+        .await?;
+    serde_json::from_str(&report).map_err(|e| e.to_string())
+}
+
+/// Corrección de un hallazgo de la auditoría como propuesta para aprobar.
+#[tauri::command]
+pub async fn prepare_audit_correction(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    guild_id: String,
+    finding: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let config = { state.config.lock().map_err(|e| e.to_string())?.clone() };
+    let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
+    let st = state.clone();
+    let idioma = crate::i18n::idioma(&state);
+    let r = crate::mcp::ArgusMcp::con_contexto(pool, None, config)
+        .preparar_correccion_json(&guild_id, &finding)
+        .await
+        .map(|mut c| {
+            if let Some(t) = c["propuesta"]["resumen"].as_str() {
+                c["propuesta"]["resumen"] = crate::i18n::tr(&idioma, t).into();
+            }
+            for a in c["propuesta"]["acciones"]
+                .as_array_mut()
+                .into_iter()
+                .flatten()
+            {
+                if let Some(t) = a["descripcion"].as_str() {
+                    a["descripcion"] = crate::i18n::tr(&idioma, t).into();
+                }
+            }
+            c
+        });
+    crate::i18n::localizar_error(&st, r)
 }
 
 #[tauri::command]
@@ -2324,7 +2406,7 @@ pub async fn list_templates(
 
 async fn list_templates_en(
     app: AppHandle,
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
 ) -> Result<Vec<db::Template>, String> {
     let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
     db::list_templates(&pool).await.map_err(|e| e.to_string())
@@ -2343,7 +2425,7 @@ pub async fn save_template(
 
 async fn save_template_en(
     app: AppHandle,
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
     template: db::Template,
 ) -> Result<String, String> {
     let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
@@ -2366,7 +2448,7 @@ pub async fn delete_template(
 
 async fn delete_template_en(
     app: AppHandle,
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
     template_id: String,
 ) -> Result<String, String> {
     let pool = db::get_pool(&app).await.map_err(|e| e.to_string())?;
@@ -2529,7 +2611,7 @@ pub async fn search_messages(
 
 async fn search_messages_en(
     app: AppHandle,
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
     query: String,
     guild_id: Option<String>,
     channel_id: Option<String>,

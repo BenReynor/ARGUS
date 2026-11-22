@@ -45,11 +45,49 @@ const FRAGMENTO_MAX: usize = 160;
 const MIEMBROS_DEFECTO: usize = 25;
 const MIEMBROS_MAX: usize = 100;
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct PlantillaParams {
+    /// Identifier returned by listar_plantillas.
+    pub id: String,
+}
+
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 pub struct ServidorParams {
     /// ID del servidor. Si se omite se usa el servidor activo.
     pub guild_id: Option<String>,
+}
+
+/// Explicit privacy expectation for one member and channel, supplied by the caller.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct ExpectativaPrivacidad {
+    pub channel_id: String,
+    pub member_id: String,
+    /// Whether this member is expected to be able to view the channel.
+    pub can_view: bool,
+    /// Source of the expectation: user, plan, or snapshot.
+    pub source: FuenteExpectativa,
+    /// Identifies the statement, plan passage, or snapshot used as evidence.
+    pub evidence: String,
+}
+
+#[derive(Debug, Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+#[schemars(crate = "rmcp::schemars")]
+pub enum FuenteExpectativa {
+    User,
+    Plan,
+    Snapshot,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct InformePermisosParams {
+    pub guild_id: Option<String>,
+    /// Only explicit expectations; channel names do not imply privacy.
+    pub expectations: Option<Vec<ExpectativaPrivacidad>>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -548,9 +586,41 @@ pub struct ArgusMcp {
     state: Arc<AppState>,
     /// URL base de Discord; solo los tests la cambian (Discord falso).
     base_url: Option<String>,
+    contexto_fijado: bool,
+    /// Capa de conectores (solo lectura); None si no hay conectores habilitados.
+    conectores: Option<Arc<crate::agregador::Aggregator>>,
 }
 
 impl ArgusMcp {
+    /// Activa la capa de conectores: solo herramientas de lectura del catálogo.
+    pub fn con_conectores(mut self, capa: Arc<crate::agregador::Aggregator>) -> Self {
+        self.conectores = Some(capa);
+        self
+    }
+
+    /// Herramientas `conector__herramienta` expuestas (misma política para todos los agentes).
+    pub async fn herramientas_conectores(&self) -> Vec<String> {
+        match &self.conectores {
+            Some(c) => c.list_tools().await,
+            None => Vec::new(),
+        }
+    }
+
+    pub async fn llamar_conector(
+        &self,
+        nombre: &str,
+        args: serde_json::Value,
+        cancelar: tokio::sync::watch::Receiver<bool>,
+    ) -> Result<serde_json::Value, String> {
+        let capa = self
+            .conectores
+            .as_ref()
+            .ok_or_else(|| "Unknown connector tool".to_string())?;
+        capa.call(nombre, args, cancelar)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
     /// Abre el servidor sobre una base ya abierta y carga el bot activo. Si hay
     /// un bot activo comprueba que su token se pueda descifrar (sin mostrarlo).
     pub async fn nuevo(pool: SqlitePool, base_url: Option<String>) -> Result<Self, String> {
@@ -558,12 +628,31 @@ impl ArgusMcp {
             pool,
             state: Arc::new(AppState::new()),
             base_url,
+            contexto_fijado: false,
+            conectores: None,
         };
         servidor.recargar().await?;
         if servidor.state.get_active_bot().is_some() {
             token_del_bot_activo(&servidor.state)?;
         }
         Ok(servidor)
+    }
+
+    /// Ejecuta usando una copia del contexto capturada por el llamador.
+    pub fn con_contexto(
+        pool: SqlitePool,
+        base_url: Option<String>,
+        config: crate::state::Config,
+    ) -> Self {
+        let state = AppState::new();
+        *state.config.lock().unwrap() = config;
+        Self {
+            pool,
+            state: Arc::new(state),
+            base_url,
+            contexto_fijado: true,
+            conectores: None,
+        }
     }
 
     /// Relee la configuración de la base: la app puede haber cambiado de bot o
@@ -577,7 +666,9 @@ impl ArgusMcp {
 
     /// Recarga y exige un bot activo.
     async fn preparar(&self) -> Result<(), String> {
-        self.recargar().await?;
+        if !self.contexto_fijado {
+            self.recargar().await?;
+        }
         if self.state.get_active_bot().is_none() {
             return Err(SIN_BOT.to_string());
         }
@@ -1044,62 +1135,320 @@ impl ArgusMcp {
         Ok(json!({ "entradas": entradas }).to_string())
     }
 
-    /// Informe parcial de concesiones explícitas, sin inferir acceso efectivo.
+    /// Point-in-time, read-only permission audit. Missing inputs remain explicitly unknown.
+    /// Prepara la corrección de un hallazgo de la auditoría como propuesta del
+    /// motor (sin aplicarla). Rehace la auditoría para trabajar con datos
+    /// frescos y se niega si el bot no podría aplicarla (permiso o jerarquía):
+    /// nunca se ofrece una acción que supere al bot.
+    pub async fn preparar_correccion_json(
+        &self,
+        guild_id: &str,
+        hallazgo: &serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let informe: serde_json::Value =
+            serde_json::from_str(&self.informe_permisos_json(Some(guild_id)).await?)
+                .map_err(|e| e.to_string())?;
+        if informe["incomplete"] == true {
+            return Err("The audit is incomplete; a correction cannot be prepared".into());
+        }
+        let mismo = |f: &&serde_json::Value| {
+            [
+                "tipo",
+                "role_id",
+                "channel_id",
+                "target_id",
+                "permission_bit",
+            ]
+            .iter()
+            .all(|k| f[*k] == hallazgo[*k])
+        };
+        let actual = informe["findings"]
+            .as_array()
+            .and_then(|f| f.iter().find(mismo))
+            .ok_or("The finding is no longer present; run the audit again")?;
+        let bit = actual["permission_bit"]
+            .as_u64()
+            .filter(|b| *b < 53)
+            .ok_or("Invalid finding")?;
+        let bits = |v: &serde_json::Value| v.as_str().and_then(|t| t.parse::<u64>().ok());
+        let token = commands::token_del_bot_activo(&self.state)?;
+        commands::exigir_permiso(&self.state, guild_id, "Gestionar roles", self.url()).await?;
+        let (accion, antes, despues) = match actual["tipo"].as_str() {
+            Some("role_grant") => {
+                let role_id = actual["role_id"].as_str().ok_or("Invalid finding")?;
+                if role_id == guild_id {
+                    // @everyone: no hay jerarquía, pero el bot debe poder gestionar roles.
+                } else {
+                    commands::exigir_jerarquia(
+                        &self.state,
+                        guild_id,
+                        &[(role_id, None)],
+                        self.url(),
+                    )
+                    .await?;
+                }
+                let antes = bits(&actual["evidence_bits"]).ok_or("Invalid finding")?;
+                let despues = antes & !(1u64 << bit);
+                (
+                    crate::propuesta::Accion {
+                        herramienta: "editar_rol".into(),
+                        args: json!({"guild_id": guild_id, "role_id": role_id, "permisos": despues.to_string()}),
+                        descripcion: format!(
+                            "Remove {} from role «{}»",
+                            actual["permission"].as_str().unwrap_or_default(),
+                            actual["role_name"].as_str().unwrap_or(role_id)
+                        ),
+                    },
+                    antes,
+                    despues,
+                )
+            }
+            Some("channel_overwrite_grant") => {
+                let channel_id = actual["channel_id"].as_str().ok_or("Invalid finding")?;
+                let target_id = actual["target_id"].as_str().ok_or("Invalid finding")?;
+                let tipo = match actual["target_type"].as_u64() {
+                    Some(0) => "rol",
+                    Some(1) => "miembro",
+                    _ => return Err("Invalid finding".into()),
+                };
+                if tipo == "rol" && target_id != guild_id {
+                    commands::exigir_jerarquia(
+                        &self.state,
+                        guild_id,
+                        &[(target_id, None)],
+                        self.url(),
+                    )
+                    .await?;
+                }
+                let canal = crate::discord::read_channel(&token, self.url(), channel_id).await?;
+                let ow = canal
+                    .overwrites
+                    .iter()
+                    .flatten()
+                    .find(|o| o.id == target_id)
+                    .ok_or("The channel overwrite no longer exists; run the audit again")?;
+                let antes = ow.allow.parse::<u64>().map_err(|_| "Invalid overwrite")?;
+                let despues = antes & !(1u64 << bit);
+                (
+                    crate::propuesta::Accion {
+                        herramienta: "permiso_canal".into(),
+                        args: json!({
+                            "guild_id": guild_id, "channel_id": channel_id, "target_id": target_id,
+                            "tipo": tipo, "permitir": despues.to_string(), "denegar": ow.deny,
+                        }),
+                        descripcion: format!(
+                            "Remove {} from a channel overwrite",
+                            actual["permission"].as_str().unwrap_or_default()
+                        ),
+                    },
+                    antes,
+                    despues,
+                )
+            }
+            _ => return Err("This finding has no automatic correction".into()),
+        };
+        let propuesta = crate::propuesta::Propuesta {
+            resumen: accion.descripcion.clone(),
+            acciones: vec![accion],
+        };
+        let validacion = crate::propuesta::validar_en_estado(&self.state, &propuesta);
+        Ok(json!({
+            "hallazgo": actual,
+            "propuesta": propuesta,
+            "validacion": validacion,
+            "antes": crate::discord::nombres_api_de_permisos(antes),
+            "despues": crate::discord::nombres_api_de_permisos(despues),
+        }))
+    }
+
     pub async fn informe_permisos_json(&self, guild_id: Option<&str>) -> Result<String, String> {
+        self.informe_permisos_con_expectativas_json(guild_id, &[])
+            .await
+    }
+
+    pub async fn informe_permisos_con_expectativas_json(
+        &self,
+        guild_id: Option<&str>,
+        expectations: &[ExpectativaPrivacidad],
+    ) -> Result<String, String> {
         let gid = self.servidor_de(guild_id).await?;
+        let mut missing = Vec::new();
         let roles = commands::leer_roles(&self.state, &gid, self.url())
             .await
-            .map_err(|e| self.limpiar(e))?;
-        let canales = commands::leer_canales(&self.state, &gid, self.url())
+            .ok();
+        let channels = commands::leer_canales(&self.state, &gid, self.url())
             .await
-            .map_err(|e| self.limpiar(e))?;
+            .ok();
+        let members = commands::leer_miembros(&self.state, &gid, self.url())
+            .await
+            .ok();
+        let owner = match commands::token_del_bot_activo(&self.state) {
+            Ok(token) => crate::discord::fetch_guild_owner_id(&token, self.url(), &gid)
+                .await
+                .ok()
+                .flatten(),
+            Err(_) => None,
+        };
+        if roles.is_none() {
+            missing.push("roles");
+        }
+        if channels.is_none() {
+            missing.push("channels");
+        }
+        if members.is_none() {
+            missing.push("members");
+        }
+        if owner.is_none() {
+            missing.push("owner");
+        }
+        let roles = roles.unwrap_or_default();
+        let channels = channels.unwrap_or_default();
+        let members = members.unwrap_or_default();
+        if !roles.iter().any(|r| r.id == gid)
+            || roles.iter().any(|r| r.permissions.parse::<u64>().is_err())
+        {
+            missing.push("role permissions");
+        }
+        if channels.iter().any(|c| {
+            c.overwrites.is_none()
+                || c.overwrites.iter().flatten().any(|o| {
+                    o.allow.parse::<u64>().is_err() || o.deny.parse::<u64>().is_err() || o.type_ > 1
+                })
+        }) {
+            missing.push("channel overwrites");
+        }
+        if members
+            .iter()
+            .any(|m| m.roles.iter().any(|id| !roles.iter().any(|r| &r.id == id)))
+        {
+            missing.push("member roles");
+        }
+        let checked_at = chrono::Utc::now().to_rfc3339();
         let sensibles = [
             (3, "Administrator"),
-            (5, "ManageGuild"),
+            (13, "ManageMessages"),
             (4, "ManageChannels"),
             (28, "ManageRoles"),
-            (13, "ManageMessages"),
+            (29, "ManageWebhooks"),
             (1, "KickMembers"),
             (2, "BanMembers"),
-            (29, "ManageWebhooks"),
-            (40, "ModerateMembers"),
+            (17, "MentionEveryone"),
         ];
-        let mut hallazgos = Vec::new();
-        for rol in &roles {
-            let bits = rol
-                .permissions_bitfield
-                .as_deref()
-                .unwrap_or("")
-                .parse::<u64>()
-                .map_err(|_| "Invalid role permission bits".to_string())?;
-            for (bit, permiso) in sensibles {
-                if bits & (1_u64 << bit) != 0 {
-                    hallazgos.push(json!({"tipo":"role_grant", "role_id":rol.id,
-                        "role_name":rol.name, "permission":permiso, "permission_bit":bit,
-                        "evidence_bits":bits.to_string()}));
+        let mut findings = Vec::new();
+        for role in &roles {
+            let bits = role.permissions.parse::<u64>().unwrap_or(0);
+            for (bit, permission) in sensibles {
+                if bits & (1 << bit) != 0 {
+                    findings.push(json!({"tipo":"role_grant","role_id":role.id,"role_name":role.name,"permission":permission,"permission_bit":bit,"evidence_bits":bits.to_string()}));
                 }
             }
         }
-        let overwrites: Vec<_> = canales
-            .iter()
-            .flat_map(|canal| {
-                canal.overwrites.iter().flatten().map(move |o| {
-                    json!({
-                        "channel_id":canal.id, "channel_name":canal.name,
-                        "target_id":o.id, "target_type":o.type_, "allow":o.allow, "deny":o.deny
-                    })
-                })
+        let mut overwrites = Vec::new();
+        for channel in &channels {
+            for o in channel.overwrites.iter().flatten() {
+                overwrites.push(json!({"channel_id":channel.id,"channel_name":channel.name,"target_id":o.id,"target_type":o.type_,"allow":o.allow,"deny":o.deny}));
+                let allow = o.allow.parse::<u64>().unwrap_or(0);
+                for (bit, permission) in sensibles {
+                    if allow & (1 << bit) != 0 {
+                        findings.push(json!({"tipo":"channel_overwrite_grant","channel_id":channel.id,"target_id":o.id,"target_type":o.type_,"permission":permission,"permission_bit":bit,"evidence_bits":o.allow}));
+                    }
+                }
+            }
+        }
+        let inputs_ok = missing.is_empty();
+        let mut access = Vec::new();
+        if inputs_ok {
+            for channel in &channels {
+                for member in &members {
+                    let bits =
+                        audit_channel_permissions(&gid, owner.as_deref(), member, &roles, channel);
+                    let view = bits & (1 << 10) != 0;
+                    let sensitive: Vec<_> = sensibles
+                        .iter()
+                        .filter_map(|(bit, name)| (bits & (1 << bit) != 0).then_some(*name))
+                        .collect();
+                    access.push(json!({"channel_id":channel.id,"channel_name":channel.name,"parent_id":channel.parent_id,"member_id":member.user_id,"member_name":member.username,"view":view,"write":view && bits & (1 << 11) != 0,"manage":view && bits & ((1 << 4)|(1 << 28)|(1 << 29)|(1 << 13)) != 0,"permissions_bits":bits.to_string(),"sensitive_permissions":sensitive}));
+                }
+            }
+        }
+        for expected in expectations {
+            if expected.evidence.trim().is_empty() {
+                continue;
+            }
+            if let Some(observed) = access.iter().find(|a| {
+                a["channel_id"] == expected.channel_id && a["member_id"] == expected.member_id
+            }) {
+                let actual = observed["view"].as_bool().unwrap_or(false);
+                if actual != expected.can_view {
+                    findings.push(json!({"tipo":"privacy_discrepancy", "channel_id":expected.channel_id, "member_id":expected.member_id, "expected_can_view":expected.can_view, "actual_can_view":actual, "expectation_source":expected.source, "expectation_evidence":expected.evidence, "permissions_bits":observed["permissions_bits"], "checked_at":checked_at}));
+                }
+            }
+        }
+        for finding in &mut findings {
+            finding["checked_at"] = json!(checked_at);
+        }
+        let bot = self.state.get_active_bot();
+        let bot_member = bot
+            .as_ref()
+            .and_then(|b| members.iter().find(|m| m.user_id == b.id));
+        let bot_missing = if inputs_ok {
+            bot_member.map(|m| {
+                let bits = crate::discord::calcular_permisos(
+                    &gid,
+                    owner.as_deref(),
+                    &m.user_id,
+                    &roles,
+                    &m.roles,
+                );
+                [(4, "ManageChannels"), (28, "ManageRoles")]
+                    .iter()
+                    .filter_map(|(bit, name)| (bits & (1 << bit) == 0).then_some(*name))
+                    .collect::<Vec<_>>()
             })
-            .collect();
-        Ok(json!({
-            "guild_id":gid, "status":"partial", "findings":hallazgos,
-            "channel_overwrites":overwrites,
-            "limits":["Only selected explicit role grants are reported as findings; other permissions are not assessed.",
-                "Channel overwrites are raw evidence, not effective access calculations.",
-                "Members, ownership, role combinations, threads and user intent are not assessed; absence of findings does not establish security.",
-                "Data is a point-in-time observation and may change."],
-            "correction_workflow":"Explain evidence and prepare a proposal; the user must review and Apply it in ARGUS, including any destructive confirmations."
-        }).to_string())
+        } else {
+            None
+        };
+        let bot_channel_missing = if inputs_ok {
+            bot_member.map(|member| {
+                channels
+                    .iter()
+                    .map(|channel| {
+                        let bits = audit_channel_permissions(
+                            &gid,
+                            owner.as_deref(),
+                            member,
+                            &roles,
+                            channel,
+                        );
+                        let absent: Vec<_> = [
+                            (10, "ViewChannel"),
+                            (4, "ManageChannels"),
+                            (28, "ManageRoles"),
+                        ]
+                        .iter()
+                        .filter_map(|(bit, name)| (bits & (1 << bit) == 0).then_some(*name))
+                        .collect();
+                        json!({"channel_id": channel.id, "missing_permissions": absent})
+                    })
+                    .collect::<Vec<_>>()
+            })
+        } else {
+            None
+        };
+        let role_hierarchy = if inputs_ok {
+            bot_member.map(|member| {
+            let top = roles.iter().filter(|r| member.roles.contains(&r.id)).map(commands::rango_rol).max();
+            roles.iter().filter(|r| r.id != gid).map(|r| json!({"role_id":r.id, "role_name":r.name, "below_bot":top.is_some_and(|rank| commands::rango_rol(r) < rank)})).collect::<Vec<_>>()
+        })
+        } else {
+            None
+        };
+        if bot_missing.is_none() {
+            missing.push("bot permissions");
+        }
+        Ok(json!({"guild_id":gid,"checked_at":checked_at,"status":"partial","incomplete":!missing.is_empty(),"missing_data":missing,"findings":findings,"channel_overwrites":overwrites,"channel_access":access,"bot_missing_build_permissions":bot_missing,"bot_channel_missing_permissions":bot_channel_missing,"bot_role_hierarchy":role_hierarchy,
+            "limits":["Data is a point-in-time observation; threads and expectations not supplied are not assessed, and absence of findings does not establish security."],
+            "correction_workflow":"Explain evidence and prepare a proposal; the user must review and Apply it in ARGUS, including any destructive confirmations."}).to_string())
     }
 
     pub async fn leer_mensajes_json(
@@ -1460,22 +1809,7 @@ impl ArgusMcp {
 
     pub async fn crear_canal_json(&self, p: &CrearCanalParams) -> Result<String, String> {
         let gid = self.servidor_de(p.guild_id.as_deref()).await?;
-        let tipo = match p.tipo.as_deref().map(normalizar) {
-            None => 0,
-            Some(t) => match t.as_str() {
-                "texto" | "text" => 0,
-                "voz" | "voice" => 2,
-                "categoria" | "category" => 4,
-                "anuncios" | "announcement" => 5,
-                "foro" | "forum" => 15,
-                _ => {
-                    return Err(
-                        "Unsupported channel type: use texto, voz, categoria, anuncios or foro"
-                            .to_string(),
-                    )
-                }
-            },
-        };
+        let tipo = codigo_tipo_canal(p.tipo.as_deref())?;
         let mut overwrites = Vec::new();
         if let Some(permisos) = &p.permisos {
             let roles = commands::leer_roles(&self.state, &gid, self.url()).await?;
@@ -1920,6 +2254,50 @@ fn fragmento_de(contenido: &str, aguja_plegada: &str) -> Option<String> {
 }
 
 /// 0 = rol, 1 = miembro (igual que `Overwrite::type_`).
+/// Discord applies @everyone, combined role overwrites, then the member overwrite.
+fn audit_channel_permissions(
+    gid: &str,
+    owner: Option<&str>,
+    member: &crate::state::Member,
+    roles: &[crate::state::Role],
+    channel: &crate::state::Channel,
+) -> u64 {
+    let mut bits =
+        crate::discord::calcular_permisos(gid, owner, &member.user_id, roles, &member.roles);
+    if owner == Some(member.user_id.as_str()) || bits & (1 << 3) != 0 {
+        return bits;
+    }
+    let overwrites = channel.overwrites.as_deref().unwrap_or_default();
+    let apply = |bits: u64, allow: u64, deny: u64| (bits & !deny) | allow;
+    for o in overwrites.iter().filter(|o| o.type_ == 0 && o.id == gid) {
+        bits = apply(
+            bits,
+            o.allow.parse().unwrap_or(0),
+            o.deny.parse().unwrap_or(0),
+        );
+    }
+    let (mut allow, mut deny) = (0, 0);
+    for o in overwrites
+        .iter()
+        .filter(|o| o.type_ == 0 && o.id != gid && member.roles.contains(&o.id))
+    {
+        allow |= o.allow.parse::<u64>().unwrap_or(0);
+        deny |= o.deny.parse::<u64>().unwrap_or(0);
+    }
+    bits = apply(bits, allow, deny);
+    for o in overwrites
+        .iter()
+        .filter(|o| o.type_ == 1 && o.id == member.user_id)
+    {
+        bits = apply(
+            bits,
+            o.allow.parse().unwrap_or(0),
+            o.deny.parse().unwrap_or(0),
+        );
+    }
+    bits
+}
+
 fn tipo_de_overwrite(t: &str) -> Result<u8, String> {
     match normalizar(t).as_str() {
         "rol" | "role" | "0" => Ok(0),
@@ -1942,6 +2320,24 @@ fn rol_json(r: &Role) -> serde_json::Value {
     })
 }
 
+/// Discord's channel type code for a requested type («texto» by default).
+/// Shared by creation and by its verification, so both read the type the same way.
+fn codigo_tipo_canal(tipo: Option<&str>) -> Result<u8, String> {
+    match tipo.map(normalizar) {
+        None => Ok(0),
+        Some(t) => match t.as_str() {
+            "texto" | "text" => Ok(0),
+            "voz" | "voice" => Ok(2),
+            "categoria" | "category" => Ok(4),
+            "anuncios" | "announcement" => Ok(5),
+            "foro" | "forum" => Ok(15),
+            _ => Err(
+                "Unsupported channel type: use texto, voz, categoria, anuncios or foro".to_string(),
+            ),
+        },
+    }
+}
+
 fn tipo_de_canal(t: u8) -> &'static str {
     match t {
         0 => "texto",
@@ -1957,7 +2353,7 @@ fn tipo_de_canal(t: u8) -> &'static str {
 }
 
 fn canal_json(c: &Channel) -> serde_json::Value {
-    json!({ "id": c.id, "nombre": c.name, "tipo": tipo_de_canal(c.channel_type), "posicion": c.position })
+    json!({ "id": c.id, "nombre": c.name, "tipo": tipo_de_canal(c.channel_type), "posicion": c.position, "categoria_id": c.parent_id, "tema": c.topic })
 }
 
 fn miembro_json(m: &Member, roles: &[Role]) -> serde_json::Value {
@@ -1983,6 +2379,8 @@ fn miembro_json(m: &Member, roles: &[Role]) -> serde_json::Value {
 /// Herramientas que solo leen (no cambian nada en Discord ni en la BD). Son las
 /// únicas que se le dan a un agente de IA; el resto va por propuesta aprobada.
 pub const HERRAMIENTAS_LECTURA: &[&str] = &[
+    "listar_plantillas",
+    "consultar_plantilla",
     "informe_permisos",
     "info_restauracion",
     "listar_snapshots",
@@ -2271,7 +2669,108 @@ impl ArgusMcp {
             .acciones
             .iter()
             .find_map(|a| a.args.get("guild_id").and_then(serde_json::Value::as_str));
-        let gid = self.servidor_de(de_la_propuesta).await?;
+        self.preparar().await?;
+        let mut config = { self.state.config.lock().unwrap().clone() };
+        let gid = de_la_propuesta
+            .map(str::trim)
+            .filter(|g| !g.is_empty())
+            .map(str::to_owned)
+            .or_else(|| config.active_guild_id.clone())
+            .ok_or_else(|| SIN_SERVIDOR.to_string())?;
+        if self.contexto_fijado && config.active_guild_id.as_deref() != Some(gid.as_str()) {
+            return Err("The proposal does not match the selected server".to_string());
+        }
+        if propuesta.acciones.iter().any(|a| {
+            a.args
+                .get("guild_id")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|g| g != gid)
+        }) {
+            return Err("All actions must target the same server".to_string());
+        }
+        if propuesta
+            .acciones
+            .iter()
+            .any(|a| a.herramienta == "elegir_servidor")
+        {
+            return Err("A proposal cannot change its server".to_string());
+        }
+        config.active_guild_id = Some(gid.clone());
+        let estado_fijado = AppState::new();
+        *estado_fijado.config.lock().unwrap() = config;
+        let bot = estado_fijado
+            .get_active_bot()
+            .ok_or_else(|| SIN_BOT.to_string())?;
+        let id = crate::operaciones::iniciar(&self.pool, &bot.id, &gid, propuesta)
+            .await
+            .map_err(|e| e.to_string())?;
+        let fijado = Self {
+            pool: self.pool.clone(),
+            state: Arc::new(estado_fijado),
+            base_url: self.base_url.clone(),
+            contexto_fijado: true,
+            conectores: None,
+        };
+        let resultado = fijado
+            .ejecutar_propuesta_registrada(propuesta, cancelar, avance, anteriores, &gid, &id)
+            .await;
+        let preparacion = resultado
+            .as_ref()
+            .err()
+            .map(|e| crate::operaciones::motivo_seguro(e));
+        let inciertas: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM operation_steps WHERE operation_id=? AND status = 'unverified' AND reason LIKE '%timed out%'")
+            .bind(&id).fetch_one(&self.pool).await.map_err(|e| e.to_string())?;
+        let (estado, razon) = match &resultado {
+            Err(_) => (crate::operaciones::FAILED, preparacion.as_deref().unwrap()),
+            Ok(r) if inciertas > 0 && r.hechas == 0 => (
+                crate::operaciones::UNVERIFIED,
+                "The outcome of a timed-out creation is unknown",
+            ),
+            Ok(r) if r.hechas > 0 && (r.fallidas > 0 || r.omitidas > 0 || r.canceladas > 0) => (
+                crate::operaciones::PARTIAL,
+                "Some actions were accepted; others were not completed",
+            ),
+            Ok(r) if r.fallidas > 0 => (
+                crate::operaciones::FAILED,
+                "No actions were accepted; at least one failed",
+            ),
+            Ok(r) if r.canceladas > 0 => (
+                "cancelled",
+                "Operation stopped before all steps were attempted",
+            ),
+            Ok(r) if r.omitidas > 0 => ("skipped", "No actions could be attempted"),
+            Ok(_) => {
+                let pendientes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM operation_steps WHERE operation_id=? AND status != 'correct'")
+                    .bind(&id).fetch_one(&self.pool).await.map_err(|e| e.to_string())?;
+                if pendientes == 0 {
+                    (crate::operaciones::CORRECT, "All results verified")
+                } else {
+                    (
+                        crate::operaciones::UNVERIFIED,
+                        "Some results have not been verified",
+                    )
+                }
+            }
+        };
+        crate::operaciones::terminar(&self.pool, &id, estado, razon)
+            .await
+            .map_err(|e| e.to_string())?;
+        resultado.map(|mut resumen| {
+            resumen.operation_id = Some(id);
+            resumen.operation_status = Some(estado.to_string());
+            resumen
+        })
+    }
+
+    async fn ejecutar_propuesta_registrada(
+        &self,
+        propuesta: &Propuesta,
+        cancelar: &AtomicBool,
+        avance: &mut (dyn FnMut(usize, &ResultadoAccion) + Send),
+        anteriores: &[ResultadoAccion],
+        gid: &str,
+        id: &str,
+    ) -> Result<ResumenPropuesta, String> {
         let roles = commands::leer_roles(&self.state, &gid, self.url())
             .await
             .map_err(|e| self.limpiar(e))?;
@@ -2279,6 +2778,7 @@ impl ArgusMcp {
             .await
             .map_err(|e| self.limpiar(e))?;
         let mut nombres = Nombres::desde(&roles, &canales);
+        nombres.olvidar_nombres_creados(propuesta);
         if propuesta.acciones.iter().any(|a| {
             a.herramienta == "crear_canal"
                 && a.args["permisos"]
@@ -2290,47 +2790,44 @@ impl ArgusMcp {
         }
         let total = propuesta.acciones.len();
         let mut resultados = Vec::new();
-        for r in anteriores.iter().filter(|r| r.estado == EstadoAccion::Ok) {
-            if let Some(a) = propuesta.acciones.get(r.indice) {
-                if a.herramienta == r.herramienta
-                    && !resultados
-                        .iter()
-                        .any(|x: &ResultadoAccion| x.indice == r.indice)
-                {
-                    nombres.registrar_creado(&a.herramienta, &a.args, &r.mensaje);
-                    resultados.push(r.clone());
-                }
-            }
-        }
         // `indice` es la posición original de la acción: la app empareja así
         // cada resultado con su fila aunque el orden de ejecución sea otro.
         for indice in orden_de_ejecucion(propuesta) {
             let a = &propuesta.acciones[indice];
-            if resultados.iter().any(|r| r.indice == indice) {
-                continue;
-            }
             if cancelar.load(Ordering::SeqCst) {
                 break;
             }
+            crate::operaciones::paso(&self.pool, id, indice, "in_progress", None)
+                .await
+                .map_err(|e| e.to_string())?;
+            let mut argumentos_resueltos = None;
+            let previo = anteriores.iter().find(|r| {
+                r.indice == indice && r.herramienta == a.herramienta && r.estado == EstadoAccion::Ok
+            });
             let (estado, mensaje) = match nombres.resolver_args(&a.herramienta, &a.args) {
                 Err(e) => (EstadoAccion::Omitida, e),
-                Ok(args) => match if a.herramienta == "aplicar_restauracion" {
-                    match args_de::<ApplyRestoreParams>(&a.herramienta, args.clone()) {
-                        Ok(p) => self
-                            .aplicar_restauracion_con(&p, cancelar)
-                            .await
-                            .and_then(|s| serde_json::to_string(&s).map_err(|e| e.to_string())),
-                        Err(e) => Err(e),
+                Ok(args) => {
+                    argumentos_resueltos = Some(args.clone());
+                    match if let Some(previo) = previo {
+                        Ok(previo.mensaje.clone())
+                    } else if a.herramienta == "aplicar_restauracion" {
+                        match args_de::<ApplyRestoreParams>(&a.herramienta, args.clone()) {
+                            Ok(p) => self
+                                .aplicar_restauracion_con(&p, cancelar)
+                                .await
+                                .and_then(|s| serde_json::to_string(&s).map_err(|e| e.to_string())),
+                            Err(e) => Err(e),
+                        }
+                    } else {
+                        self.ejecutar_accion(&a.herramienta, args.clone()).await
+                    } {
+                        Ok(salida) => {
+                            nombres.registrar_creado(&a.herramienta, &args, &salida);
+                            (EstadoAccion::Ok, salida)
+                        }
+                        Err(e) => (EstadoAccion::Error, e),
                     }
-                } else {
-                    self.ejecutar_accion(&a.herramienta, args.clone()).await
-                } {
-                    Ok(salida) => {
-                        nombres.registrar_creado(&a.herramienta, &args, &salida);
-                        (EstadoAccion::Ok, salida)
-                    }
-                    Err(e) => (EstadoAccion::Error, e),
-                },
+                }
             };
             let r = ResultadoAccion {
                 indice,
@@ -2339,7 +2836,248 @@ impl ArgusMcp {
                 estado,
                 mensaje,
             };
-            avance(total, &r);
+            let motivo = crate::operaciones::motivo_seguro(&r.mensaje);
+            let (status, reason) = match r.estado {
+                EstadoAccion::Ok => (
+                    crate::operaciones::UNVERIFIED,
+                    "Discord accepted the action; the result has not been verified",
+                ),
+                EstadoAccion::Error
+                    if a.herramienta == "crear_canal"
+                        && r.mensaje.contains("create request timed out") =>
+                {
+                    (crate::operaciones::UNVERIFIED, motivo.as_str())
+                }
+                EstadoAccion::Error => (crate::operaciones::FAILED, motivo.as_str()),
+                EstadoAccion::Omitida => ("skipped", "A required reference could not be resolved"),
+            };
+            crate::operaciones::paso(&self.pool, id, indice, status, Some(reason))
+                .await
+                .map_err(|e| e.to_string())?;
+            if r.estado == EstadoAccion::Ok
+                && matches!(a.herramienta.as_str(), "crear_canal" | "editar_canal")
+            {
+                crate::operaciones::iniciar_verificacion(&self.pool, id, indice)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let verification = async {
+                    let output: serde_json::Value = serde_json::from_str(&r.mensaje)
+                        .map_err(|_| "Discord returned an unreadable channel".to_string())?;
+                    let expected = &output["canal"];
+                    let channel_id = expected["id"]
+                        .as_str()
+                        .ok_or("Discord did not return a channel ID")?;
+                    let token = commands::token_del_bot_activo(&self.state)?;
+                    let actual =
+                        crate::discord::read_channel(&token, self.url(), channel_id).await?;
+                    let actual = canal_json(&actual);
+                    if let Some(args) = &argumentos_resueltos {
+                        for (argument, field) in [
+                            ("nombre", "nombre"),
+                            ("categoria_id", "categoria_id"),
+                            ("tema", "tema"),
+                        ] {
+                            if let Some(value) = args.get(argument).filter(|v| !v.is_null()) {
+                                let desired =
+                                    if argument == "categoria_id" && value.as_str() == Some("") {
+                                        &serde_json::Value::Null
+                                    } else {
+                                        value
+                                    };
+                                if &actual[field] != desired {
+                                    return Err(format!(
+                                        "Discord does not reflect the requested field: {field}"
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    if a.herramienta == "crear_canal" {
+                        // The created channel must be of the requested type, not
+                        // only match what Discord said it accepted.
+                        let pedido = argumentos_resueltos
+                            .as_ref()
+                            .and_then(|args| args.get("tipo"))
+                            .and_then(|v| v.as_str());
+                        let codigo = codigo_tipo_canal(pedido)?;
+                        if actual["tipo"] != tipo_de_canal(codigo) {
+                            return Err(
+                                "Discord does not reflect the requested field: tipo".to_string()
+                            );
+                        }
+                    }
+                    for field in ["id", "nombre", "tipo", "categoria_id", "tema", "posicion"] {
+                        if actual[field] != expected[field] {
+                            return Err(format!(
+                                "Discord does not reflect the channel field: {field}"
+                            ));
+                        }
+                    }
+                    Ok::<(), String>(())
+                }
+                .await;
+                match verification {
+                    Ok(()) => crate::operaciones::confirmar_verificacion(&self.pool, id, indice)
+                        .await
+                        .map_err(|e| e.to_string())?,
+                    Err(e) => crate::operaciones::paso(
+                        &self.pool,
+                        id,
+                        indice,
+                        crate::operaciones::UNVERIFIED,
+                        Some(&self.limpiar(e)),
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?,
+                }
+            }
+            if r.estado == EstadoAccion::Ok
+                && matches!(
+                    a.herramienta.as_str(),
+                    "crear_rol"
+                        | "editar_rol"
+                        | "ordenar_roles"
+                        | "permiso_canal"
+                        | "quitar_permiso_canal"
+                )
+            {
+                crate::operaciones::iniciar_verificacion(&self.pool, id, indice)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let verification = async {
+                    let args = argumentos_resueltos
+                        .as_ref()
+                        .ok_or("Missing action arguments")?;
+                    match a.herramienta.as_str() {
+                        "crear_rol" | "editar_rol" => {
+                            let output: serde_json::Value = serde_json::from_str(&r.mensaje)
+                                .map_err(|_| "Discord returned an unreadable role")?;
+                            let expected = &output["rol"];
+                            let role_id = expected["id"]
+                                .as_str()
+                                .ok_or("Discord did not return a role ID")?;
+                            let roles = commands::leer_roles(&self.state, gid, self.url())
+                                .await
+                                .map_err(|e| self.limpiar(e))?;
+                            let role = roles
+                                .iter()
+                                .find(|role| role.id == role_id)
+                                .ok_or("Discord did not return the role")?;
+                            let actual = rol_json(role);
+                            for field in ["nombre", "color", "permisos_bits", "posicion"] {
+                                if actual[field] != expected[field] {
+                                    return Err(format!(
+                                        "Discord does not reflect the role field: {field}"
+                                    ));
+                                }
+                            }
+                            if let Some(name) = args.get("nombre").and_then(|v| v.as_str()) {
+                                if role.name != name {
+                                    return Err(
+                                        "Discord does not reflect the requested role name".into()
+                                    );
+                                }
+                            }
+                            if let Some(value) = args.get("color").filter(|v| !v.is_null()) {
+                                let color: ColorParam = serde_json::from_value(value.clone())
+                                    .map_err(|e| e.to_string())?;
+                                if role.color != color.a_u32()? {
+                                    return Err(
+                                        "Discord does not reflect the requested role color".into(),
+                                    );
+                                }
+                            }
+                            if let Some(value) = args.get("permisos").filter(|v| !v.is_null()) {
+                                let permissions: PermisosParam =
+                                    serde_json::from_value(value.clone())
+                                        .map_err(|e| e.to_string())?;
+                                if role.permissions != permissions.a_bits()? {
+                                    return Err(
+                                        "Discord does not reflect the requested role permissions"
+                                            .into(),
+                                    );
+                                }
+                            }
+                        }
+                        "ordenar_roles" => {
+                            let p: OrdenarParams = args_de(&a.herramienta, args.clone())?;
+                            let roles = commands::leer_roles(&self.state, gid, self.url())
+                                .await
+                                .map_err(|e| self.limpiar(e))?;
+                            for position in p.posiciones {
+                                if !roles.iter().any(|role| {
+                                    role.id == position.id
+                                        && role.position >= 0
+                                        && role.position as u64 == position.posicion
+                                }) {
+                                    return Err(
+                                        "Discord does not reflect the requested role position"
+                                            .into(),
+                                    );
+                                }
+                            }
+                        }
+                        _ => {
+                            let channel_id =
+                                args["channel_id"].as_str().ok_or("Missing channel ID")?;
+                            let target_id =
+                                args["target_id"].as_str().ok_or("Missing target ID")?;
+                            let kind = tipo_de_overwrite(
+                                args["tipo"].as_str().ok_or("Missing overwrite type")?,
+                            )?;
+                            let token = commands::token_del_bot_activo(&self.state)?;
+                            let channel =
+                                crate::discord::read_channel(&token, self.url(), channel_id)
+                                    .await?;
+                            let overwrites = channel
+                                .overwrites
+                                .as_ref()
+                                .ok_or("Discord did not return channel overwrites")?;
+                            let actual = overwrites
+                                .iter()
+                                .find(|o| o.id == target_id && o.type_ == kind);
+                            if a.herramienta == "quitar_permiso_canal" {
+                                if actual.is_some() {
+                                    return Err(
+                                        "Discord still reports the channel overwrite".into()
+                                    );
+                                }
+                            } else {
+                                let p: PermisoCanalParams = args_de(&a.herramienta, args.clone())?;
+                                let allow =
+                                    bits_opcionales(&p.permitir)?.unwrap_or_else(|| "0".into());
+                                let deny =
+                                    bits_opcionales(&p.denegar)?.unwrap_or_else(|| "0".into());
+                                if !actual.is_some_and(|o| o.allow == allow && o.deny == deny) {
+                                    return Err(
+                                        "Discord does not reflect the requested channel overwrite"
+                                            .into(),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Ok::<(), String>(())
+                }
+                .await;
+                match verification {
+                    Ok(()) => crate::operaciones::confirmar_verificacion(&self.pool, id, indice)
+                        .await
+                        .map_err(|e| e.to_string())?,
+                    Err(e) => crate::operaciones::paso(
+                        &self.pool,
+                        id,
+                        indice,
+                        "unverified",
+                        Some(&self.limpiar(e)),
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?,
+                }
+            }
+            if previo.is_none() {
+                avance(total, &r);
+            }
             resultados.push(r);
         }
         Ok(ResumenPropuesta::de(total, resultados))
@@ -2461,6 +3199,32 @@ impl ArgusMcp {
 
 #[tool_router]
 impl ArgusMcp {
+    #[tool(
+        name = "listar_plantillas",
+        description = "Lists the user's local template library, without modifying it."
+    )]
+    async fn listar_plantillas(&self) -> Result<String, String> {
+        let items = crate::db::list_templates(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(json!(items.into_iter().map(|t| json!({"id": t.id, "name": t.name, "description": t.description, "tags": t.tags})).collect::<Vec<_>>()).to_string())
+    }
+
+    #[tool(
+        name = "consultar_plantilla",
+        description = "Reads one template by its library ID. Never applies or modifies it."
+    )]
+    async fn consultar_plantilla(
+        &self,
+        Parameters(p): Parameters<PlantillaParams>,
+    ) -> Result<String, String> {
+        let item = crate::db::get_template(&self.pool, &p.id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or("Template not found")?;
+        serde_json::to_string(&item).map_err(|e| e.to_string())
+    }
+
     #[tool(
         name = "listar_snapshots",
         description = "Lists local snapshots for the active bot and server. Does not modify Discord."
@@ -2647,9 +3411,14 @@ impl ArgusMcp {
     )]
     async fn informe_permisos(
         &self,
-        Parameters(p): Parameters<ServidorParams>,
+        Parameters(p): Parameters<InformePermisosParams>,
     ) -> Result<String, String> {
-        let r = self.informe_permisos_json(p.guild_id.as_deref()).await;
+        let r = self
+            .informe_permisos_con_expectativas_json(
+                p.guild_id.as_deref(),
+                p.expectations.as_deref().unwrap_or(&[]),
+            )
+            .await;
         self.salida(r)
     }
 
@@ -4422,6 +5191,352 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reintento_reconcilia_rol_por_id_y_overwrite_sin_repetir_escrituras() {
+        let (_d, mcp, server) = mcp_con_servidor(TODO, true).await;
+        roles_con_nuevos(
+            &server,
+            &[rol("1200", "Repetido", 1, 0), rol("1201", "Repetido", 2, 0)],
+        )
+        .await;
+        get_json(
+            &server,
+            "/api/v10/channels/11",
+            json!({
+                "id":"11", "type":0, "guild_id":"555", "name":"general", "position":1,
+                "permission_overwrites":[{"id":"1200", "type":0, "allow":"1024", "deny":"0"}]
+            }),
+        )
+        .await;
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: vec![
+                accion(
+                    "crear_rol",
+                    json!({"nombre":"Repetido", "color":255, "permisos":"0"}),
+                ),
+                accion(
+                    "permiso_canal",
+                    json!({"channel_id":"11", "target_id":"1200", "tipo":"rol", "permitir":"1024"}),
+                ),
+            ],
+        };
+        let anteriores = vec![
+            ResultadoAccion { indice:0, herramienta:"crear_rol".into(), descripcion:String::new(), estado:EstadoAccion::Ok,
+                mensaje:json!({"rol":{"id":"1200", "nombre":"Repetido", "color":"#0000ff", "permisos_bits":"0", "posicion":1}}).to_string() },
+            ResultadoAccion { indice:1, herramienta:"permiso_canal".into(), descripcion:String::new(), estado:EstadoAccion::Ok, mensaje:"{}".into() },
+        ];
+        let result = mcp
+            .ejecutar_propuesta_reanudable(&p, &AtomicBool::new(false), &mut |_, _| {}, &anteriores)
+            .await
+            .unwrap();
+        assert_eq!(result.hechas, 2);
+        let bot = mcp.state.get_active_bot().unwrap();
+        let history = crate::operaciones::listar(&mcp.pool, &bot.id, "555")
+            .await
+            .unwrap();
+        assert_eq!(history[0].status, "correct");
+        assert!(server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .all(|r| r.method.as_str() == "GET"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cambio_de_servidor_a_mitad_verifica_rol_y_overwrite_en_el_original() {
+        let (_d, mcp, server) = mcp_con_servidor(TODO, true).await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "Mods"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(rol("1000", "Mods", 1, 0)))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name": "Guias"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(rol("1001", "Guias", 1, 0)))
+            .expect(1)
+            .mount(&server)
+            .await;
+        roles_con_nuevos(
+            &server,
+            &[rol("1000", "Mods", 1, 0), rol("1001", "Guias", 1, 0)],
+        )
+        .await;
+        Mock::given(method("PUT"))
+            .and(path("/api/v10/channels/11/permissions/700"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+        get_json(
+            &server,
+            "/api/v10/channels/11",
+            json!({
+                "id":"11", "type":0, "guild_id":"555", "name":"general", "position":1,
+                "permission_overwrites":[{"id":"700", "type":0, "allow":"1024", "deny":"0"}]
+            }),
+        )
+        .await;
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: vec![
+                accion(
+                    "crear_rol",
+                    json!({"nombre":"Mods", "color":255, "permisos":"0"}),
+                ),
+                // Se crea y se verifica después del cambio de servidor.
+                accion(
+                    "crear_rol",
+                    json!({"nombre":"Guias", "color":255, "permisos":"0"}),
+                ),
+                accion(
+                    "permiso_canal",
+                    json!({"channel_id":"11", "target_id":"700", "tipo":"rol", "permitir":"1024"}),
+                ),
+            ],
+        };
+        let state = mcp.state.clone();
+        let pool = mcp.pool.clone();
+        let bot = state.get_active_bot().unwrap();
+        let mut cambiado = false;
+        let resultado = mcp
+            .ejecutar_propuesta_con(&p, &AtomicBool::new(false), &mut |_, r| {
+                if !cambiado {
+                    assert_eq!(r.indice, 0);
+                    cambiado = true;
+                    state.set_active_guild("556");
+                    let state = state.clone();
+                    let pool = pool.clone();
+                    std::thread::spawn(move || {
+                        tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .unwrap()
+                            .block_on(state.save_config_to_pool(&pool))
+                            .unwrap();
+                    })
+                    .join()
+                    .unwrap();
+                }
+            })
+            .await
+            .unwrap();
+        assert!(cambiado);
+        assert_eq!(resultado.hechas, 3);
+        // Todo se leyó y escribió en el servidor de la operación, nunca en el activo.
+        assert!(server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .all(|r| !r.url.path().contains("/guilds/556")));
+        let history = crate::operaciones::listar(&mcp.pool, &bot.id, "555")
+            .await
+            .unwrap();
+        assert_eq!(history.len(), 1);
+        assert!(
+            history[0].steps.iter().all(|s| s.status == "correct"),
+            "{:?}",
+            history[0].steps
+        );
+        assert_eq!(history[0].status, "correct");
+        assert!(crate::operaciones::listar(&mcp.pool, &bot.id, "556")
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn plantilla_con_rol_fallido_no_da_permisos_al_rol_viejo_del_mismo_nombre() {
+        let (_d, mcp, server) = mcp_con_servidor(TODO, true).await;
+        // El servidor ya tiene «Moderadores» (700); crear el de la plantilla falla.
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .respond_with(
+                ResponseTemplate::new(403)
+                    .set_body_json(json!({"code":50013,"message":"Missing Permissions"})),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id":"31", "type":0, "guild_id":"555", "name":"chat", "position":1
+            })))
+            .mount(&server)
+            .await;
+        let documento = crate::template_transfer::parse(r#"{"format":"argus-template","version":1,"name":"T","description":"","roles":[{"key":"mods","name":"Moderadores","color":12,"permissions":0}],"channels":[{"key":"chat","name":"chat","kind":"text","parent":null,"overwrites":[{"role":"mods","allow":1024,"deny":0}]}]}"#).unwrap();
+        let p = crate::template_aplicar::propuesta_de_documento(&documento);
+        mcp.ejecutar_propuesta_con(&p, &AtomicBool::new(false), &mut |_, _| {})
+            .await
+            .unwrap();
+        let tocan_700: Vec<_> = server
+            .received_requests()
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|r| r.method.as_str() != "GET")
+            .filter(|r| {
+                r.url.path().ends_with("/700")
+                    || String::from_utf8_lossy(&r.body).contains("\"700\"")
+            })
+            .map(|r| format!("{} {}", r.method, r.url.path()))
+            .collect();
+        assert!(
+            tocan_700.is_empty(),
+            "the old role must not get the template's permissions: {tocan_700:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn plantilla_aplicada_se_detiene_al_cancelar_sin_mas_escrituras() {
+        let (_d, mcp, server) = mcp_con_servidor(TODO, true).await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(rol("1000", "Staff", 1, 8192)))
+            .expect(1)
+            .mount(&server)
+            .await;
+        roles_con_nuevos(&server, &[rol("1000", "Staff", 1, 8192)]).await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id":"31", "type":4, "guild_id":"555", "name":"Grupo", "position":1
+            })))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let documento = crate::template_transfer::parse(r#"{"format":"argus-template","version":1,"name":"T","description":"","roles":[{"key":"staff","name":"Staff","color":12,"permissions":8192}],"channels":[{"key":"group","name":"Grupo","kind":"category","parent":null,"overwrites":[{"role":"staff","allow":1024,"deny":0}]},{"key":"chat","name":"chat","kind":"text","parent":"group","overwrites":[]}]}"#).unwrap();
+        let p = crate::template_aplicar::propuesta_de_documento(&documento);
+        assert_eq!(p.acciones.len(), 3);
+        let cancelar = AtomicBool::new(false);
+        let resumen = mcp
+            .ejecutar_propuesta_con(&p, &cancelar, &mut |_, r| {
+                assert_eq!(r.herramienta, "crear_rol");
+                cancelar.store(true, Ordering::SeqCst);
+            })
+            .await
+            .unwrap();
+        assert_eq!(resumen.hechas, 1);
+        assert_eq!(resumen.canceladas, 2, "{resumen:?}");
+        let bot = mcp.state.get_active_bot().unwrap();
+        let history = crate::operaciones::listar(&mcp.pool, &bot.id, "555")
+            .await
+            .unwrap();
+        assert_eq!(history.len(), 1);
+        assert_ne!(
+            history[0].status, "correct",
+            "a cancelled template is not a success"
+        );
+    }
+
+    #[tokio::test]
+    async fn propuesta_verifica_canal_por_id_devuelto() {
+        let (_d, mcp, server) = mcp_con_servidor(GESTIONAR_CANALES, true).await;
+        let channel = json!({"id":"801", "type":0, "guild_id":"555", "name":"nuevo", "position":1});
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(channel.clone()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/channels/801"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(channel))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: vec![accion("crear_canal", json!({"nombre":"nuevo"}))],
+        };
+        mcp.ejecutar_propuesta(&p).await.unwrap();
+        let bot = mcp.state.get_active_bot().unwrap();
+        let history = crate::operaciones::listar(&mcp.pool, &bot.id, "555")
+            .await
+            .unwrap();
+        assert_eq!(history[0].status, "correct");
+    }
+
+    #[tokio::test]
+    async fn propuesta_canal_no_reflejado_queda_sin_verificar() {
+        let (_d, mcp, server) = mcp_con_servidor(GESTIONAR_CANALES, true).await;
+        let accepted =
+            json!({"id":"802", "type":0, "guild_id":"555", "name":"nuevo", "position":1});
+        let stale =
+            json!({"id":"802", "type":0, "guild_id":"555", "name":"anterior", "position":1});
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(accepted))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/channels/802"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(stale))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: vec![accion("crear_canal", json!({"nombre":"nuevo"}))],
+        };
+        mcp.ejecutar_propuesta(&p).await.unwrap();
+        let bot = mcp.state.get_active_bot().unwrap();
+        let history = crate::operaciones::listar(&mcp.pool, &bot.id, "555")
+            .await
+            .unwrap();
+        assert_eq!(history[0].status, "unverified");
+        assert!(history[0].steps[0]
+            .reason
+            .as_ref()
+            .unwrap()
+            .contains("nombre"));
+    }
+
+    #[tokio::test]
+    async fn canal_creado_con_otro_tipo_queda_sin_verificar() {
+        let (_d, mcp, server) = mcp_con_servidor(GESTIONAR_CANALES, true).await;
+        // Discord answers with a text channel although a voice one was requested.
+        let texto = json!({"id":"803", "type":0, "guild_id":"555", "name":"sala", "position":1});
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(texto.clone()))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/channels/803"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(texto))
+            .mount(&server)
+            .await;
+        let p = Propuesta {
+            resumen: String::new(),
+            acciones: vec![accion(
+                "crear_canal",
+                json!({"nombre":"sala", "tipo":"voz"}),
+            )],
+        };
+        mcp.ejecutar_propuesta(&p).await.unwrap();
+        let bot = mcp.state.get_active_bot().unwrap();
+        let history = crate::operaciones::listar(&mcp.pool, &bot.id, "555")
+            .await
+            .unwrap();
+        assert_eq!(history[0].status, "unverified");
+        assert!(history[0].steps[0]
+            .reason
+            .as_ref()
+            .unwrap()
+            .contains("tipo"));
+    }
+
+    #[tokio::test]
     async fn crea_edita_borra_y_ordena_canales() {
         let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_CANALES, true).await;
         let canal = |id: &str, nombre: &str, tipo: u8| {
@@ -4745,6 +5860,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn agente_consulta_biblioteca_sin_modificarla() {
+        let (_dir, pool) = bd_temporal().await;
+        let data = r#"{"format":"argus-template","version":1,"name":"Example","description":"","roles":[],"channels":[]}"#;
+        crate::template_transfer::import(&pool, data, false)
+            .await
+            .unwrap();
+        let mcp = ArgusMcp::nuevo(pool.clone(), None).await.unwrap();
+        let list: serde_json::Value =
+            serde_json::from_str(&mcp.listar_plantillas().await.unwrap()).unwrap();
+        let id = list[0]["id"].as_str().unwrap().to_string();
+        let detail = mcp
+            .consultar_plantilla(Parameters(PlantillaParams { id }))
+            .await
+            .unwrap();
+        assert!(detail.contains("Example"));
+        assert_eq!(crate::db::list_templates(&pool).await.unwrap().len(), 1);
+        assert!(HERRAMIENTAS_LECTURA.contains(&"listar_plantillas"));
+        assert!(HERRAMIENTAS_LECTURA.contains(&"consultar_plantilla"));
+    }
+
+    #[tokio::test]
     async fn las_herramientas_de_escritura_estan_registradas() {
         let tools = ArgusMcp::tool_router().list_all();
         let nombres: Vec<_> = tools.iter().map(|t| t.name.to_string()).collect();
@@ -4807,6 +5943,7 @@ mod tests {
                 || *n == "leer_mensajes"
                 || *n == "buscar_mensajes"
                 || *n == "comparar_snapshot"
+                || *n == "consultar_plantilla"
                 || n.starts_with("listar_")
                 || n.starts_with("info_");
             assert!(ok, "{n} no es una herramienta de lectura conocida");
@@ -4818,6 +5955,67 @@ mod tests {
         for n in HERRAMIENTAS_ESCRITURA {
             assert!(!HERRAMIENTAS_LECTURA.contains(n));
         }
+    }
+
+    #[test]
+    fn auditoria_herencia_overwrites_y_administrator() {
+        use crate::state::{Channel, Member, Overwrite, Role};
+        let role = |id: &str, bits: u64| Role {
+            id: id.into(),
+            name: id.into(),
+            color: 0,
+            position: 0,
+            permissions: bits.to_string(),
+            permissions_bitfield: Some(bits.to_string()),
+            member_count: 0,
+            mentionable: false,
+            hoist: false,
+        };
+        let mut roles = vec![role("guild", 1 << 10), role("role", 1 << 11)];
+        let member = Member {
+            user_id: "member".into(),
+            username: "member".into(),
+            nickname: None,
+            roles: vec!["role".into()],
+            bot: false,
+            joined_at: None,
+            avatar: None,
+            flags: None,
+        };
+        let overwrite = |id: &str, type_, allow: u64, deny: u64| Overwrite {
+            id: id.into(),
+            type_,
+            allow: allow.to_string(),
+            deny: deny.to_string(),
+        };
+        let mut channel = Channel {
+            id: "channel".into(),
+            name: "channel".into(),
+            channel_type: 0,
+            parent_id: Some("category".into()),
+            position: 0,
+            overwrites: Some(vec![]),
+            permissions_bitfield: None,
+            topic: None,
+        };
+        let calculate = |roles: &[Role], channel: &Channel| {
+            audit_channel_permissions("guild", Some("owner"), &member, roles, channel)
+        };
+        assert_eq!(
+            calculate(&roles, &channel) & ((1 << 10) | (1 << 11)),
+            (1 << 10) | (1 << 11)
+        );
+        channel.overwrites = Some(vec![
+            overwrite("guild", 0, 0, 1 << 10),
+            overwrite("role", 0, (1 << 10) | (1 << 13), 1 << 11),
+            overwrite("member", 1, 1 << 11, 1 << 13),
+        ]);
+        let bits = calculate(&roles, &channel);
+        assert_ne!(bits & (1 << 10), 0);
+        assert_ne!(bits & (1 << 11), 0);
+        assert_eq!(bits & (1 << 13), 0);
+        roles[1] = role("role", 1 << 3);
+        assert_ne!(calculate(&roles, &channel) & (1 << 13), 0);
     }
 
     #[tokio::test]
@@ -4851,6 +6049,200 @@ mod tests {
             .iter()
             .all(|r| r.method.as_str() == "GET"));
         assert_eq!(mcp.state.get_active_guild().as_deref(), Some("555"));
+    }
+
+    #[tokio::test]
+    async fn correccion_de_rol_sale_del_motor_sin_tocar_discord() {
+        let (_d, mcp, server) = mcp_con_servidor(TODO, true).await;
+        prohibir_cambios(&server).await;
+        let informe = v(mcp.informe_permisos_json(None).await.unwrap());
+        assert_eq!(informe["incomplete"], false, "{informe}");
+        let hallazgo = informe["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["tipo"] == "role_grant" && f["role_id"] == "700")
+            .unwrap()
+            .clone();
+        let c = mcp
+            .preparar_correccion_json("555", &hallazgo)
+            .await
+            .unwrap();
+        let accion = &c["propuesta"]["acciones"][0];
+        assert_eq!(accion["herramienta"], "editar_rol");
+        assert_eq!(accion["args"]["role_id"], "700");
+        assert_eq!(accion["args"]["permisos"], "0");
+        assert_eq!(c["antes"], json!(["ManageMessages"]));
+        assert_eq!(c["despues"], json!([]));
+        assert!(
+            c["validacion"]["errores"].as_array().unwrap().is_empty(),
+            "{c}"
+        );
+        // Preparar no escribe nada: la propuesta espera la aprobación.
+        assert!(server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .all(|r| r.method.as_str() == "GET"));
+        // Un hallazgo que ya no está (descartado o resuelto) no se prepara.
+        let mut viejo = hallazgo.clone();
+        viejo["permission_bit"] = json!(3);
+        assert!(mcp
+            .preparar_correccion_json("555", &viejo)
+            .await
+            .unwrap_err()
+            .contains("no longer present"));
+    }
+
+    #[tokio::test]
+    async fn correccion_que_supera_la_jerarquia_del_bot_no_se_ofrece() {
+        let (_d, mcp, server) = mcp_con_servidor(TODO, true).await;
+        prohibir_cambios(&server).await;
+        // «Alto» está por encima del rol del bot y concede ManageMessages.
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555/roles"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                rol("555", "@everyone", 0, 0),
+                rol("600", "Bot", 5, TODO),
+                rol("700", "Moderadores", 3, 0),
+                rol("900", "Alto", 9, 8192)
+            ])))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        let informe = v(mcp.informe_permisos_json(None).await.unwrap());
+        let hallazgo = informe["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["tipo"] == "role_grant" && f["role_id"] == "900")
+            .unwrap()
+            .clone();
+        let e = mcp
+            .preparar_correccion_json("555", &hallazgo)
+            .await
+            .unwrap_err();
+        assert!(e.contains("above the bot"), "{e}");
+    }
+
+    #[tokio::test]
+    async fn correccion_sin_gestionar_roles_no_se_ofrece() {
+        let (_d, mcp, server) = mcp_con_servidor(GESTIONAR_CANALES, true).await;
+        prohibir_cambios(&server).await;
+        let hallazgo = json!({"tipo":"role_grant","role_id":"700","permission_bit":13});
+        let informe = v(mcp.informe_permisos_json(None).await.unwrap());
+        if informe["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["role_id"] == "700" && f["permission_bit"] == 13)
+        {
+            let e = mcp
+                .preparar_correccion_json("555", &hallazgo)
+                .await
+                .unwrap_err();
+            assert!(e.contains("Gestionar roles"), "{e}");
+            assert!(server
+                .received_requests()
+                .await
+                .unwrap()
+                .iter()
+                .all(|r| r.method.as_str() == "GET"));
+        } else {
+            panic!("fixture should report the Moderadores grant: {informe}");
+        }
+    }
+
+    #[tokio::test]
+    async fn auditoria_compara_solo_expectativas_explicitas() {
+        let (_dir, mcp, server) = mcp_con_servidor(TODO, true).await;
+        prohibir_cambios(&server).await;
+        let expectation = |member: &str| ExpectativaPrivacidad {
+            channel_id: "11".into(),
+            member_id: member.into(),
+            can_view: false,
+            source: FuenteExpectativa::Plan,
+            evidence: "Plan: restricted access".into(),
+        };
+        let fulfilled = v(mcp
+            .informe_permisos_con_expectativas_json(None, &[expectation("1002")])
+            .await
+            .unwrap());
+        assert!(!fulfilled["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["tipo"] == "privacy_discrepancy"));
+        let violated = v(mcp
+            .informe_permisos_con_expectativas_json(None, &[expectation("1001")])
+            .await
+            .unwrap());
+        let findings = violated["findings"].as_array().unwrap();
+        let finding = findings
+            .iter()
+            .find(|f| f["tipo"] == "privacy_discrepancy")
+            .unwrap();
+        assert_eq!(finding["channel_id"], "11");
+        assert_eq!(finding["member_id"], "1001");
+        assert_eq!(finding["expectation_source"], "plan");
+        assert_eq!(finding["expectation_evidence"], "Plan: restricted access");
+        assert_eq!(finding["actual_can_view"], true);
+        assert_eq!(finding["expected_can_view"], false);
+        assert!(finding["permissions_bits"].as_str().is_some());
+        assert!(
+            chrono::DateTime::parse_from_rfc3339(finding["checked_at"].as_str().unwrap()).is_ok()
+        );
+        assert!(findings
+            .iter()
+            .all(|f| f["checked_at"] == violated["checked_at"]));
+        Mock::given(method("GET")).and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([{"id":"11","type":0,"name":"private","position":0,"permission_overwrites":[{"id":"700","type":0,"allow":"1024","deny":"0"}]}])))
+            .with_priority(1).mount(&server).await;
+        let no_expectation = v(mcp.informe_permisos_json(None).await.unwrap());
+        assert!(no_expectation["channel_access"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["member_id"] == "1001" && a["view"] == true));
+        assert!(!no_expectation["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["tipo"] == "privacy_discrepancy"));
+    }
+
+    #[tokio::test]
+    async fn auditoria_lectura_parcial_no_inventa_accesos() {
+        let (_dir, mcp, server) = mcp_con_servidor(TODO, true).await;
+        Mock::given(method("GET"))
+            .and(path("/api/v10/guilds/555/members"))
+            .respond_with(ResponseTemplate::new(403))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        let report = v(mcp.informe_permisos_json(None).await.unwrap());
+        assert_eq!(report["incomplete"], true);
+        assert!(report["missing_data"].to_string().contains("members"));
+        assert!(report["channel_access"].as_array().unwrap().is_empty());
+        assert!(report["bot_missing_build_permissions"].is_null());
+    }
+
+    #[tokio::test]
+    async fn auditoria_resalta_permisos_sensibles_del_overwrite() {
+        let (_dir, mcp, server) = mcp_con_servidor(TODO, true).await;
+        let bits = (1_u64 << 13) | (1 << 17) | (1 << 29);
+        Mock::given(method("GET")).and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([{"id":"10","type":0,"name":"test","position":0,"permission_overwrites":[{"id":"700","type":0,"allow":bits.to_string(),"deny":"0"}]}])))
+            .with_priority(1).mount(&server).await;
+        let report = v(mcp.informe_permisos_json(None).await.unwrap());
+        for permission in ["ManageMessages", "MentionEveryone", "ManageWebhooks"] {
+            assert!(report["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|f| f["tipo"] == "channel_overwrite_grant" && f["permission"] == permission));
+        }
     }
 
     // ------------------------- moderación, servidor, invitaciones y webhooks
@@ -5393,6 +6785,83 @@ mod tests {
         assert!(r[3].mensaje.contains("«Fantasma»"));
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cambio_de_servidor_durante_propuesta_sin_guild_id() {
+        let (_dir, mcp, discord) = mcp_con_servidor(GESTIONAR_CANALES, true).await;
+        Mock::given(method("POST"))
+            .and(path("/api/v10/guilds/555/channels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id":"31", "type":0, "guild_id":"555", "name":"test", "position":1
+            })))
+            .expect(2)
+            .mount(&discord)
+            .await;
+        let propuesta = Propuesta {
+            resumen: String::new(),
+            acciones: vec![
+                accion("crear_canal", json!({"nombre":"uno"})),
+                accion("crear_canal", json!({"nombre":"dos"})),
+            ],
+        };
+        let state = mcp.state.clone();
+        let pool = mcp.pool.clone();
+        let config = state.config.lock().unwrap().clone();
+        let bot_original = config.active_bot_id.clone().unwrap();
+        assert_eq!(config.active_guild_id.as_deref(), Some("555"));
+        let mut cambiado = false;
+        let resultado = mcp
+            .ejecutar_propuesta_con(
+                &propuesta,
+                &AtomicBool::new(false),
+                &mut |total, resultado| {
+                    if !cambiado {
+                        assert_eq!(total, 2);
+                        assert_eq!(resultado.indice, 0);
+                        assert_eq!(resultado.estado, EstadoAccion::Ok);
+                        cambiado = true;
+                        assert_eq!(state.get_active_guild().as_deref(), Some("555"));
+                        state.set_active_guild("556");
+                        let state = state.clone();
+                        let pool = pool.clone();
+                        std::thread::spawn(move || {
+                            tokio::runtime::Builder::new_current_thread()
+                                .enable_all()
+                                .build()
+                                .unwrap()
+                                .block_on(state.save_config_to_pool(&pool))
+                                .unwrap();
+                        })
+                        .join()
+                        .unwrap();
+                    }
+                },
+            )
+            .await
+            .unwrap();
+        assert!(cambiado);
+        assert_eq!(state.get_active_guild().as_deref(), Some("556"));
+        assert_eq!(resultado.hechas, 2);
+        let writes: Vec<_> = discord
+            .received_requests()
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|r| r.method.as_str() == "POST")
+            .map(|r| r.url.path().to_string())
+            .collect();
+        assert_eq!(writes, vec!["/api/v10/guilds/555/channels"; 2]);
+        let history = crate::operaciones::listar(&mcp.pool, &bot_original, "555")
+            .await
+            .unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].status, "unverified");
+        assert!(history[0].steps.iter().all(|s| s.status == "unverified"));
+        assert!(crate::operaciones::listar(&mcp.pool, &bot_original, "556")
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
     #[tokio::test]
     async fn crear_canal_permisos_combina_categoria_y_rol_nuevo() {
         let (_d, mcp, s) = mcp_con_servidor(TODO, true).await;
@@ -5896,6 +7365,31 @@ mod tests {
             (r.hechas, r.fallidas, r.omitidas, r.canceladas),
             (3, 1, 1, 0)
         );
+        let bot = mcp.state.get_active_bot().unwrap();
+        let historial = crate::operaciones::listar(&mcp.pool, &bot.id, "555")
+            .await
+            .unwrap();
+        assert_eq!(historial[0].status, "partial");
+        assert_eq!(r.operation_id.as_deref(), Some(historial[0].id.as_str()));
+        assert_eq!(r.operation_status.as_deref(), Some("partial"));
+
+        let fallida = Propuesta {
+            resumen: String::new(),
+            acciones: vec![accion("crear_rol", json!({"nombre":"Roto"}))],
+        };
+        let resultado = mcp
+            .ejecutar_propuesta_con(&fallida, &AtomicBool::new(false), &mut |_, _| {})
+            .await
+            .unwrap();
+        assert_eq!((resultado.hechas, resultado.fallidas), (0, 1));
+        let historial = crate::operaciones::listar(&mcp.pool, &bot.id, "555")
+            .await
+            .unwrap();
+        assert!(historial.iter().any(|op| op.status == "failed"
+            && op.steps.len() == 1
+            && op.steps[0].status == "failed"
+            && op.steps[0].reason.as_deref()
+                == Some("Discord returned an unreadable response; the outcome may be unknown")));
 
         // Cancelar tras la primera acción: el resto no se intenta.
         let cancelar = AtomicBool::new(false);

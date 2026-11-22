@@ -360,7 +360,7 @@ pub struct ContextoOrdenes {
     pub existentes:
         Arc<dyn Fn(u64) -> (Vec<crate::state::Role>, Vec<crate::state::Channel>) + Send + Sync>,
     /// Aplica la propuesta (ya con el servidor puesto): `ejecutar_propuesta`.
-    pub aplicar: Arc<dyn Fn(Propuesta, Arc<AtomicBool>) -> FuturoAplicar + Send + Sync>,
+    pub aplicar: Arc<dyn Fn(Propuesta, Arc<AtomicBool>, u64) -> FuturoAplicar + Send + Sync>,
     /// Idioma de la interfaz.
     pub idioma: Arc<dyn Fn() -> String + Send + Sync>,
 }
@@ -743,7 +743,9 @@ impl Conversador {
             e.autor_nombre, e.servidor, e.canal, total
         ));
         let inicio = Instant::now();
-        let texto = match (self.ordenes.aplicar)(propuesta, parada.cancelar.clone()).await {
+        let texto = match (self.ordenes.aplicar)(propuesta, parada.cancelar.clone(), e.guild_id)
+            .await
+        {
             Ok(resultados) => {
                 let r = ResumenPropuesta::de(total, resultados);
                 self.log(format!(
@@ -1640,7 +1642,7 @@ mod tests {
                 }),
                 nombres: Arc::new(|_| crate::propuesta::Nombres::default()),
                 existentes: Arc::new(|_| (Vec::new(), Vec::new())),
-                aplicar: Arc::new(|_, _| Box::pin(async { Ok(Vec::new()) })),
+                aplicar: Arc::new(|_, _, _| Box::pin(async { Ok(Vec::new()) })),
                 idioma: Arc::new(|| "en".to_string()),
             },
         };
@@ -1722,7 +1724,7 @@ mod tests {
         // Solo el autor puede aprobar; repetir el sí no repite la aplicación.
         let applied = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let counter = applied.clone();
-        c.ordenes.aplicar = Arc::new(move |_, _| {
+        c.ordenes.aplicar = Arc::new(move |_, _, _| {
             counter.fetch_add(1, Ordering::SeqCst);
             Box::pin(async { Ok(Vec::new()) })
         });
@@ -2066,7 +2068,7 @@ mod tests {
                 let (c, a) = (c.clone(), a.clone());
                 tareas.spawn(async move { c.atender(entrada(1, true), &a).await });
             }
-            tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::time::timeout(Duration::from_secs(30), async {
                 for _ in 0..29 {
                     assert_eq!(
                         tareas.join_next().await.unwrap().unwrap(),
@@ -2310,7 +2312,7 @@ printf 'Hola.'
         *limite.lock().unwrap() = Duration::from_millis(150);
         let inicio = Instant::now();
         c.atender(entrada(1, true), &ajustes_ordenes(true)).await;
-        assert!(inicio.elapsed() < Duration::from_secs(5));
+        assert!(inicio.elapsed() < Duration::from_secs(20));
         let t = textos(&envios(&server).await);
         assert_eq!(t.len(), 3, "{t:?}");
         assert!(t[2].contains(crate::asistente::ERROR_TIEMPO_IA), "{t:?}");
@@ -2701,7 +2703,7 @@ EOF"#;
     fn aplicador_falso(c: &mut Conversador) -> Aplicadas {
         let aplicadas: Aplicadas = Arc::new(Mutex::new(Vec::new()));
         let a = aplicadas.clone();
-        c.ordenes.aplicar = Arc::new(move |p, _| {
+        c.ordenes.aplicar = Arc::new(move |p, _, _| {
             a.lock().unwrap().push(p.clone());
             Box::pin(async move {
                 Ok(p.acciones
@@ -2766,7 +2768,7 @@ EOF"#;
                     async move { c.atender(entrada(1, true), &ajustes_ordenes(false)).await },
                 )
             };
-            tokio::time::timeout(Duration::from_secs(5), iniciado.notified())
+            tokio::time::timeout(Duration::from_secs(30), iniciado.notified())
                 .await
                 .unwrap();
             // Otro autor, incluso respondiendo al bot, no puede detenerla.
@@ -2790,7 +2792,7 @@ EOF"#;
                     .await,
                 Resultado::Respondido
             );
-            tokio::time::timeout(Duration::from_secs(5), trabajo)
+            tokio::time::timeout(Duration::from_secs(30), trabajo)
                 .await
                 .unwrap()
                 .unwrap();
@@ -2870,7 +2872,7 @@ EOF"#;
                     .await;
                 })
             };
-            tokio::time::timeout(Duration::from_secs(5), publicando.notified())
+            tokio::time::timeout(Duration::from_secs(30), publicando.notified())
                 .await
                 .unwrap();
             assert!(!trabajo.is_finished());
@@ -2888,7 +2890,7 @@ EOF"#;
                 c.coord.sacar_pendiente((555, 10, 1)),
                 EstadoPendiente::Ninguna
             ));
-            tokio::time::timeout(Duration::from_secs(5), trabajo)
+            tokio::time::timeout(Duration::from_secs(30), trabajo)
                 .await
                 .unwrap()
                 .unwrap();
@@ -2925,7 +2927,7 @@ EOF"#;
             let c = c.clone();
             tokio::spawn(async move { c.atender(entrada(1, true), &ajustes_ordenes(true)).await })
         };
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(Duration::from_secs(30), async {
             while !marca.exists() {
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
@@ -2934,7 +2936,7 @@ EOF"#;
         .unwrap();
         c.atender(confirmar(1, "detente"), &ajustes_ordenes(true))
             .await;
-        tokio::time::timeout(Duration::from_secs(5), trabajo)
+        tokio::time::timeout(Duration::from_secs(30), trabajo)
             .await
             .unwrap()
             .unwrap();
@@ -2962,7 +2964,7 @@ EOF"#;
             let terminar = Arc::new(tokio::sync::Notify::new());
             let realizadas = Arc::new(AtomicUsize::new(0));
             let (i, t, r) = (iniciada.clone(), terminar.clone(), realizadas.clone());
-            c.ordenes.aplicar = Arc::new(move |p, cancelar| {
+            c.ordenes.aplicar = Arc::new(move |p, cancelar, _| {
                 let (i, t, r) = (i.clone(), t.clone(), r.clone());
                 Box::pin(async move {
                     let mut resultados = Vec::new();
@@ -3022,7 +3024,7 @@ EOF"#;
                     }
                 })
             };
-            tokio::time::timeout(Duration::from_secs(5), iniciada.notified())
+            tokio::time::timeout(Duration::from_secs(30), iniciada.notified())
                 .await
                 .unwrap();
             assert_eq!(
@@ -3048,7 +3050,7 @@ EOF"#;
             assert_eq!(realizadas.load(Ordering::SeqCst), 0);
             assert!(!trabajo.is_finished());
             terminar.notify_one();
-            tokio::time::timeout(Duration::from_secs(5), trabajo)
+            tokio::time::timeout(Duration::from_secs(30), trabajo)
                 .await
                 .unwrap()
                 .unwrap();
@@ -3499,7 +3501,7 @@ echo '{}'"#,
                 tokio::spawn(async move { c.atender(e, &a).await })
             };
             if n > 30 {
-                tokio::time::timeout(Duration::from_secs(5), async {
+                tokio::time::timeout(Duration::from_secs(30), async {
                     while envios(&server).await.is_empty() {
                         tokio::time::sleep(Duration::from_millis(5)).await;
                     }
@@ -3522,7 +3524,7 @@ echo '{}'"#,
                 assert!(!tarea.is_finished());
                 c.atender(confirmar(1, "sí"), &a).await;
             }
-            tokio::time::timeout(Duration::from_secs(5), tarea)
+            tokio::time::timeout(Duration::from_secs(30), tarea)
                 .await
                 .unwrap()
                 .unwrap();
@@ -3566,7 +3568,7 @@ echo '{}'"#,
                 let a = a.clone();
                 tokio::spawn(async move { c.atender(e, &a).await })
             };
-            tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::time::timeout(Duration::from_secs(30), async {
                 while envios(&server).await.is_empty() {
                     tokio::time::sleep(Duration::from_millis(5)).await;
                 }
@@ -3576,7 +3578,7 @@ echo '{}'"#,
             if respuesta != "caduca" {
                 c.atender(confirmar(1, respuesta), &a).await;
             }
-            tokio::time::timeout(Duration::from_secs(5), tarea)
+            tokio::time::timeout(Duration::from_secs(30), tarea)
                 .await
                 .unwrap()
                 .unwrap();

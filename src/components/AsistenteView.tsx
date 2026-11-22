@@ -1,3 +1,4 @@
+import { operationNotice } from '../activity';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { confirm, open, save } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
@@ -19,6 +20,9 @@ import { ContextoPersonalidad } from './ContextoPersonalidad';
 import './Asistente.css';
 import { DiffView } from './DiffView';
 import { TemplateTransfer } from './TemplateTransfer';
+import { SugerenciaPlantilla } from './SugerenciaPlantilla';
+import { GuardarPlantilla, type PlantillaGuardada } from './GuardarPlantilla';
+import { invoke } from '@tauri-apps/api/core';
 
 type Modo = 'read' | 'plan' | 'execute';
 interface Herramienta { id: string; nombre: string; ok: boolean | null }
@@ -149,6 +153,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
   // Plan propuesto por la IA (modo Plan): vista de cambios frente al editor y plan previo para deshacer.
   const [cambios, setCambios] = useState<{ propuesto: string; vista: CambiosPlan } | null>(null);
   const [planPrevio, setPlanPrevio] = useState<string | null>(null);
+  const [guardandoPlantilla, setGuardandoPlantilla] = useState(false);
   const areaPlan = useRef<HTMLTextAreaElement>(null);
   const [manualAbierto, setManualAbierto] = useState(false);
 
@@ -415,6 +420,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
       setPropuesta(ev);
     } catch (e) {
       setConstruccion(null);
+      setErrorAplicar(t('Could not build from the plan'));
       showNotification(mensajeError(e, t('Could not build from the plan')), 'error');
     } finally {
       setConstruyendo(false);
@@ -485,6 +491,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
       setConfirmacionAplicar({ propuesta, guildId, nombre: nombreServidor });
       return;
     }
+    const operationBot = useStore.getState().config.active_bot_id;
     setAplicando(true);
     setDeteniendo(false);
     const anteriores = resumen?.resultados.filter((r) => r.estado === 'ok') ?? [];
@@ -493,6 +500,11 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
     try {
       const r = await aplicarPropuesta(propuesta.propuesta, anteriores);
       setResumen(r);
+      if (r.operation_id) {
+        const status = r.operation_status ?? 'unverified';
+        const message = status === 'correct' ? t('Operation verified') : status === 'partial' ? t('Operation partially completed') : status === 'failed' ? t('Operation failed') : t('Operation completed with unresolved steps');
+        showNotification(message, operationNotice(status), r.operation_id, operationBot ?? undefined);
+      }
       const detalle = propuesta.propuesta.acciones.map((a, i) => {
         const resultado = r.resultados.find((x) => x.indice === i);
         const estado = resultado ? { ok: t('Done'), error: t('Error'), omitida: t('Skipped') }[resultado.estado] : t('Cancelled');
@@ -590,6 +602,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
                   {construyendo ? <Loader2 size={14} className="asistente__giro" /> : <Hammer size={14} />} {construyendo ? t('Building…') : t('Build from plan')}
                 </Button>
               )}
+              {errorAplicar && <Button tamano="sm" onClick={() => useStore.getState().setActiveTab('settings')}>{t('Run diagnostics')}</Button>}
               {planPrevio !== null && (
                 <Button variante="secundario" tamano="sm" onClick={deshacerPlan}><Undo2 size={14} /> {t('Undo')}</Button>
               )}
@@ -597,8 +610,11 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
               <Button variante="secundario" tamano="sm" onClick={insertarPlantilla}><FilePlus size={14} /> {t('Insert template')}</Button>
               <Button variante="secundario" tamano="sm" onClick={() => { void importar(); }}><Upload size={14} /> {t('Import .md')}</Button>
               <Button variante="secundario" tamano="sm" onClick={() => { void exportar(); }}><Download size={14} /> {t('Export .md')}</Button>
+              {estructura?.tiene_estructura && <Button variante="secundario" tamano="sm" onClick={() => setGuardandoPlantilla(true)}><FilePlus size={14} /> {t('Save as template')}</Button>}
             </div>
           </header>
+          <GuardarPlantilla abierto={guardandoPlantilla} nombreInicial={nombreArchivoDelPlan(plan) === 'server-plan' ? '' : nombreArchivoDelPlan(plan)} onCerrar={() => setGuardandoPlantilla(false)}
+            guardar={(nombre, descripcion, etiquetas) => invoke<PlantillaGuardada>('crear_plantilla_desde_plan', { plan, nombre, descripcion, etiquetas })} />
           {manualAbierto && (
             <div className="asistente__aviso" role="region" aria-label={t('Plan manual')} style={{ display: 'block', maxHeight: '40%', overflow: 'auto' }}>
               <strong>{t('Plan manual')}</strong>
@@ -755,6 +771,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
                 )}
                 {!m.texto && !m.error && m.rol === 'assistant' && enviando && <span className="ui-skeleton" style={{ width: '40%' }} />}
                 {m.error && <p className="asistente__error" role="alert">{m.error}</p>}
+                {!moderacion && !enviando && !m.error && m.rol === 'assistant' && <SugerenciaPlantilla texto={m.texto} />}
               </article>
             ))}
 
@@ -866,7 +883,7 @@ const ChatAsistente: React.FC<{ tipo: TipoAsistente }> = ({ tipo }) => {
                     {t('Done: {done}, failed: {failed}, skipped: {skipped}, cancelled: {cancelled}', { done: resumen.hechas, failed: resumen.fallidas, skipped: resumen.omitidas, cancelled: resumen.canceladas })}
                   </p>
                 )}
-                {errorAplicar && <p className="asistente__error" role="alert">{errorAplicar}</p>}
+                {(errorAplicar || (resumen && (resumen.fallidas > 0))) && <div><p className="asistente__error" role="alert">{errorAplicar}</p><Button onClick={() => useStore.getState().setActiveTab('settings')}>{t('Run diagnostics')}</Button></div>}
                 <div className="asistente__acciones">
                   {aplicando ? (
                     <Button variante="peligro" onClick={detener} disabled={deteniendo}><Square size={14} /> {deteniendo ? t('Stopping after the current action…') : t('Stop')}</Button>

@@ -115,6 +115,7 @@ export interface BotRegistrado extends BotConfig {
 
 /** Ajustes propios de un servidor (sincronizado con `GuildSettings` de db.rs). */
 export interface GuildSettings {
+  enabled_connectors: string[];
   moderacion_no_preguntar: boolean;
   alias: string | null;
   notes: string;
@@ -270,6 +271,7 @@ export type EstadoAccion ='ok' | 'error' | 'omitida';
 export interface AvanceAccion { indice: number; total: number; descripcion: string; estado: EstadoAccion; mensaje: string }
 export interface ResultadoAccion { indice: number; herramienta: string; descripcion: string; estado: EstadoAccion; mensaje: string }
 export interface ResumenPropuesta {
+  operation_id: string | null; operation_status: string | null;
   total: number; hechas: number; fallidas: number; omitidas: number; canceladas: number; resultados: ResultadoAccion[];
 }
 export type EventoAsistente =

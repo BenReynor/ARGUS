@@ -8,13 +8,19 @@ use tauri::{
 use tauri_plugin_log::{Target, TargetKind};
 
 mod actualizaciones;
+pub mod adaptadores;
+pub mod agregador;
 pub mod asistente;
 pub mod backup;
+pub mod canal;
 pub mod chat;
 pub mod commands;
+pub mod conectores;
+pub mod conexion;
 pub mod crypto;
 pub mod db;
 pub mod destruction;
+pub mod diagnostico;
 pub mod discord;
 pub mod gateway;
 pub mod i18n;
@@ -22,15 +28,20 @@ pub mod mapa;
 mod mass_kick;
 pub mod mcp;
 pub mod mensajes;
+pub mod operaciones;
 pub mod persistencia;
 pub mod plan_compilar;
 pub mod plan_descripciones;
 pub mod plan_estructurado;
 pub mod propuesta;
 pub mod responder;
+pub mod servicio;
+pub mod servicio_control;
 pub mod snapshots;
 pub mod state;
 pub mod sync;
+mod template_aplicar;
+mod template_guardar;
 mod template_transfer;
 #[cfg(test)]
 mod tests_ajustes;
@@ -113,7 +124,18 @@ mod close_tests {
     }
 }
 
+/// Arranque normal de escritorio.
 pub fn run() {
+    ejecutar(false);
+}
+
+/// Modo sin ventana (`argus --service`): sin interfaz ni bandeja; solo conecta
+/// el bot activo si el servicio está habilitado.
+pub fn run_service() {
+    ejecutar(true);
+}
+
+fn ejecutar(sin_ventana: bool) {
     let app_state = AppState::new();
 
     tauri::Builder::default()
@@ -141,6 +163,11 @@ pub fn run() {
         .manage(app_state)
         .manage(ClosePreference::default())
         .invoke_handler(tauri::generate_handler![
+            diagnostico::diagnostico_local,
+            diagnostico::diagnostico_discord,
+            diagnostico::diagnostico_agentes,
+            diagnostico::cancelar_diagnostico_discord,
+            operaciones::listar_operaciones,
             crypto::keyring_available,
             actualizaciones::updater_install_supported,
             start_bot,
@@ -164,6 +191,8 @@ pub fn run() {
             get_guild_settings_discord,
             update_guild_discord,
             audit_log,
+            permission_audit,
+            prepare_audit_correction,
             channel_messages,
             delete_message,
             bulk_delete_messages,
@@ -205,8 +234,12 @@ pub fn run() {
             invite_url,
             ruta_mcp,
             template_transfer::preview_template_file,
+            template_transfer::preview_template_target,
             template_transfer::import_template_file,
             template_transfer::export_template_file,
+            template_guardar::crear_plantilla_desde_snapshot,
+            template_guardar::crear_plantilla_desde_plan,
+            template_aplicar::proponer_plantilla,
             list_templates,
             save_template,
             delete_template,
@@ -231,6 +264,16 @@ pub fn run() {
             propuesta::validar_propuesta,
             propuesta::aplicar_propuesta,
             propuesta::cancelar_asistente,
+            canal::leer_canal_servicio,
+            servicio::get_service_enabled,
+            servicio::set_service_enabled,
+            servicio_control::servicio_estado,
+            servicio_control::servicio_iniciar,
+            servicio_control::servicio_detener,
+            servicio_control::servicio_set_autoarranque,
+            diagnostico::diagnostico_servicio,
+            adaptadores::preparar_accion_conector,
+            adaptadores::aprobar_accion_conector,
             asistente::listar_agentes_ia,
             asistente::enviar_al_asistente,
             asistente::preparar_lectura_moderacion,
@@ -248,7 +291,7 @@ pub fn run() {
             asistente::nueva_conversacion,
         ])
         .manage(backup::Pending::default())
-        .setup(|app| {
+        .setup(move |app| {
             let handle = app.handle().clone();
 
             // Abre la BD (y aplica migraciones) en el runtime de Tauri y la
@@ -257,6 +300,7 @@ pub fn run() {
             let ruta = db::ruta_bd(&handle)?;
             let pool = tauri::async_runtime::block_on(db::abrir_bd_por_ruta(&ruta))?;
             tauri::async_runtime::block_on(crypto::initialize(&pool))?;
+            tauri::async_runtime::block_on(operaciones::recuperar(&pool))?;
             let preferences =
                 tauri::async_runtime::block_on(db::get_setting(&pool, "window_preferences"));
             match preferences {
@@ -302,6 +346,11 @@ pub fn run() {
                     });
                 }
                 Err(e) => tracing::error!("no se pudo cargar el mapa guardado: {e}"),
+            }
+
+            if sin_ventana {
+                servicio::arrancar_sin_ventana(handle.clone());
+                return Ok(());
             }
 
             let show_item =
@@ -350,6 +399,12 @@ pub fn run() {
                 handle_close(&mut WindowClose { window, api }, preference);
             }
         })
-        .run(tauri::generate_context!())
+        .run({
+            let mut contexto = tauri::generate_context!();
+            if sin_ventana {
+                contexto.config_mut().app.windows.clear();
+            }
+            contexto
+        })
         .expect("error while running tauri application");
 }

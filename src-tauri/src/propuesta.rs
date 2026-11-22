@@ -127,6 +127,10 @@ pub struct ResultadoAccion {
 /// Resumen final de aplicar una propuesta.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResumenPropuesta {
+    #[serde(default)]
+    pub operation_id: Option<String>,
+    #[serde(default)]
+    pub operation_status: Option<String>,
     pub total: usize,
     pub hechas: usize,
     pub fallidas: usize,
@@ -140,6 +144,8 @@ impl ResumenPropuesta {
     pub fn de(total: usize, resultados: Vec<ResultadoAccion>) -> Self {
         let cuenta = |e: EstadoAccion| resultados.iter().filter(|r| r.estado == e).count();
         Self {
+            operation_id: None,
+            operation_status: None,
             total,
             hechas: cuenta(EstadoAccion::Ok),
             fallidas: cuenta(EstadoAccion::Error),
@@ -194,12 +200,14 @@ pub async fn aplicar_propuesta(
     CANCELAR.store(false, Ordering::SeqCst);
     // El servidor es el elegido en la app, no el «servidor activo» del MCP
     // (que la app nunca fija): sin esto, aplicar fallaba con «No active server».
-    let guild_id = state
-        .get_active_guild()
+    let config = { state.config.lock().unwrap().clone() };
+    let guild_id = config
+        .active_guild_id
+        .clone()
         .ok_or_else(|| "No server selected: pick one in the left column".to_string())?;
     let propuesta = con_servidor(&propuesta, &guild_id);
     let pool = crate::db::get_pool(&app).await.map_err(|e| e.to_string())?;
-    let mcp = crate::mcp::ArgusMcp::nuevo(pool, None).await?;
+    let mcp = crate::mcp::ArgusMcp::con_contexto(pool, None, config);
     let emisor = app.clone();
     let mut avance = move |total: usize, r: &ResultadoAccion| {
         if let Err(e) = emisor.emit(EVENTO_ACCION, AvanceAccion::de(total, r)) {
@@ -492,6 +500,30 @@ impl Nombres {
             }
         }
         Ok(args)
+    }
+
+    /// Olvida los recursos existentes cuyo nombre crea la propuesta: las
+    /// referencias por ese nombre son al recurso nuevo. Si su creación falla,
+    /// la acción que dependía de él se omite en vez de caer en el antiguo.
+    pub fn olvidar_nombres_creados(&mut self, p: &Propuesta) {
+        for a in &p.acciones {
+            let Some(nombre) = a.args.get("nombre").and_then(Value::as_str) else {
+                continue;
+            };
+            let k = clave(nombre);
+            match a.herramienta.as_str() {
+                "crear_rol" => {
+                    self.roles.remove(&k);
+                }
+                "crear_canal" => {
+                    if es_categoria(&a.args) {
+                        self.categorias.remove(&k);
+                    }
+                    self.canales.remove(&k);
+                }
+                _ => {}
+            }
+        }
     }
 
     /// Apunta lo que acaba de crear una acción, para las siguientes.
