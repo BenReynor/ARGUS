@@ -706,6 +706,26 @@ Verificación manual:
   criterio: controles visibles para iniciar, detener, ver el estado y el último error, y para habilitar el arranque con el sistema (desactivado por defecto, sin servicio del sistema ni privilegios); el diagnóstico distingue servicio detenido, interfaz desconectada y Gateway caído; docs de qué queda activo; tests sin modificar el arranque real del equipo y checklist manual para Linux y Windows; Lo no especificado NO es motivo de rechazo.
 
 
+## FASE 26 — Cierre: manual, documentación, MCP y skill
+
+ARGUS ya tiene sus funciones; esta fase hace que el usuario y los agentes sepan
+todo lo que ofrece. Nada de funciones nuevas fuera de lo listado.
+
+- [ ] Conectores: pantalla para conectar y desconectar
+  criterio: en Settings, cada conector del catálogo muestra su estado (no implementado, sin probar, conectado, caducado o revocado); el usuario puede conectar uno pegando la credencial del propio servicio (campo de contraseña, nunca se vuelve a mostrar) y desconectarlo con confirmación, usando el almacén de credenciales existente (`conectores.rs`); nunca pide el token de un bot ajeno; textos con t() en EN y ES; tests de conectar, desconectar y de que la credencial no vuelve al frontend; Lo no especificado NO es motivo de rechazo.
+
+- [ ] MCP actualizado con las funciones nuevas
+  criterio: las instrucciones del servidor MCP (get_info) describen verificación de resultados, historial, diagnóstico, plantillas, auditoría con correcciones y conectores; hay herramientas para listar plantillas, guardar una plantilla desde el plan o desde un snapshot, preparar la propuesta de aplicar una plantilla y preparar la corrección de un hallazgo (las escrituras siguen yendo como propuesta que aprueba el usuario); las herramientas de lectura de los conectores habilitados (`conector__herramienta`, del agregador existente) aparecen en la lista de herramientas del MCP solo cuando hay conectores habilitados; descripciones en inglés; tests de registro, de que las nuevas no escriben sin aprobación y de la lista con y sin conectores; Lo no especificado NO es motivo de rechazo.
+
+- [ ] Skill de ARGUS para agentes
+  criterio: archivo versionado `skills/argus/SKILL.md` (frontmatter con name y description) que enseña a Claude, Codex y OpenCode a usar el MCP de ARGUS gastando pocos tokens: leer el mapa una vez, usar nombres en vez de IDs, agrupar cambios en una propuesta, no repetir lecturas y comprobar el resultado con la verificación; solo nombra herramientas que existen; en Settings se ofrece instalarla en la carpeta de skills del agente elegido, mostrando la ruta y pidiendo confirmación, sin sobrescribir una existente sin preguntar; test que compara las herramientas citadas en la skill con las registradas en el MCP y test de la instalación en una carpeta temporal; Lo no especificado NO es motivo de rechazo.
+
+- [ ] Manual dentro de la aplicación
+  criterio: sección «Manual» en la barra lateral con todas las funciones de ARGUS por áreas (bots y servidores, canales y roles, miembros y moderación, asistente y plan, plantillas, snapshots y restauración, expulsión y destrucción masiva, auditoría, diagnóstico, actividad e historial, conectores, MCP y skill, servicio sin ventana, seguridad y privacidad): qué hace, cómo se usa y sus límites; buscador; cada vista tiene un botón «?» que abre su sección; textos con t() en EN y ES; test de que cada vista de la barra lateral tiene su sección y de que la búsqueda encuentra por título y contenido; Lo no especificado NO es motivo de rechazo.
+
+- [ ] README y documentación al día
+  criterio: README.md y README.es.md listan todas las funciones actuales (incluidas las FASES 20–26) con enlace al manual y a docs/; docs/MCP.md documenta cada herramienta registrada del MCP y la skill; un test falla si una herramienta registrada no aparece en docs/MCP.md; no se incluyen tokens, IDs de servidores reales ni datos de info/; Lo no especificado NO es motivo de rechazo.
+
 ## Ideas fuera de esta etapa
 
 - Donaciones: se conserva la idea anterior de apoyar el proyecto sin bloquear funciones. Requiere que el autor configure antes su cuenta; no es un requisito para construir servidores ni para usar conectores.
