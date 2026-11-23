@@ -1,4 +1,3 @@
-use crate::crypto;
 use anyhow::Result;
 use sqlx::{Row, SqlitePool};
 use tauri::AppHandle;
