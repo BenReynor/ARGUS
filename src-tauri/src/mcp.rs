@@ -227,6 +227,19 @@ pub struct EditarMensajeParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
+pub struct ReaccionParams {
+    /// ID del servidor (opcional; con él se comprueba el permiso antes).
+    pub guild_id: Option<String>,
+    /// ID del canal del mensaje.
+    pub channel_id: String,
+    /// ID del mensaje.
+    pub message_id: String,
+    /// Emoji unicode (👍) o personalizado `nombre:id`.
+    pub emoji: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
 pub struct CrearPostForoParams {
     /// ID del canal de foro.
     pub channel_id: String,
@@ -1790,6 +1803,31 @@ impl ArgusMcp {
         self.mensaje(texto)
     }
 
+    /// `reaccionar` (anadir) y `quitar_reaccion`. El servidor es opcional: si
+    /// se conoce se comprueba antes el permiso «Añadir reacciones».
+    pub async fn reaccion_json(&self, p: &ReaccionParams, anadir: bool) -> Result<String, String> {
+        self.preparar().await?;
+        let gid = p
+            .guild_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|g| !g.is_empty())
+            .map(str::to_string)
+            .or_else(|| self.state.get_active_guild());
+        let texto = commands::reaccionar_a_mensaje(
+            &self.state,
+            gid.as_deref(),
+            p.channel_id.trim(),
+            p.message_id.trim(),
+            &p.emoji,
+            anadir,
+            self.url(),
+        )
+        .await
+        .map_err(|e| self.limpiar(e))?;
+        self.mensaje(texto)
+    }
+
     pub async fn crear_post_foro_json(
         &self,
         channel_id: &str,
@@ -2595,6 +2633,8 @@ pub const HERRAMIENTAS_ESCRITURA: &[&str] = &[
     "enviar_mensaje",
     "editar_mensaje",
     "crear_post_foro",
+    "reaccionar",
+    "quitar_reaccion",
     "enviar_dm",
     "avisar",
     "borrar_mensaje",
@@ -2660,6 +2700,7 @@ pub fn validar_accion(nombre: &str, args: &serde_json::Value) -> Result<(), Stri
         "enviar_mensaje" => ok::<EnviarMensajeParams>(nombre, args),
         "crear_post_foro" => ok::<CrearPostForoParams>(nombre, args),
         "editar_mensaje" => ok::<EditarMensajeParams>(nombre, args),
+        "reaccionar" | "quitar_reaccion" => ok::<ReaccionParams>(nombre, args),
         "enviar_dm" => ok::<EnviarDmParams>(nombre, args),
         "avisar" => ok::<AvisarParams>(nombre, args),
         "borrar_mensaje" | "fijar_mensaje" | "desfijar_mensaje" => {
@@ -2711,6 +2752,7 @@ pub fn esquema_args(nombre: &str) -> Option<serde_json::Value> {
         "enviar_mensaje" => de::<EnviarMensajeParams>(),
         "crear_post_foro" => de::<CrearPostForoParams>(),
         "editar_mensaje" => de::<EditarMensajeParams>(),
+        "reaccionar" | "quitar_reaccion" => de::<ReaccionParams>(),
         "enviar_dm" => de::<EnviarDmParams>(),
         "avisar" => de::<AvisarParams>(),
         "borrar_mensaje" | "fijar_mensaje" | "desfijar_mensaje" => de::<MensajeParams>(),
@@ -3308,6 +3350,10 @@ impl ArgusMcp {
                 self.editar_mensaje_json(&p.channel_id, &p.message_id, &p.contenido)
                     .await
             }
+            "reaccionar" | "quitar_reaccion" => {
+                let p: ReaccionParams = args_de(nombre, args)?;
+                self.reaccion_json(&p, nombre == "reaccionar").await
+            }
             "enviar_mensaje" => {
                 let p: EnviarMensajeParams = args_de(nombre, args)?;
                 self.enviar_mensaje_json(&p.channel_id, &p.contenido, p.responder_a.as_deref())
@@ -3803,6 +3849,30 @@ impl ArgusMcp {
         let r = self
             .crear_post_foro_json(&p.channel_id, &p.titulo, &p.contenido)
             .await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "reaccionar",
+        description = "Adds a reaction from the active bot to a message. emoji is a Unicode emoji (👍) or a custom one as name:id. Requires the Add Reactions permission."
+    )]
+    async fn reaccionar(
+        &self,
+        Parameters(p): Parameters<ReaccionParams>,
+    ) -> Result<String, String> {
+        let r = self.reaccion_json(&p, true).await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "quitar_reaccion",
+        description = "Removes the active bot's own reaction from a message (it never removes other users' reactions). emoji is a Unicode emoji or a custom one as name:id."
+    )]
+    async fn quitar_reaccion(
+        &self,
+        Parameters(p): Parameters<ReaccionParams>,
+    ) -> Result<String, String> {
+        let r = self.reaccion_json(&p, false).await;
         self.salida(r)
     }
 
@@ -6245,6 +6315,8 @@ mod tests {
             "enviar_mensaje",
             "editar_mensaje",
             "crear_post_foro",
+            "reaccionar",
+            "quitar_reaccion",
             "enviar_dm",
             "borrar_mensaje",
             "borrar_mensajes",

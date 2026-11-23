@@ -1897,6 +1897,36 @@ pub async fn editar_mensaje_de_canal(
     Ok(format!("Message {id} edited in channel {channel_id}"))
 }
 
+const PERMISO_REACCIONES: &str = "Añadir reacciones";
+
+/// Añade o quita la reacción del propio bot. Valida el emoji y, si se conoce
+/// el servidor, el permiso «Añadir reacciones» antes de llamar a la reacción.
+pub async fn reaccionar_a_mensaje(
+    state: &AppState,
+    guild_id: Option<&str>,
+    channel_id: &str,
+    message_id: &str,
+    emoji: &str,
+    anadir: bool,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    crate::discord::validar_emoji(emoji)?;
+    let token = token_del_bot_activo(state)?;
+    if anadir {
+        if let Some(g) = guild_id {
+            exigir_permiso(state, g, PERMISO_REACCIONES, base_url).await?;
+        }
+    }
+    crate::discord::set_own_reaction(&token, base_url, channel_id, message_id, emoji, anadir)
+        .await?;
+    let emoji = emoji.trim();
+    Ok(if anadir {
+        format!("Reaction {emoji} added to message {message_id}")
+    } else {
+        format!("Reaction {emoji} removed from message {message_id}")
+    })
+}
+
 /// Crea un post en un canal de foro con el bot activo.
 pub async fn crear_post_en_foro(
     state: &AppState,
@@ -3463,6 +3493,106 @@ mod tests {
         assert!(r.contains("777"), "{r}");
         let vacio = crear_post_en_foro(&state, "42", "  ", "texto", Some(&addr)).await;
         assert!(vacio.is_err());
+    }
+
+    #[tokio::test]
+    async fn reacciona_y_quita_la_reaccion_con_la_ruta_codificada() {
+        let server = MockServer::start().await;
+        for verbo in ["PUT", "DELETE"] {
+            for ruta in [
+                "/api/v10/channels/42/messages/555/reactions/%F0%9F%91%8D/@me",
+                "/api/v10/channels/42/messages/555/reactions/party:123/@me",
+            ] {
+                Mock::given(method(verbo))
+                    .and(path(ruta))
+                    .and(header("authorization", "Bot token-react"))
+                    .respond_with(ResponseTemplate::new(204))
+                    .expect(1..)
+                    .mount(&server)
+                    .await;
+            }
+        }
+        let state = estado_con_bot_activo("token-react");
+        let addr = server.address().to_string();
+        for emoji in ["👍", "party:123", "<:party:123>"] {
+            let r = reaccionar_a_mensaje(&state, None, "42", "555", emoji, true, Some(&addr))
+                .await
+                .expect("reacción");
+            assert!(r.contains("555"), "{r}");
+        }
+        for emoji in ["👍", "party:123", "<:party:123>"] {
+            reaccionar_a_mensaje(&state, None, "42", "555", emoji, false, Some(&addr))
+                .await
+                .expect("quitar");
+        }
+    }
+
+    #[tokio::test]
+    async fn emoji_invalido_no_llama_a_discord() {
+        let server = MockServer::start().await;
+        Mock::given(wiremock::matchers::any())
+            .respond_with(ResponseTemplate::new(204))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-react");
+        let addr = server.address().to_string();
+        for malo in [
+            "",
+            "  ",
+            "hola",
+            "a:b",
+            "x:0",
+            "party:12:3",
+            ":123",
+            "👍 👍",
+            "1",
+        ] {
+            let e = reaccionar_a_mensaje(&state, Some("555"), "42", "555", malo, true, Some(&addr))
+                .await
+                .unwrap_err();
+            assert!(e.starts_with("Invalid emoji"), "{malo}: {e}");
+        }
+        assert!(crate::discord::validar_emoji("1\u{FE0F}\u{20E3}").is_ok());
+        assert!(crate::discord::validar_emoji("👨\u{200D}👩\u{200D}👧").is_ok());
+    }
+
+    #[tokio::test]
+    async fn emoji_desconocido_10014_se_traduce() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+                "code": 10014, "message": "Unknown Emoji"
+            })))
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-react");
+        let addr = server.address().to_string();
+        let e = reaccionar_a_mensaje(&state, None, "42", "555", "gone:999", true, Some(&addr))
+            .await
+            .unwrap_err();
+        assert!(e.contains("Unknown emoji"), "{e}");
+        assert_eq!(
+            crate::i18n::tr("es", &e),
+            "Emoji desconocido: no existe o el bot no puede usarlo"
+        );
+    }
+
+    #[tokio::test]
+    async fn reaccionar_avisa_si_falta_anadir_reacciones() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+                "code": 50013, "message": "Missing Permissions"
+            })))
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-react");
+        let addr = server.address().to_string();
+        let e = reaccionar_a_mensaje(&state, None, "42", "555", "👍", true, Some(&addr))
+            .await
+            .unwrap_err();
+        assert_eq!(e, "The bot is missing the permission «Añadir reacciones»");
     }
 
     #[tokio::test]

@@ -182,6 +182,8 @@ function actionLabel(action: string): string {
     case 'enviar_mensaje': return t('Send message');
     case 'editar_mensaje': return t('Edit message');
     case 'crear_post_foro': return t('Create forum post');
+    case 'reaccionar': return t('Add reaction');
+    case 'quitar_reaccion': return t('Remove reaction');
     case 'aplicar_restauracion': return t('Apply restoration');
     default: return action;
   }

@@ -165,6 +165,14 @@ pub fn traducir_respuesta(status: u16, cuerpo: &[u8]) -> String {
             Some(p) => format!("The bot is missing the permission «{p}»"),
             None => "The bot is missing a permission to do this on the server".to_string(),
         },
+        404 if json
+            .as_ref()
+            .and_then(|j| j.get("code"))
+            .and_then(|c| c.as_u64())
+            == Some(10014) =>
+        {
+            "Unknown emoji: it does not exist or the bot cannot use it".to_string()
+        }
         404 => {
             "Not found: the server, channel, role or member does not exist or the bot has no access"
                 .to_string()
@@ -482,6 +490,102 @@ pub async fn edit_channel_message(
         .await
         .map_err(|e| format!("Invalid response from Discord: {e}"))?;
     Ok(mensaje.id.to_string())
+}
+
+/// Emoji ya validado: unicode o personalizado (`nombre:id`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EmojiReaccion {
+    Unicode(String),
+    Personalizado { nombre: String, id: String },
+}
+
+const ERROR_EMOJI: &str = "Invalid emoji: use a Unicode emoji (👍) or a custom one as name:id";
+
+/// Valida el emoji antes de llamar a Discord. Acepta un emoji unicode, uno
+/// personalizado `nombre:id` y las formas `<:nombre:id>` / `<a:nombre:id>`.
+pub fn validar_emoji(emoji: &str) -> Result<EmojiReaccion, String> {
+    let e = emoji.trim();
+    let e = e
+        .strip_prefix("<a:")
+        .or_else(|| e.strip_prefix("<:"))
+        .and_then(|r| r.strip_suffix('>'))
+        .unwrap_or(e);
+    if e.is_empty() || e.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(ERROR_EMOJI.to_string());
+    }
+    if let Some((nombre, id)) = e.split_once(':') {
+        let nombre_ok = (2..=32).contains(&nombre.chars().count())
+            && nombre
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_');
+        let id_ok = id.parse::<u64>().map(|n| n > 0).unwrap_or(false);
+        if nombre_ok && id_ok {
+            return Ok(EmojiReaccion::Personalizado {
+                nombre: nombre.to_string(),
+                id: id.to_string(),
+            });
+        }
+        return Err(ERROR_EMOJI.to_string());
+    }
+    // Unicode: sin letras ASCII; solo se admiten dígitos, `#` o `*` en una
+    // secuencia keycap (`1️⃣`).
+    let keycap = e.ends_with('\u{20E3}')
+        && e.chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit() || c == '#' || c == '*');
+    let ok = e.chars().count() <= 20
+        && (keycap || e.chars().all(|c| !c.is_ascii()))
+        && e.chars().any(|c| !c.is_ascii() || keycap);
+    if ok {
+        Ok(EmojiReaccion::Unicode(e.to_string()))
+    } else {
+        Err(ERROR_EMOJI.to_string())
+    }
+}
+
+/// Añade (`PUT`) o quita (`DELETE`) la reacción del propio bot:
+/// `/channels/{id}/messages/{id}/reactions/{emoji}/@me`. Solo toca la del bot.
+pub async fn set_own_reaction(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+    message_id: &str,
+    emoji: &str,
+    anadir: bool,
+) -> Result<(), String> {
+    use twilight_http::request::channel::reaction::RequestReactionType;
+    let emoji = validar_emoji(emoji)?;
+    let cid = parse_id(channel_id, "channel")?;
+    let mid = parse_id(message_id, "message")?;
+    let eid = match &emoji {
+        EmojiReaccion::Personalizado { id, .. } => Some(parse_id(id, "emoji")?),
+        EmojiReaccion::Unicode(_) => None,
+    };
+    let tipo = match (&emoji, eid) {
+        (EmojiReaccion::Personalizado { nombre, .. }, Some(id)) => RequestReactionType::Custom {
+            id,
+            name: Some(nombre.as_str()),
+        },
+        (EmojiReaccion::Unicode(n), _) => RequestReactionType::Unicode { name: n.as_str() },
+        _ => return Err(ERROR_EMOJI.to_string()),
+    };
+    let client = build_client(token, base_url);
+    let r = if anadir {
+        client.create_reaction(cid, mid, &tipo).await
+    } else {
+        client.delete_current_user_reaction(cid, mid, &tipo).await
+    };
+    r.map(|_| ()).map_err(|e| {
+        // Discord responde 403 sin permiso; el aviso nombra el permiso concreto.
+        if anadir && matches!(e.kind(), ErrorType::Response { status, .. } if status.get() == 403) {
+            let t = traducir_error(e);
+            if t.starts_with("The bot is missing a permission") {
+                return "The bot is missing the permission «Añadir reacciones»".to_string();
+            }
+            return t;
+        }
+        traducir_error(e)
+    })
 }
 
 /// Crea un post en un canal de foro (`POST /channels/{id}/threads`) con un

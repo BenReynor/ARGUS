@@ -147,6 +147,8 @@ optional parameter.
 |---|---|---|
 | `enviar_mensaje` | `channel_id`, `contenido` (≤ 2000), `responder_a?` (message ID) | Sends a message to a channel; with `responder_a` it replies to that message. |
 | `editar_mensaje` | `channel_id`, `message_id`, `contenido` (≤ 2000) | Edits a message the bot sent; Discord does not allow editing other users' messages. |
+| `reaccionar` | `guild_id?`, `channel_id`, `message_id`, `emoji` (Unicode or `name:id`) | Adds the bot's reaction to a message; checks the Add Reactions permission when the server is known. |
+| `quitar_reaccion` | `guild_id?`, `channel_id`, `message_id`, `emoji` | Removes only the bot's own reaction. |
 | `crear_post_foro` | `channel_id`, `titulo` (≤ 100), `contenido` (≤ 2000) | Creates a post in a forum channel. |
 | `enviar_dm` | `user_id`, `contenido` (≤ 2000) | Direct message to a user. |
 | `avisar` | `user_id` (ID or name), `motivo`, `mensaje_id?`, `dm?` (default true), `guild_id?` | Saves a warning; with `dm` sends the user the reason and their warning count (if the DM fails the warning is kept and the result says so). |
