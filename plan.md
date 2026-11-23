@@ -787,7 +787,7 @@ EN y ES y sin datos reales en los tests.
 - [x] Memoria breve por persona (opcional y borrable)
   criterio: ajuste `chat_memoria` desactivado por defecto; tabla nueva (migración) con bot, servidor, usuario, nota (máx. 500 caracteres) y fecha; con la memoria activa, el prompt incluye solo la nota del autor actual marcada como datos no fiables y permite al modelo terminar con una línea `MEMORIA: <nota breve>` sobre ese autor, que ARGUS guarda (reemplaza la anterior, recorta a 500) y quita del mensaje visible; nunca se guarda nada sobre otros usuarios ni datos como contraseñas, teléfonos o correos (filtro simple); en Respuestas de Discord una lista de notas por usuario con borrar una y «Borrar todas»; al desactivar la memoria no se usan las notas; tests de parseo, recorte, filtro, borrado y de que sin el ajuste no cambia nada; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Respuestas espontáneas sin mención
+- [x] Respuestas espontáneas sin mención
   criterio: ajuste `chat_espontaneo` desactivado por defecto, con lista de palabras clave y probabilidad (0–100 %) y una pausa mínima por canal en minutos (por defecto 10); el bot puede responder a un mensaje sin mención solo si contiene una palabra clave o sale la probabilidad, respeta canales y usuarios permitidos, nunca responde a bots y consume el mismo cupo diario de respuestas; tests de cada condición con un reloj y un azar inyectables; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Editar mensajes del bot desde la app
