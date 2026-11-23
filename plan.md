@@ -814,7 +814,7 @@ con t() en EN y ES y sin datos reales en los tests.
 - [x] Reacciones a mensajes
   criterio: herramientas `reaccionar` (canal, mensaje, emoji unicode o personalizado `nombre:id`) y `quitar_reaccion` (solo la del propio bot), con validación del emoji antes de llamar a Discord y aviso de permiso «Añadir reacciones»; tests wiremock de la ruta codificada (PUT/DELETE `/reactions/{emoji}/@me`), de emoji inválido y de error 10014 (emoji desconocido) traducido; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Mensajes con embed
+- [x] Mensajes con embed
   criterio: `enviar_mensaje` y `editar_mensaje` aceptan un `embed` opcional (título, descripción, color en hex, pie, campos nombre/valor/en línea, URL de imagen); se validan los límites de Discord (título 256, descripción 4096, hasta 25 campos, total 6000) con mensaje claro antes de enviar; contenido o embed, al menos uno; tests del JSON enviado, de cada límite y de color inválido; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Foros: etiquetas y respuestas dentro de un post
