@@ -817,7 +817,7 @@ con t() en EN y ES y sin datos reales en los tests.
 - [x] Mensajes con embed
   criterio: `enviar_mensaje` y `editar_mensaje` aceptan un `embed` opcional (título, descripción, color en hex, pie, campos nombre/valor/en línea, URL de imagen); se validan los límites de Discord (título 256, descripción 4096, hasta 25 campos, total 6000) con mensaje claro antes de enviar; contenido o embed, al menos uno; tests del JSON enviado, de cada límite y de color inválido; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Foros: etiquetas y respuestas dentro de un post
+- [x] Foros: etiquetas y respuestas dentro de un post
   criterio: herramientas `etiquetas_foro` (lectura: lista las etiquetas de un canal foro), `editar_etiquetas_foro` (crea o renombra etiquetas, máx. 20, nombre ≤ 20 caracteres, emoji opcional) y `etiquetar_post` (asigna hasta 5 etiquetas existentes a un post por nombre o id); `crear_post_foro` acepta etiquetas opcionales; responder dentro de un post funciona con `enviar_mensaje` sobre el id del hilo y se documenta; tests wiremock de cada llamada, de nombre de etiqueta inexistente y de los límites; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Eventos programados del servidor
