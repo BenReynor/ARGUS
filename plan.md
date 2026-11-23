@@ -781,7 +781,7 @@ EN y ES y sin datos reales en los tests.
 - [x] Regla de honestidad en el prompt del chat
   criterio: `prompt_chat` añade a las reglas fijas que el bot puede interpretar a su personaje pero nunca afirma ser humano ni niega ser un bot o una IA cuando se lo preguntan; test de que la regla aparece con y sin órdenes; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Límite configurable del contexto del servidor
+- [x] Límite configurable del contexto del servidor
   criterio: nuevo ajuste `chat_contexto_max` (por defecto 1500, rango 500–6000) que sustituye a la constante `MAX_CONTEXTO_CHAT` en `prompt_chat` y en el editor de contexto (contador de caracteres con el límite elegido); el ajuste aparece en Respuestas de Discord junto al número de mensajes de contexto; tests del recorte con distintos límites y de que valores fuera de rango se ajustan; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Memoria breve por persona (opcional y borrable)
