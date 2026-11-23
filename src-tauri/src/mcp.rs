@@ -208,8 +208,10 @@ fn color_opcional(c: &Option<ColorParam>) -> Result<Option<u32>, String> {
 pub struct EnviarMensajeParams {
     /// ID del canal de texto.
     pub channel_id: String,
-    /// Texto del mensaje (hasta 2000 caracteres).
-    pub contenido: String,
+    /// Texto del mensaje (hasta 2000 caracteres). Opcional si hay `embed`.
+    pub contenido: Option<String>,
+    /// Embed opcional (título, descripción, color hex, pie, campos, imagen).
+    pub embed: Option<crate::discord::EmbedMensaje>,
     /// ID de un mensaje de ese canal al que se responde (opcional).
     pub responder_a: Option<String>,
 }
@@ -221,8 +223,10 @@ pub struct EditarMensajeParams {
     pub channel_id: String,
     /// ID del mensaje del bot que se edita.
     pub message_id: String,
-    /// Texto nuevo (hasta 2000 caracteres); reemplaza al anterior.
-    pub contenido: String,
+    /// Texto nuevo (hasta 2000 caracteres); reemplaza al anterior. Opcional si hay `embed`.
+    pub contenido: Option<String>,
+    /// Embed nuevo opcional (título, descripción, color hex, pie, campos, imagen).
+    pub embed: Option<crate::discord::EmbedMensaje>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1770,12 +1774,24 @@ impl ArgusMcp {
         contenido: &str,
         responder_a: Option<&str>,
     ) -> Result<String, String> {
+        self.enviar_mensaje_embed_json(channel_id, Some(contenido), None, responder_a)
+            .await
+    }
+
+    pub async fn enviar_mensaje_embed_json(
+        &self,
+        channel_id: &str,
+        contenido: Option<&str>,
+        embed: Option<&crate::discord::EmbedMensaje>,
+        responder_a: Option<&str>,
+    ) -> Result<String, String> {
         self.preparar().await?;
         let reply = responder_a.map(str::trim).filter(|m| !m.is_empty());
-        let texto = commands::enviar_a_canal_resp(
+        let texto = commands::enviar_a_canal_embed(
             &self.state,
             channel_id.trim(),
             contenido,
+            embed,
             reply,
             self.url(),
         )
@@ -1790,12 +1806,24 @@ impl ArgusMcp {
         message_id: &str,
         contenido: &str,
     ) -> Result<String, String> {
+        self.editar_mensaje_embed_json(channel_id, message_id, Some(contenido), None)
+            .await
+    }
+
+    pub async fn editar_mensaje_embed_json(
+        &self,
+        channel_id: &str,
+        message_id: &str,
+        contenido: Option<&str>,
+        embed: Option<&crate::discord::EmbedMensaje>,
+    ) -> Result<String, String> {
         self.preparar().await?;
-        let texto = commands::editar_mensaje_de_canal(
+        let texto = commands::editar_mensaje_con_embed(
             &self.state,
             channel_id.trim(),
             message_id.trim(),
             contenido,
+            embed,
             self.url(),
         )
         .await
@@ -3347,8 +3375,13 @@ impl ArgusMcp {
             }
             "editar_mensaje" => {
                 let p: EditarMensajeParams = args_de(nombre, args)?;
-                self.editar_mensaje_json(&p.channel_id, &p.message_id, &p.contenido)
-                    .await
+                self.editar_mensaje_embed_json(
+                    &p.channel_id,
+                    &p.message_id,
+                    p.contenido.as_deref(),
+                    p.embed.as_ref(),
+                )
+                .await
             }
             "reaccionar" | "quitar_reaccion" => {
                 let p: ReaccionParams = args_de(nombre, args)?;
@@ -3356,8 +3389,13 @@ impl ArgusMcp {
             }
             "enviar_mensaje" => {
                 let p: EnviarMensajeParams = args_de(nombre, args)?;
-                self.enviar_mensaje_json(&p.channel_id, &p.contenido, p.responder_a.as_deref())
-                    .await
+                self.enviar_mensaje_embed_json(
+                    &p.channel_id,
+                    p.contenido.as_deref(),
+                    p.embed.as_ref(),
+                    p.responder_a.as_deref(),
+                )
+                .await
             }
             "enviar_dm" => {
                 let p: EnviarDmParams = args_de(nombre, args)?;
@@ -3812,28 +3850,38 @@ impl ArgusMcp {
 
     #[tool(
         name = "enviar_mensaje",
-        description = "Sends a text message (up to 2000 characters) to a channel as the active bot; with responder_a it replies to that message. Requires permission to send messages in that channel."
+        description = "Sends a text message (up to 2000 characters) and/or an optional embed (titulo, descripcion, color hex, pie, campos nombre/valor/en_linea, imagen_url) to a channel as the active bot; at least one of contenido or embed is required; with responder_a it replies to that message. Requires permission to send messages in that channel."
     )]
     async fn enviar_mensaje(
         &self,
         Parameters(p): Parameters<EnviarMensajeParams>,
     ) -> Result<String, String> {
         let r = self
-            .enviar_mensaje_json(&p.channel_id, &p.contenido, p.responder_a.as_deref())
+            .enviar_mensaje_embed_json(
+                &p.channel_id,
+                p.contenido.as_deref(),
+                p.embed.as_ref(),
+                p.responder_a.as_deref(),
+            )
             .await;
         self.salida(r)
     }
 
     #[tool(
         name = "editar_mensaje",
-        description = "Edits the text of a message previously sent by the active bot (up to 2000 characters); Discord does not allow editing other users' messages."
+        description = "Edits the text (up to 2000 characters) and/or the embed of a message previously sent by the active bot; at least one of contenido or embed is required; Discord does not allow editing other users' messages."
     )]
     async fn editar_mensaje(
         &self,
         Parameters(p): Parameters<EditarMensajeParams>,
     ) -> Result<String, String> {
         let r = self
-            .editar_mensaje_json(&p.channel_id, &p.message_id, &p.contenido)
+            .editar_mensaje_embed_json(
+                &p.channel_id,
+                &p.message_id,
+                p.contenido.as_deref(),
+                p.embed.as_ref(),
+            )
             .await;
         self.salida(r)
     }

@@ -1863,10 +1863,22 @@ pub async fn enviar_a_canal_resp(
     reply_to: Option<&str>,
     base_url: Option<&str>,
 ) -> Result<String, String> {
-    crate::discord::validar_contenido(content)?;
+    enviar_a_canal_embed(state, channel_id, Some(content), None, reply_to, base_url).await
+}
+
+/// Envía contenido y/o un embed (al menos uno).
+pub async fn enviar_a_canal_embed(
+    state: &AppState,
+    channel_id: &str,
+    content: Option<&str>,
+    embed: Option<&crate::discord::EmbedMensaje>,
+    reply_to: Option<&str>,
+    base_url: Option<&str>,
+) -> Result<String, String> {
     let token = token_del_bot_activo(state)?;
     let id =
-        crate::discord::send_channel_reply(&token, base_url, channel_id, content, reply_to).await?;
+        crate::discord::send_channel_embed(&token, base_url, channel_id, content, embed, reply_to)
+            .await?;
     Ok(format!("Message sent to channel {channel_id} (id {id})"))
 }
 
@@ -1889,11 +1901,23 @@ pub async fn editar_mensaje_de_canal(
     content: &str,
     base_url: Option<&str>,
 ) -> Result<String, String> {
-    crate::discord::validar_contenido(content)?;
+    editar_mensaje_con_embed(state, channel_id, message_id, Some(content), None, base_url).await
+}
+
+/// Edita contenido y/o embed de un mensaje del bot (al menos uno).
+pub async fn editar_mensaje_con_embed(
+    state: &AppState,
+    channel_id: &str,
+    message_id: &str,
+    content: Option<&str>,
+    embed: Option<&crate::discord::EmbedMensaje>,
+    base_url: Option<&str>,
+) -> Result<String, String> {
     let token = token_del_bot_activo(state)?;
-    let id =
-        crate::discord::edit_channel_message(&token, base_url, channel_id, message_id, content)
-            .await?;
+    let id = crate::discord::edit_channel_embed(
+        &token, base_url, channel_id, message_id, content, embed,
+    )
+    .await?;
     Ok(format!("Message {id} edited in channel {channel_id}"))
 }
 
@@ -3457,6 +3481,109 @@ mod tests {
             .await
             .unwrap_err();
         assert!(e.contains("only edit its own"), "{e}");
+    }
+
+    fn embed_completo() -> crate::discord::EmbedMensaje {
+        crate::discord::EmbedMensaje {
+            titulo: Some("Reglas".into()),
+            descripcion: Some("Sé amable".into()),
+            color: Some("#5865F2".into()),
+            pie: Some("ARGUS".into()),
+            campos: Some(vec![crate::discord::CampoEmbed {
+                nombre: "Uno".into(),
+                valor: "Dos".into(),
+                en_linea: true,
+            }]),
+            imagen_url: Some("https://ejemplo.test/a.png".into()),
+        }
+    }
+
+    #[tokio::test]
+    async fn envia_y_edita_con_embed_con_el_json_esperado() {
+        let server = MockServer::start().await;
+        let esperado = serde_json::json!({"embeds": [{
+            "title": "Reglas", "description": "Sé amable", "color": 5793266,
+            "footer": {"text": "ARGUS"},
+            "fields": [{"name": "Uno", "value": "Dos", "inline": true}],
+            "image": {"url": "https://ejemplo.test/a.png"}
+        }]});
+        Mock::given(method("POST"))
+            .and(path("/api/v10/channels/42/messages"))
+            .and(wiremock::matchers::body_partial_json(esperado.clone()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mensaje_json("910", "42")))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path("/api/v10/channels/42/messages/910"))
+            .and(wiremock::matchers::body_partial_json(esperado))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mensaje_json("910", "42")))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-embed");
+        let addr = server.address().to_string();
+        let e = embed_completo();
+        let r = enviar_a_canal_embed(&state, "42", None, Some(&e), None, Some(&addr))
+            .await
+            .expect("envío");
+        assert!(r.contains("910"), "{r}");
+        editar_mensaje_con_embed(&state, "42", "910", None, Some(&e), Some(&addr))
+            .await
+            .expect("edición");
+    }
+
+    #[tokio::test]
+    async fn embed_valida_limites_color_y_exige_contenido_o_embed() {
+        let state = estado_con_bot_activo("token-lim");
+        // Sin servidor: todo debe fallar antes de enviar.
+        let addr = "127.0.0.1:1".to_string();
+        let envio = |c: Option<&'static str>, e: Option<crate::discord::EmbedMensaje>| {
+            let (state, addr) = (&state, &addr);
+            async move { enviar_a_canal_embed(state, "42", c, e.as_ref(), None, Some(addr)).await }
+        };
+        let base = crate::discord::EmbedMensaje::default();
+        let e = envio(None, None).await.unwrap_err();
+        assert!(e.contains("content or an embed"), "{e}");
+        let e = envio(Some("  "), Some(base.clone())).await.unwrap_err();
+        assert!(e.contains("content or an embed"), "{e}");
+
+        let mut x = base.clone();
+        x.titulo = Some("a".repeat(257));
+        assert!(envio(None, Some(x)).await.unwrap_err().contains("title"));
+        let mut x = base.clone();
+        x.descripcion = Some("a".repeat(4097));
+        assert!(envio(None, Some(x))
+            .await
+            .unwrap_err()
+            .contains("description"));
+        let campo = |n: &str, v: String| crate::discord::CampoEmbed {
+            nombre: n.into(),
+            valor: v,
+            en_linea: false,
+        };
+        let mut x = base.clone();
+        x.campos = Some((0..26).map(|_| campo("n", "v".into())).collect());
+        assert!(envio(None, Some(x))
+            .await
+            .unwrap_err()
+            .contains("too many fields"));
+        let mut x = base.clone();
+        x.campos = Some(vec![campo("n", "v".repeat(1025))]);
+        assert!(envio(None, Some(x)).await.unwrap_err().contains("field 1"));
+        // Total > 6000 con cada parte dentro de su límite.
+        let mut x = base.clone();
+        x.titulo = Some("a".repeat(256));
+        x.descripcion = Some("a".repeat(4096));
+        x.campos = Some(vec![
+            campo("n", "v".repeat(1024)),
+            campo("m", "v".repeat(1024)),
+        ]);
+        assert!(envio(None, Some(x)).await.unwrap_err().contains("6000"));
+        let mut x = base.clone();
+        x.titulo = Some("ok".into());
+        x.color = Some("rojo".into());
+        assert!(envio(None, Some(x)).await.unwrap_err().contains("color"));
     }
 
     #[tokio::test]

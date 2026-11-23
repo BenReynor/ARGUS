@@ -420,6 +420,217 @@ pub fn validar_contenido(content: &str) -> Result<(), String> {
     Ok(())
 }
 
+pub const MAX_TITULO_EMBED: usize = 256;
+pub const MAX_DESCRIPCION_EMBED: usize = 4096;
+pub const MAX_CAMPOS_EMBED: usize = 25;
+pub const MAX_NOMBRE_CAMPO_EMBED: usize = 256;
+pub const MAX_VALOR_CAMPO_EMBED: usize = 1024;
+pub const MAX_PIE_EMBED: usize = 2048;
+pub const MAX_TOTAL_EMBED: usize = 6000;
+
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize, rmcp::schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct CampoEmbed {
+    /// Nombre del campo (hasta 256 caracteres).
+    pub nombre: String,
+    /// Valor del campo (hasta 1024 caracteres).
+    pub valor: String,
+    /// Si el campo se muestra en línea con los demás (por defecto no).
+    #[serde(default)]
+    pub en_linea: bool,
+}
+
+/// Embed de un mensaje, con los datos que ARGUS permite configurar.
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize, rmcp::schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct EmbedMensaje {
+    /// Título (hasta 256 caracteres).
+    pub titulo: Option<String>,
+    /// Descripción (hasta 4096 caracteres).
+    pub descripcion: Option<String>,
+    /// Color en hexadecimal, p. ej. `#5865F2`.
+    pub color: Option<String>,
+    /// Texto del pie (hasta 2048 caracteres).
+    pub pie: Option<String>,
+    /// Hasta 25 campos nombre/valor.
+    pub campos: Option<Vec<CampoEmbed>>,
+    /// URL (http/https) de la imagen.
+    pub imagen_url: Option<String>,
+}
+
+fn texto_no_vacio(o: &Option<String>) -> Option<&str> {
+    o.as_deref().map(str::trim).filter(|t| !t.is_empty())
+}
+
+/// Convierte `#RRGGBB` / `RRGGBB` (también `0x`) a entero.
+pub fn parsear_color_hex(color: &str) -> Result<u32, String> {
+    let c = color.trim();
+    let c = c
+        .strip_prefix('#')
+        .or_else(|| c.strip_prefix("0x"))
+        .unwrap_or(c);
+    if c.len() != 6 || !c.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return Err(format!(
+            "Invalid embed color «{color}»: use hexadecimal like #5865F2"
+        ));
+    }
+    u32::from_str_radix(c, 16).map_err(|_| format!("Invalid embed color «{color}»"))
+}
+
+impl EmbedMensaje {
+    pub fn esta_vacio(&self) -> bool {
+        texto_no_vacio(&self.titulo).is_none()
+            && texto_no_vacio(&self.descripcion).is_none()
+            && texto_no_vacio(&self.pie).is_none()
+            && texto_no_vacio(&self.imagen_url).is_none()
+            && self.campos.as_ref().map_or(true, |c| c.is_empty())
+    }
+
+    /// Valida los límites de Discord antes de enviar.
+    pub fn validar(&self) -> Result<(), String> {
+        let n = |t: &str| t.chars().count();
+        let mut total = 0usize;
+        if let Some(t) = texto_no_vacio(&self.titulo) {
+            if n(t) > MAX_TITULO_EMBED {
+                return Err(format!(
+                    "The embed title is too long ({} characters; the maximum is {MAX_TITULO_EMBED})",
+                    n(t)
+                ));
+            }
+            total += n(t);
+        }
+        if let Some(d) = texto_no_vacio(&self.descripcion) {
+            if n(d) > MAX_DESCRIPCION_EMBED {
+                return Err(format!(
+                    "The embed description is too long ({} characters; the maximum is {MAX_DESCRIPCION_EMBED})",
+                    n(d)
+                ));
+            }
+            total += n(d);
+        }
+        if let Some(p) = texto_no_vacio(&self.pie) {
+            if n(p) > MAX_PIE_EMBED {
+                return Err(format!(
+                    "The embed footer is too long ({} characters; the maximum is {MAX_PIE_EMBED})",
+                    n(p)
+                ));
+            }
+            total += n(p);
+        }
+        if let Some(c) = texto_no_vacio(&self.color) {
+            parsear_color_hex(c)?;
+        }
+        if let Some(u) = texto_no_vacio(&self.imagen_url) {
+            if !(u.starts_with("http://") || u.starts_with("https://")) {
+                return Err("The embed image URL must start with http:// or https://".to_string());
+            }
+        }
+        let campos = self.campos.as_deref().unwrap_or(&[]);
+        if campos.len() > MAX_CAMPOS_EMBED {
+            return Err(format!(
+                "The embed has too many fields ({}; the maximum is {MAX_CAMPOS_EMBED})",
+                campos.len()
+            ));
+        }
+        for (i, c) in campos.iter().enumerate() {
+            let (nom, val) = (c.nombre.trim(), c.valor.trim());
+            if nom.is_empty() || val.is_empty() {
+                return Err(format!(
+                    "Embed field {} needs both a name and a value",
+                    i + 1
+                ));
+            }
+            if n(nom) > MAX_NOMBRE_CAMPO_EMBED {
+                return Err(format!(
+                    "The name of embed field {} is too long ({} characters; the maximum is {MAX_NOMBRE_CAMPO_EMBED})",
+                    i + 1,
+                    n(nom)
+                ));
+            }
+            if n(val) > MAX_VALOR_CAMPO_EMBED {
+                return Err(format!(
+                    "The value of embed field {} is too long ({} characters; the maximum is {MAX_VALOR_CAMPO_EMBED})",
+                    i + 1,
+                    n(val)
+                ));
+            }
+            total += n(nom) + n(val);
+        }
+        if total > MAX_TOTAL_EMBED {
+            return Err(format!(
+                "The embed is too large ({total} characters in total; the maximum is {MAX_TOTAL_EMBED})"
+            ));
+        }
+        Ok(())
+    }
+
+    fn a_twilight(&self) -> Result<twilight_model::channel::message::Embed, String> {
+        use twilight_model::channel::message::embed::{EmbedField, EmbedFooter, EmbedImage};
+        self.validar()?;
+        let color = match texto_no_vacio(&self.color) {
+            Some(c) => Some(parsear_color_hex(c)?),
+            None => None,
+        };
+        Ok(twilight_model::channel::message::Embed {
+            author: None,
+            color,
+            description: texto_no_vacio(&self.descripcion).map(str::to_string),
+            fields: self
+                .campos
+                .iter()
+                .flatten()
+                .map(|c| EmbedField {
+                    inline: c.en_linea,
+                    name: c.nombre.trim().to_string(),
+                    value: c.valor.trim().to_string(),
+                })
+                .collect(),
+            footer: texto_no_vacio(&self.pie).map(|t| EmbedFooter {
+                icon_url: None,
+                proxy_icon_url: None,
+                text: t.to_string(),
+            }),
+            image: texto_no_vacio(&self.imagen_url).map(|u| EmbedImage {
+                height: None,
+                proxy_url: None,
+                url: u.to_string(),
+                width: None,
+            }),
+            kind: "rich".to_string(),
+            provider: None,
+            thumbnail: None,
+            timestamp: None,
+            title: texto_no_vacio(&self.titulo).map(str::to_string),
+            url: None,
+            video: None,
+        })
+    }
+}
+
+/// Contenido y/o embed: al menos uno; valida límites. Devuelve el texto
+/// (si lo hay) y el embed convertido.
+fn preparar_cuerpo(
+    content: Option<&str>,
+    embed: Option<&EmbedMensaje>,
+) -> Result<
+    (
+        Option<String>,
+        Option<twilight_model::channel::message::Embed>,
+    ),
+    String,
+> {
+    let texto = content.filter(|c| !c.trim().is_empty());
+    let embed = embed.filter(|e| !e.esta_vacio() || texto_no_vacio(&e.color).is_some());
+    if texto.is_none() && embed.is_none() {
+        return Err("The message cannot be empty: provide content or an embed".to_string());
+    }
+    if let Some(t) = texto {
+        validar_contenido(t)?;
+    }
+    let tw = embed.map(EmbedMensaje::a_twilight).transpose()?;
+    Ok((texto.map(str::to_string), tw))
+}
+
 fn parse_id<M>(texto: &str, que: &str) -> Result<twilight_model::id::Id<M>, String> {
     texto
         .parse::<u64>()
@@ -448,12 +659,30 @@ pub async fn send_channel_reply(
     content: &str,
     reply_to: Option<&str>,
 ) -> Result<String, String> {
-    validar_contenido(content)?;
+    send_channel_embed(token, base_url, channel_id, Some(content), None, reply_to).await
+}
+
+/// Envía contenido y/o un embed (al menos uno) con respuesta opcional.
+pub async fn send_channel_embed(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+    content: Option<&str>,
+    embed: Option<&EmbedMensaje>,
+    reply_to: Option<&str>,
+) -> Result<String, String> {
+    let (texto, tw) = preparar_cuerpo(content, embed)?;
     let cid = parse_id(channel_id, "channel")?;
     let client = build_client(token, base_url);
-    let mut peticion = client
-        .create_message(cid)
-        .content(content)
+    let embeds: Vec<_> = tw.into_iter().collect();
+    let mut peticion = client.create_message(cid);
+    if let Some(t) = texto.as_deref() {
+        peticion = peticion
+            .content(t)
+            .map_err(|e| format!("Invalid message: {e}"))?;
+    }
+    peticion = peticion
+        .embeds(&embeds)
         .map_err(|e| format!("Invalid message: {e}"))?;
     if let Some(mid) = reply_to {
         peticion = peticion.reply(parse_id(mid, "message")?);
@@ -476,14 +705,35 @@ pub async fn edit_channel_message(
     message_id: &str,
     content: &str,
 ) -> Result<String, String> {
-    validar_contenido(content)?;
+    edit_channel_embed(token, base_url, channel_id, message_id, Some(content), None).await
+}
+
+/// Edita contenido y/o embed (al menos uno). Lo que no se indica no se toca.
+pub async fn edit_channel_embed(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+    message_id: &str,
+    content: Option<&str>,
+    embed: Option<&EmbedMensaje>,
+) -> Result<String, String> {
+    let (texto, tw) = preparar_cuerpo(content, embed)?;
     let cid = parse_id(channel_id, "channel")?;
     let mid = parse_id(message_id, "message")?;
     let client = build_client(token, base_url);
-    let mensaje = client
-        .update_message(cid, mid)
-        .content(Some(content))
-        .map_err(|e| format!("Invalid message: {e}"))?
+    let embeds: Vec<_> = tw.into_iter().collect();
+    let mut peticion = client.update_message(cid, mid);
+    if let Some(t) = texto.as_deref() {
+        peticion = peticion
+            .content(Some(t))
+            .map_err(|e| format!("Invalid message: {e}"))?;
+    }
+    if !embeds.is_empty() {
+        peticion = peticion
+            .embeds(Some(&embeds))
+            .map_err(|e| format!("Invalid message: {e}"))?;
+    }
+    let mensaje = peticion
         .await
         .map_err(traducir_error)?
         .model()
