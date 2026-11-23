@@ -216,6 +216,17 @@ pub struct EnviarMensajeParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
+pub struct EditarMensajeParams {
+    /// ID del canal del mensaje.
+    pub channel_id: String,
+    /// ID del mensaje del bot que se edita.
+    pub message_id: String,
+    /// Texto nuevo (hasta 2000 caracteres); reemplaza al anterior.
+    pub contenido: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
 pub struct CrearPostForoParams {
     /// ID del canal de foro.
     pub channel_id: String,
@@ -1760,6 +1771,25 @@ impl ArgusMcp {
         self.mensaje(texto)
     }
 
+    pub async fn editar_mensaje_json(
+        &self,
+        channel_id: &str,
+        message_id: &str,
+        contenido: &str,
+    ) -> Result<String, String> {
+        self.preparar().await?;
+        let texto = commands::editar_mensaje_de_canal(
+            &self.state,
+            channel_id.trim(),
+            message_id.trim(),
+            contenido,
+            self.url(),
+        )
+        .await
+        .map_err(|e| self.limpiar(e))?;
+        self.mensaje(texto)
+    }
+
     pub async fn crear_post_foro_json(
         &self,
         channel_id: &str,
@@ -2563,6 +2593,7 @@ pub const HERRAMIENTAS_ESCRITURA: &[&str] = &[
     "aplicar_restauracion",
     "elegir_servidor",
     "enviar_mensaje",
+    "editar_mensaje",
     "crear_post_foro",
     "enviar_dm",
     "avisar",
@@ -2628,6 +2659,7 @@ pub fn validar_accion(nombre: &str, args: &serde_json::Value) -> Result<(), Stri
         "elegir_servidor" => ok::<ElegirServidorParams>(nombre, args),
         "enviar_mensaje" => ok::<EnviarMensajeParams>(nombre, args),
         "crear_post_foro" => ok::<CrearPostForoParams>(nombre, args),
+        "editar_mensaje" => ok::<EditarMensajeParams>(nombre, args),
         "enviar_dm" => ok::<EnviarDmParams>(nombre, args),
         "avisar" => ok::<AvisarParams>(nombre, args),
         "borrar_mensaje" | "fijar_mensaje" | "desfijar_mensaje" => {
@@ -2678,6 +2710,7 @@ pub fn esquema_args(nombre: &str) -> Option<serde_json::Value> {
         "elegir_servidor" => de::<ElegirServidorParams>(),
         "enviar_mensaje" => de::<EnviarMensajeParams>(),
         "crear_post_foro" => de::<CrearPostForoParams>(),
+        "editar_mensaje" => de::<EditarMensajeParams>(),
         "enviar_dm" => de::<EnviarDmParams>(),
         "avisar" => de::<AvisarParams>(),
         "borrar_mensaje" | "fijar_mensaje" | "desfijar_mensaje" => de::<MensajeParams>(),
@@ -3270,6 +3303,11 @@ impl ArgusMcp {
                 let p: ElegirServidorParams = args_de(nombre, args)?;
                 self.elegir_servidor_json(&p.guild_id).await
             }
+            "editar_mensaje" => {
+                let p: EditarMensajeParams = args_de(nombre, args)?;
+                self.editar_mensaje_json(&p.channel_id, &p.message_id, &p.contenido)
+                    .await
+            }
             "enviar_mensaje" => {
                 let p: EnviarMensajeParams = args_de(nombre, args)?;
                 self.enviar_mensaje_json(&p.channel_id, &p.contenido, p.responder_a.as_deref())
@@ -3736,6 +3774,20 @@ impl ArgusMcp {
     ) -> Result<String, String> {
         let r = self
             .enviar_mensaje_json(&p.channel_id, &p.contenido, p.responder_a.as_deref())
+            .await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "editar_mensaje",
+        description = "Edits the text of a message previously sent by the active bot (up to 2000 characters); Discord does not allow editing other users' messages."
+    )]
+    async fn editar_mensaje(
+        &self,
+        Parameters(p): Parameters<EditarMensajeParams>,
+    ) -> Result<String, String> {
+        let r = self
+            .editar_mensaje_json(&p.channel_id, &p.message_id, &p.contenido)
             .await;
         self.salida(r)
     }
@@ -5412,7 +5464,10 @@ mod tests {
         assert!(r["mensaje"].as_str().unwrap().contains("901"));
         // Mismos errores que la app: vacío o demasiado largo no llegan a Discord.
         let largo = "a".repeat(2001);
-        let e = mcp.enviar_mensaje_json("11", &largo, None).await.unwrap_err();
+        let e = mcp
+            .enviar_mensaje_json("11", &largo, None)
+            .await
+            .unwrap_err();
         assert!(e.contains("too long"), "{e}");
         assert!(mcp.enviar_dm_json("1001", "  ").await.is_err());
     }
@@ -6188,6 +6243,7 @@ mod tests {
         let nombres: Vec<_> = tools.iter().map(|t| t.name.to_string()).collect();
         for n in [
             "enviar_mensaje",
+            "editar_mensaje",
             "crear_post_foro",
             "enviar_dm",
             "borrar_mensaje",

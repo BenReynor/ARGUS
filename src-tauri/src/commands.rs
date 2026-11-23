@@ -1870,6 +1870,22 @@ pub async fn enviar_a_canal_resp(
     Ok(format!("Message sent to channel {channel_id} (id {id})"))
 }
 
+/// Edita un mensaje del bot activo.
+pub async fn editar_mensaje_de_canal(
+    state: &AppState,
+    channel_id: &str,
+    message_id: &str,
+    content: &str,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    crate::discord::validar_contenido(content)?;
+    let token = token_del_bot_activo(state)?;
+    let id =
+        crate::discord::edit_channel_message(&token, base_url, channel_id, message_id, content)
+            .await?;
+    Ok(format!("Message {id} edited in channel {channel_id}"))
+}
+
 /// Crea un post en un canal de foro con el bot activo.
 pub async fn crear_post_en_foro(
     state: &AppState,
@@ -3372,6 +3388,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn edita_un_mensaje_propio_y_explica_si_es_ajeno() {
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path("/api/v10/channels/42/messages/555"))
+            .and(wiremock::matchers::body_partial_json(
+                serde_json::json!({"content": "corregido"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mensaje_json("555", "42")))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path("/api/v10/channels/42/messages/556"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+                "code": 50005, "message": "Cannot edit a message authored by another user"
+            })))
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-edit");
+        let addr = server.address().to_string();
+        let r = editar_mensaje_de_canal(&state, "42", "555", "corregido", Some(&addr))
+            .await
+            .expect("edición");
+        assert!(r.contains("555"), "{r}");
+        let e = editar_mensaje_de_canal(&state, "42", "556", "x", Some(&addr))
+            .await
+            .unwrap_err();
+        assert!(e.contains("only edit its own"), "{e}");
+    }
+
+    #[tokio::test]
     async fn crea_un_post_en_un_foro_con_titulo_y_mensaje() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -3393,9 +3440,15 @@ mod tests {
             .await;
         let state = estado_con_bot_activo("token-foro");
         let addr = server.address().to_string();
-        let r = crear_post_en_foro(&state, "42", "Liga de ajedrez", "Propongo un torneo", Some(&addr))
-            .await
-            .expect("post");
+        let r = crear_post_en_foro(
+            &state,
+            "42",
+            "Liga de ajedrez",
+            "Propongo un torneo",
+            Some(&addr),
+        )
+        .await
+        .expect("post");
         assert!(r.contains("777"), "{r}");
         let vacio = crear_post_en_foro(&state, "42", "  ", "texto", Some(&addr)).await;
         assert!(vacio.is_err());

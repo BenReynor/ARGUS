@@ -153,6 +153,14 @@ pub fn traducir_respuesta(status: u16, cuerpo: &[u8]) -> String {
         .unwrap_or("");
     match status {
         401 => "Invalid token".to_string(),
+        403 if json
+            .as_ref()
+            .and_then(|j| j.get("code"))
+            .and_then(|c| c.as_u64())
+            == Some(50005) =>
+        {
+            "The bot can only edit its own messages".to_string()
+        }
         403 => match permiso_en_texto(texto) {
             Some(p) => format!("The bot is missing the permission «{p}»"),
             None => "The bot is missing a permission to do this on the server".to_string(),
@@ -443,6 +451,31 @@ pub async fn send_channel_reply(
         peticion = peticion.reply(parse_id(mid, "message")?);
     }
     let mensaje = peticion
+        .await
+        .map_err(traducir_error)?
+        .model()
+        .await
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
+    Ok(mensaje.id.to_string())
+}
+
+/// Edita el texto de un mensaje del propio bot
+/// (`PATCH /channels/{id}/messages/{id}`). Devuelve el id del mensaje.
+pub async fn edit_channel_message(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+    message_id: &str,
+    content: &str,
+) -> Result<String, String> {
+    validar_contenido(content)?;
+    let cid = parse_id(channel_id, "channel")?;
+    let mid = parse_id(message_id, "message")?;
+    let client = build_client(token, base_url);
+    let mensaje = client
+        .update_message(cid, mid)
+        .content(Some(content))
+        .map_err(|e| format!("Invalid message: {e}"))?
         .await
         .map_err(traducir_error)?
         .model()
