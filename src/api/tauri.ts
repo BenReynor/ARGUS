@@ -146,6 +146,8 @@ export const channelMessages = (guildId: string, channelId: string) =>
   invoke<MensajeCanal[]>('channel_messages', { guildId, channelId });
 export const deleteMessage = (guildId: string, channelId: string, messageId: string) =>
   invoke<string>('delete_message', { guildId, channelId, messageId });
+export const editMessage = (channelId: string, messageId: string, content: string) =>
+  invoke<string>('edit_message', { channelId, messageId, content });
 export const bulkDeleteMessages = (guildId: string, channelId: string, messageIds: string[]) =>
   invoke<string>('bulk_delete_messages', { guildId, channelId, messageIds });
 export const pinMessage = (guildId: string, channelId: string, messageId: string) =>
@@ -170,6 +172,10 @@ export const leerPlanServidor = (guildId: string) => invoke<string>('leer_plan_s
 export const leerContextoServidor = (guildId: string) => invoke<string>('leer_contexto_servidor', { guildId });
 export const guardarContextoServidor = (guildId: string, contenido: string) =>
   invoke<void>('guardar_contexto_servidor', { guildId, contenido });
+export interface NotaMemoria { user_id: string; nota: string; updated_at: string }
+export const listarMemoriaChat = (guildId: string) => invoke<NotaMemoria[]>('listar_memoria_chat', { guildId });
+export const borrarMemoriaChat = (guildId: string, userId: string) => invoke<void>('borrar_memoria_chat', { guildId, userId });
+export const borrarTodaMemoriaChat = (guildId: string) => invoke<void>('borrar_toda_memoria_chat', { guildId });
 export const guardarPlanServidor =(guildId: string, contenido: string) =>
   invoke<void>('guardar_plan_servidor', { guildId, contenido });
 export type TipoAsistente = 'construccion' | 'moderacion';

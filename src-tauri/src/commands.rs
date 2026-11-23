@@ -1870,6 +1870,17 @@ pub async fn enviar_a_canal_resp(
     Ok(format!("Message sent to channel {channel_id} (id {id})"))
 }
 
+#[tauri::command]
+pub async fn edit_message(
+    state: State<'_, AppState>,
+    channel_id: String,
+    message_id: String,
+    content: String,
+) -> Result<String, String> {
+    let resultado = editar_mensaje_de_canal(&state, &channel_id, &message_id, &content, None).await;
+    crate::i18n::localizar_texto(&state, resultado)
+}
+
 /// Edita un mensaje del bot activo.
 pub async fn editar_mensaje_de_canal(
     state: &AppState,

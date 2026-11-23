@@ -782,6 +782,15 @@ pub struct GuildSettings {
     /// Mensajes previos del canal que se le pasan (máximo 30).
     #[serde(default = "chat_contexto_defecto")]
     pub chat_contexto: u32,
+    /// Máximo de caracteres del contexto del servidor en el prompt (500–6000).
+    #[serde(default = "chat_contexto_max_defecto")]
+    pub chat_contexto_max: u32,
+    /// Memoria breve por persona (desactivada por defecto).
+    #[serde(default)]
+    pub chat_memoria: bool,
+    /// Respuestas sin mención (desactivadas por defecto).
+    #[serde(default)]
+    pub chat_espontaneo: ChatEspontaneo,
     /// IDs de usuarios a los que responde; vacía = todos.
     #[serde(default)]
     pub chat_usuarios: Vec<String>,
@@ -807,6 +816,66 @@ pub struct GuildSettings {
 }
 
 pub const CHAT_CONTEXTO_MAX: u32 = 30;
+pub const CHAT_CONTEXTO_CHARS_MIN: u32 = 500;
+pub const CHAT_CONTEXTO_CHARS_MAX: u32 = 6000;
+pub const CHAT_CONTEXTO_CHARS_DEFECTO: u32 = 1500;
+
+/// Ajusta el límite de caracteres del contexto del servidor al rango permitido.
+pub fn limitar_contexto_max(v: u32) -> u32 {
+    v.clamp(CHAT_CONTEXTO_CHARS_MIN, CHAT_CONTEXTO_CHARS_MAX)
+}
+
+/// Pausa mínima por canal entre respuestas espontáneas (minutos).
+pub const ESPONTANEO_PAUSA_DEFECTO: u32 = 10;
+pub const ESPONTANEO_PAUSA_MAX: u32 = 1440;
+const ESPONTANEO_MAX_PALABRAS: usize = 50;
+
+fn espontaneo_pausa_defecto() -> u32 {
+    ESPONTANEO_PAUSA_DEFECTO
+}
+
+/// Responder sin mención: solo con palabra clave o por probabilidad.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ChatEspontaneo {
+    #[serde(default)]
+    pub activo: bool,
+    /// Palabras clave (sin distinguir mayúsculas).
+    #[serde(default)]
+    pub palabras: Vec<String>,
+    /// Probabilidad de responder a cualquier mensaje, 0–100.
+    #[serde(default)]
+    pub probabilidad: u32,
+    /// Pausa mínima por canal, en minutos.
+    #[serde(default = "espontaneo_pausa_defecto")]
+    pub pausa_min: u32,
+}
+
+impl Default for ChatEspontaneo {
+    fn default() -> Self {
+        Self {
+            activo: false,
+            palabras: Vec::new(),
+            probabilidad: 0,
+            pausa_min: ESPONTANEO_PAUSA_DEFECTO,
+        }
+    }
+}
+
+impl ChatEspontaneo {
+    /// Ajusta al rango permitido y limpia la lista de palabras.
+    pub fn normalizar(&mut self) {
+        self.probabilidad = self.probabilidad.min(100);
+        self.pausa_min = self.pausa_min.clamp(1, ESPONTANEO_PAUSA_MAX);
+        let mut vistas: Vec<String> = Vec::new();
+        for p in &self.palabras {
+            let p = p.trim().to_lowercase();
+            if !p.is_empty() && !vistas.contains(&p) && vistas.len() < ESPONTANEO_MAX_PALABRAS {
+                vistas.push(p);
+            }
+        }
+        self.palabras = vistas;
+    }
+}
 
 fn ordenes_max_acciones_defecto() -> u32 {
     50
@@ -837,6 +906,9 @@ fn chat_espera_defecto() -> u32 {
 fn chat_contexto_defecto() -> u32 {
     10
 }
+fn chat_contexto_max_defecto() -> u32 {
+    CHAT_CONTEXTO_CHARS_DEFECTO
+}
 
 impl Default for GuildSettings {
     fn default() -> Self {
@@ -857,6 +929,9 @@ impl Default for GuildSettings {
             chat_max_diario: 200,
             chat_respuestas_hoy: 0,
             chat_contexto: chat_contexto_defecto(),
+            chat_contexto_max: chat_contexto_max_defecto(),
+            chat_memoria: false,
+            chat_espontaneo: ChatEspontaneo::default(),
             chat_usuarios: Vec::new(),
             chat_ordenes: false,
             chat_ordenes_usuarios: Vec::new(),
@@ -877,6 +952,8 @@ impl GuildSettings {
         }
         self.destruction.normalize();
         self.chat_contexto = self.chat_contexto.min(CHAT_CONTEXTO_MAX);
+        self.chat_contexto_max = limitar_contexto_max(self.chat_contexto_max);
+        self.chat_espontaneo.normalizar();
         self.ordenes_max_acciones = self.ordenes_max_acciones.clamp(1, 500);
         self
     }
@@ -990,6 +1067,99 @@ pub async fn tomar_aviso_diario(
     .execute(pool)
     .await?;
     Ok(r.rows_affected() == 1)
+}
+
+/// Nota breve guardada sobre una persona del servidor.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NotaMemoria {
+    pub user_id: String,
+    pub nota: String,
+    pub updated_at: String,
+}
+
+pub async fn leer_nota_memoria(
+    pool: &SqlitePool,
+    bot: &str,
+    guild: &str,
+    user: &str,
+) -> Result<Option<String>> {
+    Ok(sqlx::query_scalar(
+        "SELECT nota FROM chat_memoria WHERE bot_id = ? AND guild_id = ? AND user_id = ?",
+    )
+    .bind(bot)
+    .bind(guild)
+    .bind(user)
+    .fetch_optional(pool)
+    .await?)
+}
+
+/// Guarda la nota de la persona, reemplazando la anterior.
+pub async fn guardar_nota_memoria(
+    pool: &SqlitePool,
+    bot: &str,
+    guild: &str,
+    user: &str,
+    nota: &str,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO chat_memoria (bot_id, guild_id, user_id, nota, updated_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(bot_id, guild_id, user_id) DO UPDATE SET nota = excluded.nota, updated_at = excluded.updated_at",
+    )
+    .bind(bot)
+    .bind(guild)
+    .bind(user)
+    .bind(nota)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn listar_notas_memoria(
+    pool: &SqlitePool,
+    bot: &str,
+    guild: &str,
+) -> Result<Vec<NotaMemoria>> {
+    let rows = sqlx::query(
+        "SELECT user_id, nota, updated_at FROM chat_memoria WHERE bot_id = ? AND guild_id = ?
+         ORDER BY updated_at DESC",
+    )
+    .bind(bot)
+    .bind(guild)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| NotaMemoria {
+            user_id: r.get("user_id"),
+            nota: r.get("nota"),
+            updated_at: r.get("updated_at"),
+        })
+        .collect())
+}
+
+pub async fn borrar_nota_memoria(
+    pool: &SqlitePool,
+    bot: &str,
+    guild: &str,
+    user: &str,
+) -> Result<()> {
+    sqlx::query("DELETE FROM chat_memoria WHERE bot_id = ? AND guild_id = ? AND user_id = ?")
+        .bind(bot)
+        .bind(guild)
+        .bind(user)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn borrar_todas_notas_memoria(pool: &SqlitePool, bot: &str, guild: &str) -> Result<()> {
+    sqlx::query("DELETE FROM chat_memoria WHERE bot_id = ? AND guild_id = ?")
+        .bind(bot)
+        .bind(guild)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 // Plan del servidor y conversación del asistente IA (por bot y servidor)
@@ -1702,6 +1872,29 @@ mod guild_settings_tests {
     }
 
     #[test]
+    fn contexto_max_defecto_y_ajuste_de_rango() {
+        assert_eq!(GuildSettings::default().chat_contexto_max, 1500);
+        let antigua: GuildSettings = serde_json::from_str("{\"notes\":\"n\"}").unwrap();
+        assert_eq!(antigua.chat_contexto_max, 1500);
+        for (entrada, esperado) in [
+            (0, 500),
+            (499, 500),
+            (500, 500),
+            (3000, 3000),
+            (6000, 6000),
+            (6001, 6000),
+            (u32::MAX, 6000),
+        ] {
+            let s = GuildSettings {
+                chat_contexto_max: entrada,
+                ..Default::default()
+            }
+            .normalizado();
+            assert_eq!(s.chat_contexto_max, esperado);
+        }
+    }
+
+    #[test]
     fn normalizado_limita_contexto_y_agente() {
         let s = GuildSettings {
             chat_agente: "otro".into(),
@@ -1941,5 +2134,62 @@ mod tests_chat_diario {
             .unwrap());
         p.close().await;
         let _ = std::fs::remove_file(ruta);
+    }
+
+    #[tokio::test]
+    async fn memoria_por_persona_guarda_reemplaza_y_borra() {
+        let pool = pool().await;
+        assert!(!GuildSettings::default().chat_memoria);
+        assert!(
+            !serde_json::from_str::<GuildSettings>("{}")
+                .unwrap()
+                .chat_memoria
+        );
+        assert_eq!(
+            leer_nota_memoria(&pool, "b", "g", "u1").await.unwrap(),
+            None
+        );
+        guardar_nota_memoria(&pool, "b", "g", "u1", "uno")
+            .await
+            .unwrap();
+        guardar_nota_memoria(&pool, "b", "g", "u1", "dos")
+            .await
+            .unwrap();
+        guardar_nota_memoria(&pool, "b", "g", "u2", "otra")
+            .await
+            .unwrap();
+        guardar_nota_memoria(&pool, "b", "g2", "u1", "otro servidor")
+            .await
+            .unwrap();
+        assert_eq!(
+            leer_nota_memoria(&pool, "b", "g", "u1")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("dos")
+        );
+        assert_eq!(
+            listar_notas_memoria(&pool, "b", "g").await.unwrap().len(),
+            2
+        );
+        borrar_nota_memoria(&pool, "b", "g", "u1").await.unwrap();
+        assert_eq!(
+            leer_nota_memoria(&pool, "b", "g", "u1").await.unwrap(),
+            None
+        );
+        assert_eq!(
+            listar_notas_memoria(&pool, "b", "g").await.unwrap().len(),
+            1
+        );
+        borrar_todas_notas_memoria(&pool, "b", "g").await.unwrap();
+        assert!(listar_notas_memoria(&pool, "b", "g")
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            listar_notas_memoria(&pool, "b", "g2").await.unwrap().len(),
+            1
+        );
+        pool.close().await;
     }
 }

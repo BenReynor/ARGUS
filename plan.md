@@ -778,19 +778,19 @@ no puede dar. Todo nuevo ajuste va en `guild_settings` (por bot y servidor),
 con valor por defecto que no cambia el comportamiento actual, textos con t() en
 EN y ES y sin datos reales en los tests.
 
-- [ ] Regla de honestidad en el prompt del chat
+- [x] Regla de honestidad en el prompt del chat
   criterio: `prompt_chat` añade a las reglas fijas que el bot puede interpretar a su personaje pero nunca afirma ser humano ni niega ser un bot o una IA cuando se lo preguntan; test de que la regla aparece con y sin órdenes; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Límite configurable del contexto del servidor
+- [x] Límite configurable del contexto del servidor
   criterio: nuevo ajuste `chat_contexto_max` (por defecto 1500, rango 500–6000) que sustituye a la constante `MAX_CONTEXTO_CHAT` en `prompt_chat` y en el editor de contexto (contador de caracteres con el límite elegido); el ajuste aparece en Respuestas de Discord junto al número de mensajes de contexto; tests del recorte con distintos límites y de que valores fuera de rango se ajustan; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Memoria breve por persona (opcional y borrable)
+- [x] Memoria breve por persona (opcional y borrable)
   criterio: ajuste `chat_memoria` desactivado por defecto; tabla nueva (migración) con bot, servidor, usuario, nota (máx. 500 caracteres) y fecha; con la memoria activa, el prompt incluye solo la nota del autor actual marcada como datos no fiables y permite al modelo terminar con una línea `MEMORIA: <nota breve>` sobre ese autor, que ARGUS guarda (reemplaza la anterior, recorta a 500) y quita del mensaje visible; nunca se guarda nada sobre otros usuarios ni datos como contraseñas, teléfonos o correos (filtro simple); en Respuestas de Discord una lista de notas por usuario con borrar una y «Borrar todas»; al desactivar la memoria no se usan las notas; tests de parseo, recorte, filtro, borrado y de que sin el ajuste no cambia nada; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Respuestas espontáneas sin mención
+- [x] Respuestas espontáneas sin mención
   criterio: ajuste `chat_espontaneo` desactivado por defecto, con lista de palabras clave y probabilidad (0–100 %) y una pausa mínima por canal en minutos (por defecto 10); el bot puede responder a un mensaje sin mención solo si contiene una palabra clave o sale la probabilidad, respeta canales y usuarios permitidos, nunca responde a bots y consume el mismo cupo diario de respuestas; tests de cada condición con un reloj y un azar inyectables; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Editar mensajes del bot desde la app
+- [x] Editar mensajes del bot desde la app
   criterio: donde la app muestra mensajes del canal (vista de mensajes o detalle de actividad), los mensajes del bot activo tienen «Editar», que abre el texto en un cuadro con contador de 2000 caracteres y guarda con el comando que usa `discord::edit_channel_message`; los mensajes de otros usuarios no muestran la acción; errores de Discord traducidos; tests de la acción visible solo en mensajes propios y del guardado; Lo no especificado NO es motivo de rechazo.
 
 ## Ideas fuera de esta etapa

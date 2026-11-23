@@ -388,6 +388,8 @@ const CATALOGO_ES: &[(&str, &str)] = &[
     ("Permissions of {target_id} updated in channel {channel_id}", "Permisos de {target_id} actualizados en el canal {channel_id}"),
     ("Permissions of {target_id} removed from channel {channel_id}", "Permisos de {target_id} quitados del canal {channel_id}"),
     ("Message sent to channel {channel_id} (id {id})", "Mensaje enviado a canal {channel_id} (id {id})"),
+    ("Message {id} edited in channel {channel_id}", "Mensaje {id} editado en el canal {channel_id}"),
+    ("The bot can only edit its own messages", "El bot solo puede editar sus propios mensajes"),
     ("DM sent to user {user_id} (id {id})", "DM enviado a usuario {user_id} (id {id})"),
     ("You have received a warning: {motivo}", "Has recibido un aviso: {motivo}"),
     ("Warnings so far: {total}", "Avisos hasta ahora: {total}"),

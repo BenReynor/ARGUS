@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
 import { useStore, useActiveGuildId, useShowNotification } from '../store/useStore';
-import { listarAgentesIa, getGuildSettings, saveGuildSettings, listChannels, listMembers } from '../api/tauri';
+import { listarAgentesIa, getGuildSettings, saveGuildSettings, listChannels, listMembers, listarMemoriaChat, borrarMemoriaChat, borrarTodaMemoriaChat } from '../api/tauri';
+import type { NotaMemoria } from '../api/tauri';
 import type { AgenteIa, Channel, GuildSettings, Member } from '../types';
 import { Avatar, Button, Cargando, EstadoVacio, ErrorPanel, Input, Select } from './ui';
 import { t } from '../i18n';
@@ -101,6 +102,8 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
     return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : defecto;
   };
 
+  const esp = ajustes.chat_espontaneo ?? { activo: false, palabras: [], probabilidad: 0, pausa_min: 10 };
+
   const guardar = async () => {
     setGuardando(true);
     try {
@@ -198,7 +201,56 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
             type="number" min={0} max={CONTEXTO_MAX} value={ajustes.chat_contexto}
             onChange={(e) => cambiar({ chat_contexto: numero(e.target.value, 0, CONTEXTO_MAX, 10) })}
           />
+          <Input
+            etiqueta={t('Server context limit (characters)')}
+            ayuda={t('Characters of the server context passed to the agent ({min}–{max}). Default: {def}.', { min: 500, max: 6000, def: 1500 })}
+            type="number" min={500} max={6000} value={ajustes.chat_contexto_max ?? 1500}
+            onChange={(e) => cambiar({ chat_contexto_max: numero(e.target.value, 500, 6000, 1500) })}
+          />
         </div>
+
+        <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+          <legend>{t('Saved notes')}</legend>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            <input type="checkbox" role="switch" checked={!!ajustes.chat_memoria} onChange={(e) => cambiar({ chat_memoria: e.target.checked })} />
+            <span>{t('Remember short notes about each person')}</span>
+          </label>
+          <small>{t('Off by default. The agent may save one short note (max 500 characters) about the person writing, never passwords, phones or e-mails. Notes are sent to the model provider with that person\'s messages.')}</small>
+          {!ajustes.chat_memoria && <small>{t('Notes are not used while memory is off.')}</small>}
+          <NotasMemoria guildId={guildId} botId={botId} miembros={miembros} />
+        </fieldset>
+
+        <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+          <legend>{t('Spontaneous replies')}</legend>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            <input
+              type="checkbox" role="switch" checked={!!esp.activo}
+              onChange={(e) => cambiar({ chat_espontaneo: { ...esp, activo: e.target.checked } })}
+            />
+            <span>{t('Reply without being mentioned')}</span>
+          </label>
+          <small>{t('Off by default. The bot may reply to a message without a mention only if it contains a keyword or the chance comes up. Never to bots; allowed channels and users, the pause and the daily reply limit still apply.')}</small>
+          {esp.activo && (
+            <div className="asistente__acciones">
+              <PalabrasClave
+                palabras={esp.palabras}
+                onChange={(palabras) => cambiar({ chat_espontaneo: { ...esp, palabras } })}
+              />
+              <Input
+                etiqueta={t('Chance of replying (%)')}
+                ayuda={t('0–100. Rolled for messages without a keyword.')}
+                type="number" min={0} max={100} value={esp.probabilidad}
+                onChange={(e) => cambiar({ chat_espontaneo: { ...esp, probabilidad: numero(e.target.value, 0, 100, 0) } })}
+              />
+              <Input
+                etiqueta={t('Minimum pause per channel (minutes)')}
+                ayuda={t('Default: 10.')}
+                type="number" min={1} max={1440} value={esp.pausa_min}
+                onChange={(e) => cambiar({ chat_espontaneo: { ...esp, pausa_min: numero(e.target.value, 1, 1440, 10) } })}
+              />
+            </div>
+          )}
+        </fieldset>
 
         <Input
           etiqueta={t('Daily reply limit')}
@@ -298,6 +350,68 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
 };
 
 const nombreMiembro = (m: Member) => m.nickname || m.username;
+
+/** Lista de notas guardadas por persona, con borrar una o todas. */
+/** Lista de palabras separadas por comas; se confirma al salir del campo. */
+const PalabrasClave: React.FC<{ palabras: string[]; onChange: (p: string[]) => void }> = ({ palabras, onChange }) => {
+  const [texto, setTexto] = useState(palabras.join(', '));
+  useEffect(() => { setTexto(palabras.join(', ')); }, [palabras.join('\n')]);
+  return (
+    <Input
+      etiqueta={t('Keywords')}
+      ayuda={t('Separated by commas; case is ignored.')}
+      value={texto}
+      onChange={(e) => setTexto(e.target.value)}
+      onBlur={() => onChange(texto.split(',').map((p) => p.trim()).filter(Boolean))}
+    />
+  );
+};
+
+const NotasMemoria: React.FC<{ guildId: string; botId: string | null | undefined; miembros: Member[] }> = ({ guildId, botId, miembros }) => {
+  const showNotification = useShowNotification();
+  const [notas, setNotas] = useState<NotaMemoria[] | null>(null);
+
+  useEffect(() => {
+    let vigente = true;
+    setNotas(null);
+    listarMemoriaChat(guildId)
+      .then((n) => { if (vigente) setNotas(n); })
+      .catch((e) => { if (vigente) { setNotas([]); showNotification(mensajeError(e, t('Could not load the notes')), 'error'); } });
+    return () => { vigente = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guildId, botId]);
+
+  const quitar = async (userId: string | null) => {
+    try {
+      if (userId === null) await borrarTodaMemoriaChat(guildId); else await borrarMemoriaChat(guildId, userId);
+      setNotas((actual) => (userId === null ? [] : (actual ?? []).filter((n) => n.user_id !== userId)));
+      showNotification(userId === null ? t('All notes deleted') : t('Note deleted'), 'success');
+    } catch (e) {
+      showNotification(mensajeError(e, t('Could not delete the notes')), 'error');
+    }
+  };
+
+  if (notas === null) return null;
+  if (notas.length === 0) return <small>{t('No notes saved yet.')}</small>;
+  return (
+    <div>
+      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' }}>
+        {notas.map((n) => {
+          const m = miembros.find((x) => x.user_id === n.user_id);
+          const nombre = m ? nombreMiembro(m) : n.user_id;
+          return (
+            <li key={n.user_id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <strong>{nombre}</strong>
+              <span style={{ flex: 1, whiteSpace: 'pre-wrap' }}>{n.nota}</span>
+              <Button variante="secundario" aria-label={t('Delete note')} onClick={() => { void quitar(n.user_id); }}>{t('Delete note')}</Button>
+            </li>
+          );
+        })}
+      </ul>
+      <Button variante="secundario" onClick={() => { void quitar(null); }}>{t('Delete all')}</Button>
+    </div>
+  );
+};
 
 /** Selector múltiple de miembros: buscador, lista filtrada y chips con avatar y nombre. */
 const SelectorMiembros: React.FC<{

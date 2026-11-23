@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useActiveGuildId, useGuildPanel, useShowNotification, useAddLog, motivoPermisoAusente } from '../store/useStore';
 import {
-  channelMessages, deleteMessage, bulkDeleteMessages, pinMessage, unpinMessage,
+  channelMessages, editMessage, moderationContext, deleteMessage, bulkDeleteMessages, pinMessage, unpinMessage,
   createInvite, listInvites, deleteInvite, listWebhooks, createWebhook, deleteWebhook,
 } from '../api/tauri';
 import type { MensajeCanal, Invitacion, Webhook } from '../api/tauri';
 import { Button, Badge, Cargando, ErrorPanel, EstadoVacio, Dialogo, Input, Select } from './ui';
-import { Pin, PinOff, Trash2, Copy, Plus, RefreshCw, Paperclip } from 'lucide-react';
+import { Pin, PinOff, Trash2, Copy, Plus, RefreshCw, Paperclip, Pencil } from 'lucide-react';
 import { t } from '../i18n';
+import { LIMITE_MENSAJE, caracteresRestantes, errorEdicion, guardarEdicion, puedeEditarMensaje } from '../edicionMensajes';
 
 type Pestana = 'mensajes' | 'invitaciones' | 'webhooks';
 const PESTANAS: Pestana[] = ['mensajes', 'invitaciones', 'webhooks'];
@@ -65,8 +66,29 @@ const Mensajes: React.FC<{ guildId: string; canalId: string }> = ({ guildId, can
   const [unico, setUnico] = useState<MensajeCanal | null>(null);
   const [masa, setMasa] = useState(false);
   const [trabajando, setTrabajando] = useState(false);
+  const [botId, setBotId] = useState<string | null>(null);
+  const [editando, setEditando] = useState<MensajeCanal | null>(null);
+  const [texto, setTexto] = useState('');
 
   useEffect(() => setSel(new Set()), [guildId, canalId]);
+  useEffect(() => {
+    let vigente = true;
+    setBotId(null);
+    moderationContext(guildId).then((c) => { if (vigente) setBotId(c.bot_id); }).catch(() => {});
+    return () => { vigente = false; };
+  }, [guildId]);
+
+  const abrirEdicion = (m: MensajeCanal) => { setTexto(m.content); setEditando(m); };
+  const restantes = caracteresRestantes(texto);
+  const invalido = editando ? errorEdicion(texto, editando.content) : null;
+  const editar = async () => {
+    if (!editando || invalido) return;
+    const m = editando;
+    if (await accion(() => guardarEdicion(editMessage, canalId, m.id, texto, m.content), t('Could not edit the message'))) {
+      setEditando(null);
+      await recargar();
+    }
+  };
 
   const accion = async (hacer: () => Promise<string>, fallo: string) => {
     setTrabajando(true);
@@ -136,6 +158,11 @@ const Mensajes: React.FC<{ guildId: string; canalId: string }> = ({ guildId, can
                 ))}
               </div>
               <div className="mensaje__acciones">
+                {puedeEditarMensaje(m.author_id, botId) && (
+                  <Button variante="ghost" tamano="sm" disabled={trabajando} title={t('Edit')} aria-label={t('Edit the message from {name}', { name: m.author_name })} onClick={() => abrirEdicion(m)}>
+                    <Pencil size={14} />
+                  </Button>
+                )}
                 <Button variante="ghost" tamano="sm" disabled={!!motivo || trabajando} title={motivo ?? (m.pinned ? t('Unpin') : t('Pin'))} aria-label={m.pinned ? t('Unpin the message from {name}', { name: m.author_name }) : t('Pin the message from {name}', { name: m.author_name })} onClick={() => void fijar(m)}>
                   {m.pinned ? <PinOff size={14} /> : <Pin size={14} />}
                 </Button>
@@ -148,6 +175,30 @@ const Mensajes: React.FC<{ guildId: string; canalId: string }> = ({ guildId, can
         </ul>
       </Estado>
 
+      <Dialogo
+        abierto={!!editando}
+        titulo={t('Edit message')}
+        descripcion={t('Only messages sent by the active bot can be edited.')}
+        onCerrar={() => setEditando(null)}
+        pie={
+          <>
+            <Button variante="secundario" onClick={() => setEditando(null)}>{t('Cancel')}</Button>
+            <Button cargando={trabajando} disabled={!!invalido} onClick={() => void editar()}>{t('Save')}</Button>
+          </>
+        }
+      >
+        <textarea
+          className="ui-control"
+          data-autofocus
+          rows={6}
+          aria-label={t('Message text')}
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+        />
+        <span className={restantes < 0 ? 'ui-campo__error' : 'vista__nota'} role={restantes < 0 ? 'alert' : undefined}>
+          {t('{count} characters left of {max}', { count: restantes, max: LIMITE_MENSAJE })}
+        </span>
+      </Dialogo>
       <Dialogo
         abierto={!!unico}
         titulo={t('Delete message')}
