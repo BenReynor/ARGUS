@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Abre ARGUS compilado desde la última versión de `main`, recompilándolo antes
-# si `main` cambió. Lo usan el acceso directo y el hook post-merge de git.
+# Abre ARGUS compilado desde la última versión de `main` (u otra rama elegida
+# en ~/.local/share/argus-app/rama), recompilándolo antes si esa rama cambió. Lo usan el acceso directo y el hook post-merge de git.
 #
 #   abrir-argus.sh             actualiza si hace falta y abre la app
 #   abrir-argus.sh --compilar  solo actualiza (en segundo plano, sin abrir)
@@ -27,6 +27,11 @@ VERSION="$DATOS/version"
 DURACION="$DATOS/duracion"   # segundos de la última compilación (para el %)
 LOG="$DATOS/compilacion.log"
 mkdir -p "$DATOS"
+# Rama que se instala: `main` salvo que $DATOS/rama (o ARGUS_RAMA) diga otra,
+# p. ej. una rama local con añadidos propios que no se publican.
+RAMA="${ARGUS_RAMA:-$(head -1 "$DATOS/rama" 2>/dev/null | tr -d '[:space:]')}"
+RAMA="${RAMA:-main}"
+git -C "$REPO" rev-parse -q --verify "refs/heads/$RAMA" >/dev/null || RAMA=main
 
 # Un hook de git exporta GIT_DIR & co.: apuntarían al repo equivocado.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
@@ -41,13 +46,13 @@ aviso() {
     command -v notify-send >/dev/null && notify-send -i "$REPO/src-tauri/icons/icon.png" "ARGUS" "$1"
 }
 
-# Huella del código de la app en `main`: cambios en el plan o la documentación
+# Huella del código de la app en la rama instalada: cambios en el plan o la documentación
 # (Dédalo commitea plan.md en cada tarea) no obligan a recompilar.
 FUENTES_APP=(src src-tauri package.json package-lock.json index.html vite.config.ts tsconfig.json)
 huella() {
     local p
     for p in "${FUENTES_APP[@]}"; do
-        git -C "$REPO" rev-parse "main:$p" 2>/dev/null || echo "-"
+        git -C "$REPO" rev-parse "$RAMA:$p" 2>/dev/null || echo "-"
     done | sha1sum | cut -d' ' -f1
 }
 
@@ -75,10 +80,10 @@ actualizar() {
     flock 9    # si el hook ya está compilando, espera a que termine
     al_dia && exit 0
     local sha marca t0=$SECONDS
-    sha="$(git -C "$REPO" rev-parse main)"
+    sha="$(git -C "$REPO" rev-parse "$RAMA")"
     marca="$(huella)"
     {
-        echo "== $(date '+%F %T') compilando $sha"
+        echo "== $(date '+%F %T') compilando $RAMA $sha"
         if [ ! -d "$FUENTE/.git" ] && [ ! -f "$FUENTE/.git" ]; then
             git -C "$REPO" worktree prune
             git -C "$REPO" worktree add --detach "$FUENTE" "$sha" || return 1
