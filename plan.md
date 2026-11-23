@@ -820,7 +820,7 @@ con t() en EN y ES y sin datos reales en los tests.
 - [x] Foros: etiquetas y respuestas dentro de un post
   criterio: herramientas `etiquetas_foro` (lectura: lista las etiquetas de un canal foro), `editar_etiquetas_foro` (crea o renombra etiquetas, máx. 20, nombre ≤ 20 caracteres, emoji opcional) y `etiquetar_post` (asigna hasta 5 etiquetas existentes a un post por nombre o id); `crear_post_foro` acepta etiquetas opcionales; responder dentro de un post funciona con `enviar_mensaje` sobre el id del hilo y se documenta; tests wiremock de cada llamada, de nombre de etiqueta inexistente y de los límites; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Eventos programados del servidor
+- [x] Eventos programados del servidor
   criterio: herramientas `listar_eventos` (lectura), `crear_evento` (nombre, descripción, inicio y fin en ISO 8601 con zona, lugar externo o canal de voz/escenario), `editar_evento` y `cancelar_evento`; el inicio debe ser futuro y el fin posterior al inicio (error claro si no); aviso de permiso «Crear/Gestionar eventos»; `cancelar_evento` cuenta como acción destructiva; tests wiremock del JSON (entity_type 2/3, privacy_level 2) y de fechas inválidas; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Encuestas nativas
