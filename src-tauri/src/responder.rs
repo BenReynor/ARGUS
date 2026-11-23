@@ -802,6 +802,7 @@ impl Conversador {
             &e.canal,
             &previos,
             ajustes.chat_contexto as usize,
+            ajustes.chat_contexto_max,
             &e.autor_nombre,
             &e.texto,
             autorizado,

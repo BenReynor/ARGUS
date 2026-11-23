@@ -198,6 +198,12 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
             type="number" min={0} max={CONTEXTO_MAX} value={ajustes.chat_contexto}
             onChange={(e) => cambiar({ chat_contexto: numero(e.target.value, 0, CONTEXTO_MAX, 10) })}
           />
+          <Input
+            etiqueta={t('Server context limit (characters)')}
+            ayuda={t('Characters of the server context passed to the agent ({min}–{max}). Default: {def}.', { min: 500, max: 6000, def: 1500 })}
+            type="number" min={500} max={6000} value={ajustes.chat_contexto_max ?? 1500}
+            onChange={(e) => cambiar({ chat_contexto_max: numero(e.target.value, 500, 6000, 1500) })}
+          />
         </div>
 
         <Input

@@ -24,6 +24,7 @@ export const ContextoPersonalidad: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [contexto, setContexto] = useState('');
   const [personalidad, setPersonalidad] = useState('');
+  const [limite, setLimite] = useState(1500);
   const [estadoCtx, setEstadoCtx] = useState<Estado>('idle');
   const [estadoPers, setEstadoPers] = useState<Estado>('idle');
 
@@ -84,6 +85,7 @@ export const ContextoPersonalidad: React.FC = () => {
         if (!vigente) return;
         setContexto(c);
         setPersonalidad(s.chat_personalidad ?? '');
+        setLimite(s.chat_contexto_max ?? 1500);
       } catch (e) {
         if (vigente) setError(mensajeError(e, t('Could not load the context and personality')));
       } finally {
@@ -159,7 +161,10 @@ export const ContextoPersonalidad: React.FC = () => {
           onChange={(e) => cambiarContexto(e.target.value)}
         />
         <div className="asistente__acciones">
-          <span>{t('{count} characters', { count: contexto.length.toLocaleString() })}</span>
+          <span style={contexto.length > limite ? { color: 'var(--danger, #d33)' } : undefined}>
+            {t('{count} / {max} characters', { count: contexto.length.toLocaleString(), max: limite.toLocaleString() })}
+            {contexto.length > limite ? ` — ${t('the bot only reads the first {max} characters', { max: limite.toLocaleString() })}` : ''}
+          </span>
           <span role="status">{etiquetaEstado(estadoCtx)}</span>
         </div>
       </section>

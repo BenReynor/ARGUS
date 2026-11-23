@@ -782,6 +782,9 @@ pub struct GuildSettings {
     /// Mensajes previos del canal que se le pasan (máximo 30).
     #[serde(default = "chat_contexto_defecto")]
     pub chat_contexto: u32,
+    /// Máximo de caracteres del contexto del servidor en el prompt (500–6000).
+    #[serde(default = "chat_contexto_max_defecto")]
+    pub chat_contexto_max: u32,
     /// IDs de usuarios a los que responde; vacía = todos.
     #[serde(default)]
     pub chat_usuarios: Vec<String>,
@@ -807,6 +810,14 @@ pub struct GuildSettings {
 }
 
 pub const CHAT_CONTEXTO_MAX: u32 = 30;
+pub const CHAT_CONTEXTO_CHARS_MIN: u32 = 500;
+pub const CHAT_CONTEXTO_CHARS_MAX: u32 = 6000;
+pub const CHAT_CONTEXTO_CHARS_DEFECTO: u32 = 1500;
+
+/// Ajusta el límite de caracteres del contexto del servidor al rango permitido.
+pub fn limitar_contexto_max(v: u32) -> u32 {
+    v.clamp(CHAT_CONTEXTO_CHARS_MIN, CHAT_CONTEXTO_CHARS_MAX)
+}
 
 fn ordenes_max_acciones_defecto() -> u32 {
     50
@@ -837,6 +848,9 @@ fn chat_espera_defecto() -> u32 {
 fn chat_contexto_defecto() -> u32 {
     10
 }
+fn chat_contexto_max_defecto() -> u32 {
+    CHAT_CONTEXTO_CHARS_DEFECTO
+}
 
 impl Default for GuildSettings {
     fn default() -> Self {
@@ -857,6 +871,7 @@ impl Default for GuildSettings {
             chat_max_diario: 200,
             chat_respuestas_hoy: 0,
             chat_contexto: chat_contexto_defecto(),
+            chat_contexto_max: chat_contexto_max_defecto(),
             chat_usuarios: Vec::new(),
             chat_ordenes: false,
             chat_ordenes_usuarios: Vec::new(),
@@ -877,6 +892,7 @@ impl GuildSettings {
         }
         self.destruction.normalize();
         self.chat_contexto = self.chat_contexto.min(CHAT_CONTEXTO_MAX);
+        self.chat_contexto_max = limitar_contexto_max(self.chat_contexto_max);
         self.ordenes_max_acciones = self.ordenes_max_acciones.clamp(1, 500);
         self
     }
@@ -1699,6 +1715,29 @@ mod guild_settings_tests {
         assert!(!ordenes_activas(&s, "43"));
         s.chat_ordenes = false;
         assert!(!ordenes_activas(&s, "42"));
+    }
+
+    #[test]
+    fn contexto_max_defecto_y_ajuste_de_rango() {
+        assert_eq!(GuildSettings::default().chat_contexto_max, 1500);
+        let antigua: GuildSettings = serde_json::from_str("{\"notes\":\"n\"}").unwrap();
+        assert_eq!(antigua.chat_contexto_max, 1500);
+        for (entrada, esperado) in [
+            (0, 500),
+            (499, 500),
+            (500, 500),
+            (3000, 3000),
+            (6000, 6000),
+            (6001, 6000),
+            (u32::MAX, 6000),
+        ] {
+            let s = GuildSettings {
+                chat_contexto_max: entrada,
+                ..Default::default()
+            }
+            .normalizado();
+            assert_eq!(s.chat_contexto_max, esperado);
+        }
     }
 
     #[test]

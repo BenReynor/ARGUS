@@ -134,6 +134,8 @@ export interface GuildSettings {
   chat_respuestas_hoy: number;
   /** Mensajes previos que se pasan al agente (máximo 30). */
   chat_contexto: number;
+  /** Máximo de caracteres del contexto del servidor en el prompt (500–6000, por defecto 1500). */
+  chat_contexto_max: number;
   /** IDs de usuarios a los que responde; vacía = todos. */
   chat_usuarios: string[];
   /** Permite dar órdenes desde Discord. */

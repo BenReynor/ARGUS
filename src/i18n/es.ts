@@ -1023,6 +1023,10 @@ export const es: Record<string, string> = {
   'Wait per user (seconds)': 'Espera por usuario (segundos)',
   'Context messages': 'Mensajes de contexto',
   'Previous channel messages passed to the agent (max {max}).': 'Mensajes previos del canal que se pasan al agente (máximo {max}).',
+  'Server context limit (characters)': 'Límite del contexto del servidor (caracteres)',
+  'Characters of the server context passed to the agent ({min}–{max}). Default: {def}.': 'Caracteres del contexto del servidor que se pasan al agente ({min}–{max}). Por defecto: {def}.',
+  '{count} / {max} characters': '{count} / {max} caracteres',
+  'the bot only reads the first {max} characters': 'el bot solo lee los primeros {max} caracteres',
 
   // Asistente IA (AsistenteView.tsx)
   'AI Assistant': 'Asistente IA',
