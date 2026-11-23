@@ -3,7 +3,7 @@ import type { AccionPropuesta } from './types/index.ts';
 // Mismas herramientas que ACCIONES_DESTRUCTIVAS en propuesta.rs.
 const IRREVERSIBLES = new Set([
   'borrar_canal', 'borrar_rol', 'banear', 'expulsar', 'borrar_mensaje',
-  'borrar_mensajes', 'borrar_invitacion', 'borrar_webhook', 'enviar_mensaje',
+  'borrar_mensajes', 'borrar_invitacion', 'borrar_webhook', 'cancelar_evento', 'enviar_mensaje',
   'editar_mensaje', 'crear_post_foro', 'enviar_dm', 'avisar',
 ]);
 

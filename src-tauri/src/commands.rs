@@ -1394,6 +1394,74 @@ pub async fn borrar_webhook(
     Ok(format!("Webhook {webhook_id} deleted"))
 }
 
+const PERMISO_EVENTOS: &str = "Crear/Gestionar eventos";
+
+/// Exige «Crear eventos» o «Gestionar eventos» (basta una de las dos).
+async fn exigir_permiso_eventos(
+    state: &AppState,
+    guild_id: &str,
+    base_url: Option<&str>,
+) -> Result<(), String> {
+    let permisos = permisos_del_bot(state, guild_id, base_url).await?;
+    if permisos
+        .iter()
+        .any(|p| p == "Crear eventos" || p == "Gestionar eventos")
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "The bot is missing the permission «{PERMISO_EVENTOS}»"
+        ))
+    }
+}
+
+/// Lista los eventos programados (lectura).
+pub async fn listar_eventos_del_servidor(
+    state: &AppState,
+    guild_id: &str,
+    base_url: Option<&str>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let token = token_del_bot_activo(state)?;
+    crate::eventos::listar(&token, base_url, guild_id).await
+}
+
+pub async fn crear_evento_del_servidor(
+    state: &AppState,
+    guild_id: &str,
+    datos: &crate::eventos::DatosEvento,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso_eventos(state, guild_id, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    let id = crate::eventos::crear(&token, base_url, guild_id, datos).await?;
+    Ok(format!("Event created (id {id})"))
+}
+
+pub async fn editar_evento_del_servidor(
+    state: &AppState,
+    guild_id: &str,
+    event_id: &str,
+    datos: &crate::eventos::DatosEvento,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso_eventos(state, guild_id, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::eventos::editar(&token, base_url, guild_id, event_id, datos).await?;
+    Ok(format!("Event {event_id} updated"))
+}
+
+pub async fn cancelar_evento_del_servidor(
+    state: &AppState,
+    guild_id: &str,
+    event_id: &str,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso_eventos(state, guild_id, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::eventos::cancelar(&token, base_url, guild_id, event_id).await?;
+    Ok(format!("Event {event_id} canceled"))
+}
+
 /// Tras cambiar roles, vuelve a leerlos y actualiza el mapa guardado (si hay uno).
 pub async fn refrescar_roles_del_mapa(
     state: &AppState,

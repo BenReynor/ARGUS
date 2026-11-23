@@ -636,6 +636,53 @@ pub struct BorrarWebhookParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
+pub struct CrearEventoParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// Nombre del evento (≤ 100 caracteres).
+    pub nombre: String,
+    /// Descripción (≤ 1000 caracteres).
+    pub descripcion: Option<String>,
+    /// Inicio en ISO 8601 con zona (2030-05-01T20:00:00+02:00); debe ser futuro.
+    pub inicio: String,
+    /// Fin en ISO 8601 con zona; posterior al inicio. Obligatorio con lugar externo.
+    pub fin: Option<String>,
+    /// Lugar externo (≤ 100 caracteres). Excluyente con `canal_id`.
+    pub lugar: Option<String>,
+    /// Canal de voz o escenario donde se celebra. Excluyente con `lugar`.
+    pub canal_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct EditarEventoParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// ID del evento.
+    pub evento_id: String,
+    pub nombre: Option<String>,
+    pub descripcion: Option<String>,
+    /// Nuevo inicio (ISO 8601 con zona, futuro).
+    pub inicio: Option<String>,
+    /// Nuevo fin (ISO 8601 con zona, posterior al inicio).
+    pub fin: Option<String>,
+    /// Nuevo lugar externo (convierte el evento en externo).
+    pub lugar: Option<String>,
+    /// Nuevo canal de voz o escenario.
+    pub canal_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct CancelarEventoParams {
+    /// ID del servidor. Si se omite se usa el servidor activo.
+    pub guild_id: Option<String>,
+    /// ID del evento.
+    pub evento_id: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
 pub struct RestoreParams {
     /// Omit snapshot_id to list saved snapshots. Otherwise generate a read-only proposal.
     pub snapshot_id: Option<String>,
@@ -2534,6 +2581,66 @@ impl ArgusMcp {
             .map_err(|e| self.limpiar(e))?;
         self.mensaje(texto)
     }
+
+    /// `listar_eventos` (lectura).
+    pub async fn listar_eventos_json(&self, guild_id: Option<&str>) -> Result<String, String> {
+        let gid = self.servidor_de(guild_id).await?;
+        let eventos = commands::listar_eventos_del_servidor(&self.state, &gid, self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        Ok(json!({ "eventos": eventos }).to_string())
+    }
+
+    pub async fn crear_evento_json(&self, p: &CrearEventoParams) -> Result<String, String> {
+        let gid = self.servidor_de(p.guild_id.as_deref()).await?;
+        let datos = crate::eventos::DatosEvento {
+            nombre: Some(p.nombre.clone()),
+            descripcion: p.descripcion.clone(),
+            inicio: Some(p.inicio.clone()),
+            fin: p.fin.clone(),
+            lugar: p.lugar.clone(),
+            canal_id: p.canal_id.clone(),
+        };
+        let texto = commands::crear_evento_del_servidor(&self.state, &gid, &datos, self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        self.mensaje(texto)
+    }
+
+    pub async fn editar_evento_json(&self, p: &EditarEventoParams) -> Result<String, String> {
+        let gid = self.servidor_de(p.guild_id.as_deref()).await?;
+        let datos = crate::eventos::DatosEvento {
+            nombre: p.nombre.clone(),
+            descripcion: p.descripcion.clone(),
+            inicio: p.inicio.clone(),
+            fin: p.fin.clone(),
+            lugar: p.lugar.clone(),
+            canal_id: p.canal_id.clone(),
+        };
+        let texto = commands::editar_evento_del_servidor(
+            &self.state,
+            &gid,
+            p.evento_id.trim(),
+            &datos,
+            self.url(),
+        )
+        .await
+        .map_err(|e| self.limpiar(e))?;
+        self.mensaje(texto)
+    }
+
+    pub async fn cancelar_evento_json(
+        &self,
+        guild_id: Option<&str>,
+        evento_id: &str,
+    ) -> Result<String, String> {
+        let gid = self.servidor_de(guild_id).await?;
+        let texto =
+            commands::cancelar_evento_del_servidor(&self.state, &gid, evento_id.trim(), self.url())
+                .await
+                .map_err(|e| self.limpiar(e))?;
+        self.mensaje(texto)
+    }
 }
 
 /// Minúsculas y sin tildes para comparar textos sueltos («categoría» = «categoria»).
@@ -2737,6 +2844,7 @@ pub const HERRAMIENTAS_LECTURA: &[&str] = &[
     "listar_invitaciones",
     "listar_webhooks",
     "etiquetas_foro",
+    "listar_eventos",
     "listar_avisos",
 ];
 
@@ -2752,6 +2860,9 @@ pub const HERRAMIENTAS_ESCRITURA: &[&str] = &[
     "crear_post_foro",
     "editar_etiquetas_foro",
     "etiquetar_post",
+    "crear_evento",
+    "editar_evento",
+    "cancelar_evento",
     "reaccionar",
     "quitar_reaccion",
     "enviar_dm",
@@ -2820,6 +2931,9 @@ pub fn validar_accion(nombre: &str, args: &serde_json::Value) -> Result<(), Stri
         "crear_post_foro" => ok::<CrearPostForoParams>(nombre, args),
         "editar_etiquetas_foro" => ok::<EditarEtiquetasForoParams>(nombre, args),
         "etiquetar_post" => ok::<EtiquetarPostParams>(nombre, args),
+        "crear_evento" => ok::<CrearEventoParams>(nombre, args),
+        "editar_evento" => ok::<EditarEventoParams>(nombre, args),
+        "cancelar_evento" => ok::<CancelarEventoParams>(nombre, args),
         "editar_mensaje" => ok::<EditarMensajeParams>(nombre, args),
         "reaccionar" | "quitar_reaccion" => ok::<ReaccionParams>(nombre, args),
         "enviar_dm" => ok::<EnviarDmParams>(nombre, args),
@@ -2874,6 +2988,9 @@ pub fn esquema_args(nombre: &str) -> Option<serde_json::Value> {
         "crear_post_foro" => de::<CrearPostForoParams>(),
         "editar_etiquetas_foro" => de::<EditarEtiquetasForoParams>(),
         "etiquetar_post" => de::<EtiquetarPostParams>(),
+        "crear_evento" => de::<CrearEventoParams>(),
+        "editar_evento" => de::<EditarEventoParams>(),
+        "cancelar_evento" => de::<CancelarEventoParams>(),
         "editar_mensaje" => de::<EditarMensajeParams>(),
         "reaccionar" | "quitar_reaccion" => de::<ReaccionParams>(),
         "enviar_dm" => de::<EnviarDmParams>(),
@@ -3497,6 +3614,13 @@ impl ArgusMcp {
                     .await
             }
             "etiquetar_post" => self.etiquetar_post_json(&args_de(nombre, args)?).await,
+            "crear_evento" => self.crear_evento_json(&args_de(nombre, args)?).await,
+            "editar_evento" => self.editar_evento_json(&args_de(nombre, args)?).await,
+            "cancelar_evento" => {
+                let p: CancelarEventoParams = args_de(nombre, args)?;
+                self.cancelar_evento_json(p.guild_id.as_deref(), &p.evento_id)
+                    .await
+            }
             "enviar_mensaje" => {
                 let p: EnviarMensajeParams = args_de(nombre, args)?;
                 self.enviar_mensaje_embed_json(
@@ -4048,6 +4172,56 @@ impl ArgusMcp {
         Parameters(p): Parameters<EtiquetarPostParams>,
     ) -> Result<String, String> {
         let r = self.etiquetar_post_json(&p).await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "listar_eventos",
+        description = "Lists the server's scheduled events (id, name, description, start, end, type voice/stage/external, status, channel, location). Read-only. `guild_id` is optional."
+    )]
+    async fn listar_eventos(
+        &self,
+        Parameters(p): Parameters<ServidorParams>,
+    ) -> Result<String, String> {
+        let r = self.listar_eventos_json(p.guild_id.as_deref()).await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "crear_evento",
+        description = "Creates a scheduled event (server members only). `inicio` and `fin` are ISO 8601 with a time zone (2030-05-01T20:00:00+02:00); the start must be in the future and the end after the start. Give either `lugar` (external location, needs `fin`) or `canal_id` (voice or stage channel). Requires «Create Events» or «Manage Events». `guild_id` is optional."
+    )]
+    async fn crear_evento(
+        &self,
+        Parameters(p): Parameters<CrearEventoParams>,
+    ) -> Result<String, String> {
+        let r = self.crear_evento_json(&p).await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "editar_evento",
+        description = "Edits a scheduled event; only the given fields change. Same date rules as crear_evento (future start, end after start). `lugar` makes it external, `canal_id` moves it to a voice/stage channel. Requires «Create Events» or «Manage Events». `guild_id` is optional."
+    )]
+    async fn editar_evento(
+        &self,
+        Parameters(p): Parameters<EditarEventoParams>,
+    ) -> Result<String, String> {
+        let r = self.editar_evento_json(&p).await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "cancelar_evento",
+        description = "Cancels (deletes) a scheduled event by its ID (irreversible). Requires «Create Events» or «Manage Events». `guild_id` is optional."
+    )]
+    async fn cancelar_evento(
+        &self,
+        Parameters(p): Parameters<CancelarEventoParams>,
+    ) -> Result<String, String> {
+        let r = self
+            .cancelar_evento_json(p.guild_id.as_deref(), &p.evento_id)
+            .await;
         self.salida(r)
     }
 
@@ -6516,6 +6690,9 @@ mod tests {
             "crear_post_foro",
             "editar_etiquetas_foro",
             "etiquetar_post",
+            "crear_evento",
+            "editar_evento",
+            "cancelar_evento",
             "reaccionar",
             "quitar_reaccion",
             "enviar_dm",
@@ -7214,6 +7391,45 @@ mod tests {
         };
         let e = mcp.crear_invitacion_json(&p).await.unwrap_err();
         assert!(e.contains("7 days"), "{e}");
+    }
+
+    #[tokio::test]
+    async fn eventos_sin_permiso_no_llegan_a_discord_y_con_permiso_si() {
+        let falta = "The bot is missing the permission «Crear/Gestionar eventos»";
+        let crear = |inicio: &str| CrearEventoParams {
+            guild_id: None,
+            nombre: "Torneo".into(),
+            descripcion: None,
+            inicio: inicio.into(),
+            fin: Some("2099-05-01T22:00:00+02:00".into()),
+            lugar: Some("Plaza".into()),
+            canal_id: None,
+        };
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_MENSAJES, true).await;
+        prohibir_cambios(&s).await;
+        let e = mcp
+            .crear_evento_json(&crear("2099-05-01T20:00:00+02:00"))
+            .await;
+        assert_eq!(e.unwrap_err(), falta);
+        let e = mcp.cancelar_evento_json(None, "9").await;
+        assert_eq!(e.unwrap_err(), falta);
+
+        let (_d, mcp, s) = mcp_con_servidor(1 << 33, true).await;
+        aceptar(
+            &s,
+            "DELETE",
+            "/api/v10/guilds/555/scheduled-events/9",
+            204,
+            None,
+            1,
+        )
+        .await;
+        let r = mcp.cancelar_evento_json(None, "9").await.unwrap();
+        assert!(r.contains('9'), "{r}");
+        let e = mcp
+            .crear_evento_json(&crear("2001-05-01T20:00:00+02:00"))
+            .await;
+        assert_eq!(e.unwrap_err(), "The event start must be in the future");
     }
 
     #[tokio::test]

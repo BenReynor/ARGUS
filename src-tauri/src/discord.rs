@@ -631,7 +631,7 @@ fn preparar_cuerpo(
     Ok((texto.map(str::to_string), tw))
 }
 
-fn parse_id<M>(texto: &str, que: &str) -> Result<twilight_model::id::Id<M>, String> {
+pub(crate) fn parse_id<M>(texto: &str, que: &str) -> Result<twilight_model::id::Id<M>, String> {
     texto
         .parse::<u64>()
         .ok()
@@ -892,7 +892,7 @@ fn etiqueta_a_json(e: &EtiquetaForo) -> serde_json::Value {
     v
 }
 
-async fn pedir_json(
+pub(crate) async fn pedir_json(
     token: &str,
     base_url: Option<&str>,
     ruta: twilight_http::routing::Route<'_>,
@@ -909,6 +909,9 @@ async fn pedir_json(
         .bytes()
         .await
         .map_err(|e| format!("Invalid response from Discord: {e}"))?;
+    if bytes.is_empty() {
+        return Ok(serde_json::Value::Null);
+    }
     serde_json::from_slice(&bytes).map_err(|e| format!("Invalid response from Discord: {e}"))
 }
 

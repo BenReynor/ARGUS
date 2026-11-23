@@ -28,6 +28,7 @@ pub const ACCIONES_DESTRUCTIVAS: &[&str] = &[
     "borrar_mensajes",
     "borrar_invitacion",
     "borrar_webhook",
+    "cancelar_evento",
     "enviar_mensaje",
     "editar_mensaje",
     "crear_post_foro",
@@ -82,7 +83,10 @@ impl Propuesta {
                 | "borrar_invitacion"
                 | "crear_webhook"
                 | "borrar_webhook"
-                | "editar_etiquetas_foro" => permisos.estructura,
+                | "editar_etiquetas_foro"
+                | "crear_evento"
+                | "editar_evento"
+                | "cancelar_evento" => permisos.estructura,
                 "borrar_canal" | "borrar_rol" => permisos.borrar_canales_roles,
                 "silenciar" => permisos.silenciar,
                 "expulsar" => permisos.expulsar,
@@ -359,6 +363,7 @@ fn referencias(herramienta: &str, args: &Value) -> Vec<(&'static str, Ref)> {
         | "desfijar_mensaje" => {
             vec![("channel_id", Ref::Canal)]
         }
+        "crear_evento" | "editar_evento" => vec![("canal_id", Ref::Canal)],
         "editar_rol" | "borrar_rol" | "dar_rol" | "quitar_rol" => vec![("role_id", Ref::Rol)],
         "permiso_canal" | "quitar_permiso_canal" => {
             let mut v = vec![("channel_id", Ref::Canal)];
@@ -722,6 +727,9 @@ mod tests {
                     "crear_webhook",
                     "borrar_webhook",
                     "editar_etiquetas_foro",
+                    "crear_evento",
+                    "editar_evento",
+                    "cancelar_evento",
                 ],
             ),
             ("borrar_canales_roles", &["borrar_canal", "borrar_rol"]),
@@ -799,6 +807,7 @@ mod tests {
             "borrar_mensajes",
             "borrar_invitacion",
             "borrar_webhook",
+            "cancelar_evento",
             "enviar_mensaje",
             "enviar_dm",
             "avisar",

@@ -153,6 +153,10 @@ optional parameter.
 | `etiquetas_foro` | `channel_id` | Read-only: lists the tags of a forum channel (id, name, emoji, moderated). |
 | `editar_etiquetas_foro` | `channel_id`, `etiquetas[]` (`nombre` ≤ 20, `nuevo_nombre?`, `emoji?`) | Creates tags or renames/changes the emoji of existing ones (matched by name or ID). A forum has at most 20 tags. Requires Manage Channels. |
 | `etiquetar_post` | `post_id`, `etiquetas[]` (≤ 5, name or ID) | Sets the tags of a forum post, replacing the current ones; all must already exist in the forum. |
+| `listar_eventos` | `guild_id?` | Read-only: scheduled events (id, name, description, start, end, type voice/stage/external, status, channel, location). |
+| `crear_evento` | `guild_id?`, `nombre` (≤ 100), `descripcion?` (≤ 1000), `inicio`, `fin?`, `lugar?` or `canal_id?` | Creates a server-members-only event. Dates are ISO 8601 with a time zone; the start must be in the future and the end after the start. `lugar` (external, requires `fin`) or `canal_id` (voice → type 2, stage → type 1). Requires Create Events or Manage Events. |
+| `editar_evento` | `guild_id?`, `evento_id`, `nombre?`, `descripcion?`, `inicio?`, `fin?`, `lugar?`, `canal_id?` | Changes only the given fields, with the same date rules. Requires Create Events or Manage Events. |
+| `cancelar_evento` | `guild_id?`, `evento_id` | Cancels (deletes) the event. Irreversible, so it counts as a destructive action in proposals. Requires Create Events or Manage Events. |
 | `enviar_dm` | `user_id`, `contenido` (≤ 2000) | Direct message to a user. |
 | `avisar` | `user_id` (ID or name), `motivo`, `mensaje_id?`, `dm?` (default true), `guild_id?` | Saves a warning; with `dm` sends the user the reason and their warning count (if the DM fails the warning is kept and the result says so). |
 | `borrar_mensaje` | `guild_id?`, `channel_id`, `message_id` | Deletes a message. |

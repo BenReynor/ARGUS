@@ -22,6 +22,7 @@ pub mod db;
 pub mod destruction;
 pub mod diagnostico;
 pub mod discord;
+pub mod eventos;
 pub mod gateway;
 pub mod i18n;
 pub mod mapa;
@@ -48,6 +49,8 @@ mod template_transfer;
 mod tests_ajustes;
 #[cfg(test)]
 mod tests_canales;
+#[cfg(test)]
+mod tests_eventos;
 #[cfg(test)]
 mod tests_foros;
 #[cfg(test)]
