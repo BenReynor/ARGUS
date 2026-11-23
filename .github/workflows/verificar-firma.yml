@@ -26,7 +26,8 @@ jobs:
       - run: npm ci --ignore-scripts
 
       - name: La clave pública configurada es la de producción
-        run: node -e "import('./scripts/verificar-firma-updater.mjs').then(m=>{const c=require('./src-tauri/tauri.conf.json');m.assertProductionKey(c.plugins.updater.pubkey);console.log('Clave pública de producción: OK')})"
+        run: |
+          node -e "import('./scripts/verificar-firma-updater.mjs').then(m=>{const c=require('./src-tauri/tauri.conf.json');m.assertProductionKey(c.plugins.updater.pubkey);console.log('Clave publica de produccion OK')})"
 
       - name: Firmar y verificar un archivo de prueba
         env:
