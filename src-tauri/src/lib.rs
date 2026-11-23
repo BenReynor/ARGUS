@@ -49,6 +49,8 @@ mod tests_ajustes;
 #[cfg(test)]
 mod tests_canales;
 #[cfg(test)]
+mod tests_foros;
+#[cfg(test)]
 mod tests_mensajes;
 #[cfg(test)]
 mod tests_moderacion;

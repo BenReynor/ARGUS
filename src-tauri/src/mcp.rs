@@ -251,6 +251,45 @@ pub struct CrearPostForoParams {
     pub titulo: String,
     /// Texto del primer mensaje del post (hasta 2000 caracteres).
     pub contenido: String,
+    /// Etiquetas del foro (nombre o id, hasta 5; deben existir).
+    #[serde(default)]
+    pub etiquetas: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct EtiquetasForoParams {
+    /// ID del canal de foro.
+    pub channel_id: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct CambioEtiquetaParams {
+    /// Nombre (o id) de la etiqueta: si existe se modifica, si no se crea (≤ 20).
+    pub nombre: String,
+    /// Nuevo nombre para renombrarla (≤ 20 caracteres).
+    pub nuevo_nombre: Option<String>,
+    /// Emoji opcional: unicode o `nombre:id`.
+    pub emoji: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct EditarEtiquetasForoParams {
+    /// ID del canal de foro.
+    pub channel_id: String,
+    /// Etiquetas a crear o renombrar (el foro admite como máximo 20).
+    pub etiquetas: Vec<CambioEtiquetaParams>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct EtiquetarPostParams {
+    /// ID del post (el hilo del foro).
+    pub post_id: String,
+    /// Etiquetas existentes del foro (nombre o id, hasta 5); sustituyen las actuales.
+    pub etiquetas: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1861,6 +1900,7 @@ impl ArgusMcp {
         channel_id: &str,
         titulo: &str,
         contenido: &str,
+        etiquetas: &[String],
     ) -> Result<String, String> {
         self.preparar().await?;
         let texto = commands::crear_post_en_foro(
@@ -1868,6 +1908,54 @@ impl ArgusMcp {
             channel_id.trim(),
             titulo,
             contenido,
+            etiquetas,
+            self.url(),
+        )
+        .await
+        .map_err(|e| self.limpiar(e))?;
+        self.mensaje(texto)
+    }
+
+    /// `etiquetas_foro` (lectura).
+    pub async fn etiquetas_foro_json(&self, channel_id: &str) -> Result<String, String> {
+        self.preparar().await?;
+        let tags = commands::etiquetas_del_foro(&self.state, channel_id.trim(), self.url())
+            .await
+            .map_err(|e| self.limpiar(e))?;
+        Ok(json!({ "etiquetas": tags }).to_string())
+    }
+
+    pub async fn editar_etiquetas_foro_json(
+        &self,
+        p: &EditarEtiquetasForoParams,
+    ) -> Result<String, String> {
+        self.preparar().await?;
+        let cambios: Vec<crate::discord::CambioEtiqueta> = p
+            .etiquetas
+            .iter()
+            .map(|c| crate::discord::CambioEtiqueta {
+                nombre: c.nombre.clone(),
+                nuevo_nombre: c.nuevo_nombre.clone(),
+                emoji: c.emoji.clone(),
+            })
+            .collect();
+        let texto = commands::editar_etiquetas_del_foro(
+            &self.state,
+            p.channel_id.trim(),
+            &cambios,
+            self.url(),
+        )
+        .await
+        .map_err(|e| self.limpiar(e))?;
+        self.mensaje(texto)
+    }
+
+    pub async fn etiquetar_post_json(&self, p: &EtiquetarPostParams) -> Result<String, String> {
+        self.preparar().await?;
+        let texto = commands::etiquetar_post_de_foro(
+            &self.state,
+            p.post_id.trim(),
+            &p.etiquetas,
             self.url(),
         )
         .await
@@ -2648,6 +2736,7 @@ pub const HERRAMIENTAS_LECTURA: &[&str] = &[
     "listar_baneos",
     "listar_invitaciones",
     "listar_webhooks",
+    "etiquetas_foro",
     "listar_avisos",
 ];
 
@@ -2661,6 +2750,8 @@ pub const HERRAMIENTAS_ESCRITURA: &[&str] = &[
     "enviar_mensaje",
     "editar_mensaje",
     "crear_post_foro",
+    "editar_etiquetas_foro",
+    "etiquetar_post",
     "reaccionar",
     "quitar_reaccion",
     "enviar_dm",
@@ -2727,6 +2818,8 @@ pub fn validar_accion(nombre: &str, args: &serde_json::Value) -> Result<(), Stri
         "elegir_servidor" => ok::<ElegirServidorParams>(nombre, args),
         "enviar_mensaje" => ok::<EnviarMensajeParams>(nombre, args),
         "crear_post_foro" => ok::<CrearPostForoParams>(nombre, args),
+        "editar_etiquetas_foro" => ok::<EditarEtiquetasForoParams>(nombre, args),
+        "etiquetar_post" => ok::<EtiquetarPostParams>(nombre, args),
         "editar_mensaje" => ok::<EditarMensajeParams>(nombre, args),
         "reaccionar" | "quitar_reaccion" => ok::<ReaccionParams>(nombre, args),
         "enviar_dm" => ok::<EnviarDmParams>(nombre, args),
@@ -2779,6 +2872,8 @@ pub fn esquema_args(nombre: &str) -> Option<serde_json::Value> {
         "elegir_servidor" => de::<ElegirServidorParams>(),
         "enviar_mensaje" => de::<EnviarMensajeParams>(),
         "crear_post_foro" => de::<CrearPostForoParams>(),
+        "editar_etiquetas_foro" => de::<EditarEtiquetasForoParams>(),
+        "etiquetar_post" => de::<EtiquetarPostParams>(),
         "editar_mensaje" => de::<EditarMensajeParams>(),
         "reaccionar" | "quitar_reaccion" => de::<ReaccionParams>(),
         "enviar_dm" => de::<EnviarDmParams>(),
@@ -3387,6 +3482,21 @@ impl ArgusMcp {
                 let p: ReaccionParams = args_de(nombre, args)?;
                 self.reaccion_json(&p, nombre == "reaccionar").await
             }
+            "crear_post_foro" => {
+                let p: CrearPostForoParams = args_de(nombre, args)?;
+                self.crear_post_foro_json(
+                    &p.channel_id,
+                    &p.titulo,
+                    &p.contenido,
+                    p.etiquetas.as_deref().unwrap_or(&[]),
+                )
+                .await
+            }
+            "editar_etiquetas_foro" => {
+                self.editar_etiquetas_foro_json(&args_de(nombre, args)?)
+                    .await
+            }
+            "etiquetar_post" => self.etiquetar_post_json(&args_de(nombre, args)?).await,
             "enviar_mensaje" => {
                 let p: EnviarMensajeParams = args_de(nombre, args)?;
                 self.enviar_mensaje_embed_json(
@@ -3888,15 +3998,56 @@ impl ArgusMcp {
 
     #[tool(
         name = "crear_post_foro",
-        description = "Creates a post (thread) in a forum channel as the active bot, with a title (up to 100 characters) and a first message (up to 2000 characters). Requires permission to create posts in that forum."
+        description = "Creates a post (thread) in a forum channel as the active bot, with a title (up to 100 characters), a first message (up to 2000 characters) and optional `etiquetas` (up to 5 existing forum tags, by name or id). To reply inside a post, use enviar_mensaje with the post's ID as channel_id. Requires permission to create posts in that forum."
     )]
     async fn crear_post_foro(
         &self,
         Parameters(p): Parameters<CrearPostForoParams>,
     ) -> Result<String, String> {
         let r = self
-            .crear_post_foro_json(&p.channel_id, &p.titulo, &p.contenido)
+            .crear_post_foro_json(
+                &p.channel_id,
+                &p.titulo,
+                &p.contenido,
+                p.etiquetas.as_deref().unwrap_or(&[]),
+            )
             .await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "etiquetas_foro",
+        description = "Lists the tags of a forum channel (id, name, emoji, moderated). Read-only."
+    )]
+    async fn etiquetas_foro(
+        &self,
+        Parameters(p): Parameters<EtiquetasForoParams>,
+    ) -> Result<String, String> {
+        let r = self.etiquetas_foro_json(&p.channel_id).await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "editar_etiquetas_foro",
+        description = "Creates or renames tags of a forum channel. Each item has `nombre` (existing tag name/id to modify, or a new name to create; up to 20 characters), optional `nuevo_nombre` and optional `emoji` (Unicode or name:id). A forum has at most 20 tags. Requires «Manage Channels»."
+    )]
+    async fn editar_etiquetas_foro(
+        &self,
+        Parameters(p): Parameters<EditarEtiquetasForoParams>,
+    ) -> Result<String, String> {
+        let r = self.editar_etiquetas_foro_json(&p).await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "etiquetar_post",
+        description = "Sets the tags of a forum post (replacing the current ones): up to 5 existing forum tags, by name or id. `post_id` is the post's thread ID."
+    )]
+    async fn etiquetar_post(
+        &self,
+        Parameters(p): Parameters<EtiquetarPostParams>,
+    ) -> Result<String, String> {
+        let r = self.etiquetar_post_json(&p).await;
         self.salida(r)
     }
 
@@ -6363,6 +6514,8 @@ mod tests {
             "enviar_mensaje",
             "editar_mensaje",
             "crear_post_foro",
+            "editar_etiquetas_foro",
+            "etiquetar_post",
             "reaccionar",
             "quitar_reaccion",
             "enviar_dm",
@@ -6421,6 +6574,7 @@ mod tests {
                 || *n == "listar_servidores"
                 || *n == "leer_mensajes"
                 || *n == "buscar_mensajes"
+                || *n == "etiquetas_foro"
                 || *n == "comparar_snapshot"
                 || *n == "consultar_plantilla"
                 || *n == "proponer_plantilla"

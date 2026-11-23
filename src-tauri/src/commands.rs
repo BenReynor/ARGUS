@@ -1951,19 +1951,61 @@ pub async fn reaccionar_a_mensaje(
     })
 }
 
-/// Crea un post en un canal de foro con el bot activo.
+/// Crea un post en un canal de foro con el bot activo (etiquetas opcionales).
 pub async fn crear_post_en_foro(
     state: &AppState,
     channel_id: &str,
     title: &str,
     content: &str,
+    etiquetas: &[String],
     base_url: Option<&str>,
 ) -> Result<String, String> {
     crate::discord::validar_contenido(content)?;
     let token = token_del_bot_activo(state)?;
     let id =
-        crate::discord::create_forum_post(&token, base_url, channel_id, title, content).await?;
+        crate::discord::create_forum_post(&token, base_url, channel_id, title, content, etiquetas)
+            .await?;
     Ok(format!("Post created in forum {channel_id} (id {id})"))
+}
+
+/// Lista las etiquetas de un canal de foro.
+pub async fn etiquetas_del_foro(
+    state: &AppState,
+    channel_id: &str,
+    base_url: Option<&str>,
+) -> Result<Vec<crate::discord::EtiquetaForo>, String> {
+    let token = token_del_bot_activo(state)?;
+    crate::discord::get_forum_tags(&token, base_url, channel_id).await
+}
+
+/// Crea o renombra etiquetas de un foro.
+pub async fn editar_etiquetas_del_foro(
+    state: &AppState,
+    channel_id: &str,
+    cambios: &[crate::discord::CambioEtiqueta],
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    let token = token_del_bot_activo(state)?;
+    let tags = crate::discord::edit_forum_tags(&token, base_url, channel_id, cambios).await?;
+    Ok(format!(
+        "Forum {channel_id} now has {n} tags",
+        n = tags.len()
+    ))
+}
+
+/// Asigna etiquetas a un post de foro.
+pub async fn etiquetar_post_de_foro(
+    state: &AppState,
+    post_id: &str,
+    etiquetas: &[String],
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    let token = token_del_bot_activo(state)?;
+    let ids = crate::discord::tag_forum_post(&token, base_url, post_id, etiquetas).await?;
+    Ok(format!(
+        "Post {post_id} tagged with {n} tags",
+        n = ids.len()
+    ))
 }
 
 #[tauri::command]
@@ -3613,12 +3655,13 @@ mod tests {
             "42",
             "Liga de ajedrez",
             "Propongo un torneo",
+            &[],
             Some(&addr),
         )
         .await
         .expect("post");
         assert!(r.contains("777"), "{r}");
-        let vacio = crear_post_en_foro(&state, "42", "  ", "texto", Some(&addr)).await;
+        let vacio = crear_post_en_foro(&state, "42", "  ", "texto", &[], Some(&addr)).await;
         assert!(vacio.is_err());
     }
 

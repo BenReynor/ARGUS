@@ -81,15 +81,16 @@ impl Propuesta {
                 | "crear_invitacion"
                 | "borrar_invitacion"
                 | "crear_webhook"
-                | "borrar_webhook" => permisos.estructura,
+                | "borrar_webhook"
+                | "editar_etiquetas_foro" => permisos.estructura,
                 "borrar_canal" | "borrar_rol" => permisos.borrar_canales_roles,
                 "silenciar" => permisos.silenciar,
                 "expulsar" => permisos.expulsar,
                 "banear" | "desbanear" => permisos.banear,
                 "borrar_mensaje" | "borrar_mensajes" => permisos.borrar_mensajes,
                 "avisar" | "enviar_mensaje" | "editar_mensaje" | "crear_post_foro"
-                | "reaccionar" | "quitar_reaccion" | "enviar_dm" | "fijar_mensaje"
-                | "desfijar_mensaje" => permisos.avisos,
+                | "etiquetar_post" | "reaccionar" | "quitar_reaccion" | "enviar_dm"
+                | "fijar_mensaje" | "desfijar_mensaje" => permisos.avisos,
                 _ => false,
             };
             if !permitido {
@@ -343,9 +344,19 @@ fn referencias(herramienta: &str, args: &Value) -> Vec<(&'static str, Ref)> {
     match herramienta {
         "crear_canal" => vec![("categoria_id", Ref::Categoria)],
         "editar_canal" => vec![("channel_id", Ref::Canal), ("categoria_id", Ref::Categoria)],
-        "borrar_canal" | "crear_invitacion" | "crear_webhook" | "enviar_mensaje"
-        | "editar_mensaje" | "crear_post_foro" | "reaccionar" | "quitar_reaccion"
-        | "borrar_mensaje" | "borrar_mensajes" | "fijar_mensaje" | "desfijar_mensaje" => {
+        "borrar_canal"
+        | "crear_invitacion"
+        | "crear_webhook"
+        | "enviar_mensaje"
+        | "editar_mensaje"
+        | "crear_post_foro"
+        | "editar_etiquetas_foro"
+        | "reaccionar"
+        | "quitar_reaccion"
+        | "borrar_mensaje"
+        | "borrar_mensajes"
+        | "fijar_mensaje"
+        | "desfijar_mensaje" => {
             vec![("channel_id", Ref::Canal)]
         }
         "editar_rol" | "borrar_rol" | "dar_rol" | "quitar_rol" => vec![("role_id", Ref::Rol)],
@@ -710,6 +721,7 @@ mod tests {
                     "borrar_invitacion",
                     "crear_webhook",
                     "borrar_webhook",
+                    "editar_etiquetas_foro",
                 ],
             ),
             ("borrar_canales_roles", &["borrar_canal", "borrar_rol"]),
@@ -724,6 +736,7 @@ mod tests {
                     "enviar_mensaje",
                     "editar_mensaje",
                     "crear_post_foro",
+                    "etiquetar_post",
                     "reaccionar",
                     "quitar_reaccion",
                     "enviar_dm",

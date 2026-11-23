@@ -670,6 +670,8 @@ export const es: Record<string, string> = {
   'Save': 'Guardar',
   'Edit message': 'Editar mensaje',
   'Create forum post': 'Crear post de foro',
+  'Edit forum tags': 'Editar etiquetas del foro',
+  'Tag forum post': 'Etiquetar post de foro',
   'Add reaction': 'Añadir reacción',
   'Remove reaction': 'Quitar reacción',
   'Edit the message from {name}': 'Editar mensaje de {name}',

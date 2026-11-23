@@ -838,14 +838,282 @@ pub async fn set_own_reaction(
     })
 }
 
+/// Máximo de etiquetas que puede tener un canal de foro.
+pub const ETIQUETAS_FORO_MAX: usize = 20;
+/// Máximo de caracteres del nombre de una etiqueta.
+pub const ETIQUETA_NOMBRE_MAX: usize = 20;
+/// Máximo de etiquetas aplicadas a un post.
+pub const ETIQUETAS_POST_MAX: usize = 5;
+
+/// Etiqueta de un canal de foro.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct EtiquetaForo {
+    pub id: String,
+    pub name: String,
+    /// Emoji unicode, o `nombre:id` si es personalizado.
+    pub emoji: Option<String>,
+    pub moderated: bool,
+}
+
+fn etiqueta_desde_json(v: &serde_json::Value) -> Option<EtiquetaForo> {
+    let id = v.get("id")?.as_str()?.to_string();
+    let name = v.get("name")?.as_str()?.to_string();
+    let emoji = match (
+        v.get("emoji_id").and_then(|x| x.as_str()),
+        v.get("emoji_name").and_then(|x| x.as_str()),
+    ) {
+        (Some(id), n) => Some(format!("{}:{id}", n.unwrap_or("emoji"))),
+        (None, Some(n)) => Some(n.to_string()),
+        _ => None,
+    };
+    Some(EtiquetaForo {
+        id,
+        name,
+        emoji,
+        moderated: v
+            .get("moderated")
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false),
+    })
+}
+
+fn etiqueta_a_json(e: &EtiquetaForo) -> serde_json::Value {
+    let mut v = serde_json::json!({"id": e.id, "name": e.name, "moderated": e.moderated});
+    match e.emoji.as_deref().map(validar_emoji) {
+        Some(Ok(EmojiReaccion::Personalizado { nombre, id })) => {
+            v["emoji_id"] = serde_json::json!(id);
+            v["emoji_name"] = serde_json::json!(nombre);
+        }
+        Some(Ok(EmojiReaccion::Unicode(n))) => {
+            v["emoji_name"] = serde_json::json!(n);
+        }
+        _ => {}
+    }
+    v
+}
+
+async fn pedir_json(
+    token: &str,
+    base_url: Option<&str>,
+    ruta: twilight_http::routing::Route<'_>,
+    cuerpo: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let mut b = twilight_http::request::Request::builder(&ruta);
+    if let Some(c) = cuerpo {
+        b = b.json(&c).map_err(|e| format!("Invalid request: {e}"))?;
+    }
+    let bytes = build_client(token, base_url)
+        .request::<twilight_http::response::marker::EmptyBody>(b.build())
+        .await
+        .map_err(traducir_error)?
+        .bytes()
+        .await
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
+    serde_json::from_slice(&bytes).map_err(|e| format!("Invalid response from Discord: {e}"))
+}
+
+fn etiquetas_de_canal(canal: &serde_json::Value) -> Vec<EtiquetaForo> {
+    canal
+        .get("available_tags")
+        .and_then(|a| a.as_array())
+        .map(|a| a.iter().filter_map(etiqueta_desde_json).collect())
+        .unwrap_or_default()
+}
+
+/// Lista las etiquetas de un canal de foro (`GET /channels/{id}`).
+pub async fn get_forum_tags(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+) -> Result<Vec<EtiquetaForo>, String> {
+    let cid = parse_id::<twilight_model::id::marker::ChannelMarker>(channel_id, "channel")?;
+    let canal = pedir_json(
+        token,
+        base_url,
+        twilight_http::routing::Route::GetChannel {
+            channel_id: cid.get(),
+        },
+        None,
+    )
+    .await?;
+    match canal.get("type").and_then(|t| t.as_u64()) {
+        Some(15) | Some(16) => {}
+        _ => return Err("The channel is not a forum".to_string()),
+    }
+    Ok(etiquetas_de_canal(&canal))
+}
+
+/// Un cambio de etiqueta: crea la etiqueta `nombre` o, si ya existe (por
+/// nombre o id), la renombra (`nuevo_nombre`) y/o le cambia el emoji.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CambioEtiqueta {
+    pub nombre: String,
+    pub nuevo_nombre: Option<String>,
+    pub emoji: Option<String>,
+}
+
+fn validar_nombre_etiqueta(n: &str) -> Result<String, String> {
+    let n = n.trim();
+    if n.is_empty() {
+        return Err("The tag name cannot be empty".to_string());
+    }
+    if n.chars().count() > ETIQUETA_NOMBRE_MAX {
+        return Err("The tag name is too long (the maximum is 20 characters)".to_string());
+    }
+    Ok(n.to_string())
+}
+
+fn posicion_etiqueta(tags: &[EtiquetaForo], nombre: &str) -> Option<usize> {
+    let n = nombre.trim();
+    tags.iter().position(|t| t.id == n).or_else(|| {
+        tags.iter()
+            .position(|t| t.name.to_lowercase() == n.to_lowercase())
+    })
+}
+
+/// Resuelve nombres o ids de etiqueta a ids (máximo 5, todas existentes).
+pub fn resolver_etiquetas(
+    disponibles: &[EtiquetaForo],
+    pedidas: &[String],
+) -> Result<Vec<String>, String> {
+    if pedidas.len() > ETIQUETAS_POST_MAX {
+        return Err("A post can have at most 5 tags".to_string());
+    }
+    let mut ids: Vec<String> = Vec::new();
+    for p in pedidas {
+        let i = posicion_etiqueta(disponibles, p)
+            .ok_or_else(|| format!("Unknown forum tag: {}", p.trim()))?;
+        if !ids.contains(&disponibles[i].id) {
+            ids.push(disponibles[i].id.clone());
+        }
+    }
+    Ok(ids)
+}
+
+/// Crea o renombra etiquetas del foro (`PATCH /channels/{id}` con
+/// `available_tags`, que debe llevar la lista completa). Devuelve la lista final.
+pub async fn edit_forum_tags(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+    cambios: &[CambioEtiqueta],
+) -> Result<Vec<EtiquetaForo>, String> {
+    if cambios.is_empty() {
+        return Err("Provide at least one tag".to_string());
+    }
+    let cid = parse_id::<twilight_model::id::marker::ChannelMarker>(channel_id, "channel")?;
+    // Validación previa (sin red) de nombres y emojis.
+    for c in cambios {
+        validar_nombre_etiqueta(&c.nombre)?;
+        if let Some(n) = &c.nuevo_nombre {
+            validar_nombre_etiqueta(n)?;
+        }
+        if let Some(e) = &c.emoji {
+            validar_emoji(e)?;
+        }
+    }
+    let mut tags = get_forum_tags(token, base_url, channel_id).await?;
+    for c in cambios {
+        let nombre = c.nombre.trim().to_string();
+        match posicion_etiqueta(&tags, &nombre) {
+            Some(i) => {
+                if let Some(n) = &c.nuevo_nombre {
+                    tags[i].name = n.trim().to_string();
+                }
+                if let Some(e) = &c.emoji {
+                    tags[i].emoji = Some(e.trim().to_string());
+                }
+            }
+            None => tags.push(EtiquetaForo {
+                id: String::new(),
+                name: c
+                    .nuevo_nombre
+                    .as_deref()
+                    .unwrap_or(&nombre)
+                    .trim()
+                    .to_string(),
+                emoji: c.emoji.as_ref().map(|e| e.trim().to_string()),
+                moderated: false,
+            }),
+        }
+        if tags.len() > ETIQUETAS_FORO_MAX {
+            return Err("A forum can have at most 20 tags".to_string());
+        }
+    }
+    let lista: Vec<serde_json::Value> = tags
+        .iter()
+        .map(|t| {
+            let mut v = etiqueta_a_json(t);
+            if t.id.is_empty() {
+                if let Some(o) = v.as_object_mut() {
+                    o.remove("id");
+                }
+            }
+            v
+        })
+        .collect();
+    let canal = pedir_json(
+        token,
+        base_url,
+        twilight_http::routing::Route::UpdateChannel {
+            channel_id: cid.get(),
+        },
+        Some(serde_json::json!({"available_tags": lista})),
+    )
+    .await?;
+    Ok(etiquetas_de_canal(&canal))
+}
+
+/// Asigna etiquetas (por nombre o id) a un post (`PATCH /channels/{post}`),
+/// sustituyendo las que tuviera. Devuelve los ids aplicados.
+pub async fn tag_forum_post(
+    token: &str,
+    base_url: Option<&str>,
+    post_id: &str,
+    etiquetas: &[String],
+) -> Result<Vec<String>, String> {
+    let pid = parse_id::<twilight_model::id::marker::ChannelMarker>(post_id, "post")?;
+    if etiquetas.len() > ETIQUETAS_POST_MAX {
+        return Err("A post can have at most 5 tags".to_string());
+    }
+    let post = pedir_json(
+        token,
+        base_url,
+        twilight_http::routing::Route::GetChannel {
+            channel_id: pid.get(),
+        },
+        None,
+    )
+    .await?;
+    let foro = post
+        .get("parent_id")
+        .and_then(|p| p.as_str())
+        .ok_or_else(|| "The channel is not a forum post".to_string())?
+        .to_string();
+    let disponibles = get_forum_tags(token, base_url, &foro).await?;
+    let ids = resolver_etiquetas(&disponibles, etiquetas)?;
+    pedir_json(
+        token,
+        base_url,
+        twilight_http::routing::Route::UpdateChannel {
+            channel_id: pid.get(),
+        },
+        Some(serde_json::json!({"applied_tags": ids})),
+    )
+    .await?;
+    Ok(ids)
+}
+
 /// Crea un post en un canal de foro (`POST /channels/{id}/threads`) con un
-/// título y un primer mensaje. Devuelve el id del post (hilo).
+/// título, un primer mensaje y etiquetas opcionales (nombre o id, máximo 5).
+/// Devuelve el id del post (hilo).
 pub async fn create_forum_post(
     token: &str,
     base_url: Option<&str>,
     channel_id: &str,
     title: &str,
     content: &str,
+    etiquetas: &[String],
 ) -> Result<String, String> {
     validar_contenido(content)?;
     if title.trim().is_empty() {
@@ -854,19 +1122,31 @@ pub async fn create_forum_post(
     if title.chars().count() > 100 {
         return Err("The post title is too long (the maximum is 100 characters)".to_string());
     }
-    let cid = parse_id(channel_id, "channel")?;
-    let client = build_client(token, base_url);
-    let post = client
-        .create_forum_thread(cid, title.trim())
-        .message()
-        .content(content)
-        .map_err(|e| format!("Invalid message: {e}"))?
-        .await
-        .map_err(traducir_error)?
-        .model()
-        .await
-        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
-    Ok(post.channel.id.to_string())
+    if etiquetas.len() > ETIQUETAS_POST_MAX {
+        return Err("A post can have at most 5 tags".to_string());
+    }
+    let cid = parse_id::<twilight_model::id::marker::ChannelMarker>(channel_id, "channel")?;
+    let mut cuerpo = serde_json::json!({
+        "name": title.trim(),
+        "message": {"content": content},
+    });
+    if !etiquetas.is_empty() {
+        let disponibles = get_forum_tags(token, base_url, channel_id).await?;
+        cuerpo["applied_tags"] = serde_json::json!(resolver_etiquetas(&disponibles, etiquetas)?);
+    }
+    let post = pedir_json(
+        token,
+        base_url,
+        twilight_http::routing::Route::CreateForumThread {
+            channel_id: cid.get(),
+        },
+        Some(cuerpo),
+    )
+    .await?;
+    post.get("id")
+        .and_then(|i| i.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| "Invalid response from Discord: missing post id".to_string())
 }
 
 /// Abre (o recupera) el DM con un usuario (`POST /users/@me/channels`) y le
