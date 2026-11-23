@@ -808,7 +808,7 @@ con t() en EN y ES y sin datos reales en los tests.
 - [x] Compilación sin avisos
   criterio: `crypto.rs` usa la API `Engine` de base64 (`general_purpose::STANDARD`) en vez de `base64::encode/decode`, con test de que un texto cifrado con el formato anterior se sigue descifrando; se quita el import sin usar de `crate::crypto`; `cargo build --lib` no da avisos; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Confirmaciones de las herramientas nuevas traducidas
+- [x] Confirmaciones de las herramientas nuevas traducidas
   criterio: los textos que ARGUS muestra o devuelve en la app para `editar_mensaje`, `crear_post_foro` y `responder_a` (confirmaciones, resúmenes de propuesta y errores, incluido «el bot solo puede editar sus propios mensajes») pasan por el catálogo de traducciones con su versión en español; el check de i18n del gate pasa; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Reacciones a mensajes
