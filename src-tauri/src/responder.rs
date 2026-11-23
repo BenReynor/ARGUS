@@ -46,6 +46,19 @@ pub struct Coordinador {
     caducidad: Duration,
     costes: Mutex<HashMap<(u64, u64, u64), tokio::sync::oneshot::Sender<bool>>>,
     activas: Mutex<HashMap<(u64, u64, u64), Arc<Parada>>>,
+    /// Última respuesta espontánea (segundos) por (servidor, canal).
+    espontaneas: Mutex<HashMap<(u64, u64), u64>>,
+    /// Reloj (segundos) y azar (0–99) inyectables para las respuestas espontáneas.
+    reloj: Arc<dyn Fn() -> u64 + Send + Sync>,
+    azar: Arc<dyn Fn() -> u32 + Send + Sync>,
+}
+
+fn azar_0_99() -> u32 {
+    let mut b = [0u8; 4];
+    if getrandom::getrandom(&mut b).is_err() {
+        return 100; // sin azar: nunca responde por probabilidad
+    }
+    u32::from_le_bytes(b) % 100
 }
 
 /// Cancelación privada de una orden, compartida con su ejecutor.
@@ -132,7 +145,21 @@ impl Coordinador {
             caducidad,
             costes: Mutex::new(HashMap::new()),
             activas: Mutex::new(HashMap::new()),
+            espontaneas: Mutex::new(HashMap::new()),
+            reloj: Arc::new(ahora_s),
+            azar: Arc::new(azar_0_99),
         }
+    }
+
+    /// Sustituye el reloj y el azar (pruebas).
+    pub fn con_reloj_y_azar(
+        mut self,
+        reloj: Arc<dyn Fn() -> u64 + Send + Sync>,
+        azar: Arc<dyn Fn() -> u32 + Send + Sync>,
+    ) -> Self {
+        self.reloj = reloj;
+        self.azar = azar;
+        self
     }
 
     fn registrar(self: &Arc<Self>, e: &Entrada) -> GuardiaOrden {
@@ -535,7 +562,7 @@ impl Conversador {
             let mut ultimas = self.coord.ultimas.lock().unwrap();
             let ahora = ahora_s();
             let usuario = (e.guild_id, e.msg.autor_id);
-            let elegible = debe_responder(
+            let mut elegible = debe_responder(
                 &e.msg,
                 self.bot_id,
                 ajustes,
@@ -544,6 +571,25 @@ impl Conversador {
             );
             if elegible && !confirma {
                 ultimas.insert(usuario, ahora);
+            }
+            if !elegible && !confirma {
+                // Sin mención: solo si el ajuste lo permite (clave o azar, con pausa por canal).
+                let ahora = (self.coord.reloj)();
+                let mut esp = self.coord.espontaneas.lock().unwrap();
+                let clave_canal = (e.guild_id, e.msg.canal_id);
+                let mut azar = || (self.coord.azar)();
+                if crate::chat::debe_responder_espontaneo(
+                    &e.msg,
+                    &e.texto,
+                    self.bot_id,
+                    ajustes,
+                    esp.get(&clave_canal).copied(),
+                    ahora,
+                    &mut azar,
+                ) {
+                    esp.insert(clave_canal, ahora);
+                    elegible = true;
+                }
             }
             elegible
         };
@@ -2002,6 +2048,76 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[tokio::test]
+    async fn respuesta_espontanea_con_reloj_y_azar_inyectados_usa_el_cupo_diario() {
+        use std::sync::atomic::AtomicU64;
+        let server = MockServer::start().await;
+        mock_discord(&server).await;
+        let (mut c, _logs) = conversador(
+            &server,
+            agente_falso("espontaneo", "echo hola"),
+            LIMITE_AGENTE,
+        )
+        .await;
+        let reloj = Arc::new(AtomicU64::new(10_000));
+        let tirada = Arc::new(AtomicU64::new(99));
+        let (r, t) = (reloj.clone(), tirada.clone());
+        c.coord = Arc::new(Coordinador::default().con_reloj_y_azar(
+            Arc::new(move || r.load(Ordering::SeqCst)),
+            Arc::new(move || t.load(Ordering::SeqCst) as u32),
+        ));
+        let a = GuildSettings {
+            chat_max_diario: 2,
+            chat_espera_s: 0,
+            chat_espontaneo: crate::db::ChatEspontaneo {
+                activo: true,
+                palabras: vec!["imperio".into()],
+                probabilidad: 20,
+                pausa_min: 10,
+            },
+            ..ajustes()
+        };
+        // Sin palabra clave y tirada alta: no responde.
+        assert_eq!(c.atender(entrada(1, false), &a).await, Resultado::Ignorado);
+        assert!(envios(&server).await.is_empty());
+        // Palabra clave: responde y gasta cupo.
+        let mut e = entrada(1, false);
+        e.texto = "Viva el Imperio".into();
+        assert_eq!(c.atender(e.clone(), &a).await, Resultado::Respondido);
+        assert_eq!(envios(&server).await.len(), 1);
+        // Dentro de la pausa del canal (aunque la tirada salga): no responde.
+        tirada.store(0, Ordering::SeqCst);
+        reloj.store(10_000 + 599, Ordering::SeqCst);
+        assert_eq!(c.atender(e.clone(), &a).await, Resultado::Ignorado);
+        // Pasada la pausa, por probabilidad (sin palabra clave): responde.
+        reloj.store(10_000 + 600, Ordering::SeqCst);
+        assert_eq!(
+            c.atender(entrada(2, false), &a).await,
+            Resultado::Respondido
+        );
+        // El cupo diario (2) se agotó: la siguiente espontánea no responde.
+        reloj.store(10_000 + 1200, Ordering::SeqCst);
+        assert_eq!(c.atender(e.clone(), &a).await, Resultado::Ignorado);
+        let mensajes = textos(&envios(&server).await);
+        assert_eq!(mensajes.iter().filter(|s| *s == "hola").count(), 2);
+        assert_eq!(
+            crate::db::get_guild_settings(c.pool.as_ref().unwrap(), &BOT.to_string(), "555")
+                .await
+                .unwrap()
+                .chat_respuestas_hoy,
+            2
+        );
+        // Un bot nunca recibe respuesta espontánea.
+        reloj.store(10_000 + 5000, Ordering::SeqCst);
+        let mut de_bot = e;
+        de_bot.msg.autor_es_bot = true;
+        let sin_tope = GuildSettings {
+            chat_max_diario: 0,
+            ..a
+        };
+        assert_eq!(c.atender(de_bot, &sin_tope).await, Resultado::Ignorado);
     }
 
     #[tokio::test]

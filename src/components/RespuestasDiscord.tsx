@@ -102,6 +102,8 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
     return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : defecto;
   };
 
+  const esp = ajustes.chat_espontaneo ?? { activo: false, palabras: [], probabilidad: 0, pausa_min: 10 };
+
   const guardar = async () => {
     setGuardando(true);
     try {
@@ -218,6 +220,38 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
           <NotasMemoria guildId={guildId} botId={botId} miembros={miembros} />
         </fieldset>
 
+        <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+          <legend>{t('Spontaneous replies')}</legend>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            <input
+              type="checkbox" role="switch" checked={!!esp.activo}
+              onChange={(e) => cambiar({ chat_espontaneo: { ...esp, activo: e.target.checked } })}
+            />
+            <span>{t('Reply without being mentioned')}</span>
+          </label>
+          <small>{t('Off by default. The bot may reply to a message without a mention only if it contains a keyword or the chance comes up. Never to bots; allowed channels and users, the pause and the daily reply limit still apply.')}</small>
+          {esp.activo && (
+            <div className="asistente__acciones">
+              <PalabrasClave
+                palabras={esp.palabras}
+                onChange={(palabras) => cambiar({ chat_espontaneo: { ...esp, palabras } })}
+              />
+              <Input
+                etiqueta={t('Chance of replying (%)')}
+                ayuda={t('0–100. Rolled for messages without a keyword.')}
+                type="number" min={0} max={100} value={esp.probabilidad}
+                onChange={(e) => cambiar({ chat_espontaneo: { ...esp, probabilidad: numero(e.target.value, 0, 100, 0) } })}
+              />
+              <Input
+                etiqueta={t('Minimum pause per channel (minutes)')}
+                ayuda={t('Default: 10.')}
+                type="number" min={1} max={1440} value={esp.pausa_min}
+                onChange={(e) => cambiar({ chat_espontaneo: { ...esp, pausa_min: numero(e.target.value, 1, 1440, 10) } })}
+              />
+            </div>
+          )}
+        </fieldset>
+
         <Input
           etiqueta={t('Daily reply limit')}
           ayuda={t('Default: 200. 0 = unlimited. Resets at 00:00 UTC. Orders count too; failed attempts also consume budget to prevent repeated costs.')}
@@ -318,6 +352,21 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
 const nombreMiembro = (m: Member) => m.nickname || m.username;
 
 /** Lista de notas guardadas por persona, con borrar una o todas. */
+/** Lista de palabras separadas por comas; se confirma al salir del campo. */
+const PalabrasClave: React.FC<{ palabras: string[]; onChange: (p: string[]) => void }> = ({ palabras, onChange }) => {
+  const [texto, setTexto] = useState(palabras.join(', '));
+  useEffect(() => { setTexto(palabras.join(', ')); }, [palabras.join('\n')]);
+  return (
+    <Input
+      etiqueta={t('Keywords')}
+      ayuda={t('Separated by commas; case is ignored.')}
+      value={texto}
+      onChange={(e) => setTexto(e.target.value)}
+      onBlur={() => onChange(texto.split(',').map((p) => p.trim()).filter(Boolean))}
+    />
+  );
+};
+
 const NotasMemoria: React.FC<{ guildId: string; botId: string | null | undefined; miembros: Member[] }> = ({ guildId, botId, miembros }) => {
   const showNotification = useShowNotification();
   const [notas, setNotas] = useState<NotaMemoria[] | null>(null);

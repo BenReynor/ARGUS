@@ -788,6 +788,9 @@ pub struct GuildSettings {
     /// Memoria breve por persona (desactivada por defecto).
     #[serde(default)]
     pub chat_memoria: bool,
+    /// Respuestas sin mención (desactivadas por defecto).
+    #[serde(default)]
+    pub chat_espontaneo: ChatEspontaneo,
     /// IDs de usuarios a los que responde; vacía = todos.
     #[serde(default)]
     pub chat_usuarios: Vec<String>,
@@ -820,6 +823,58 @@ pub const CHAT_CONTEXTO_CHARS_DEFECTO: u32 = 1500;
 /// Ajusta el límite de caracteres del contexto del servidor al rango permitido.
 pub fn limitar_contexto_max(v: u32) -> u32 {
     v.clamp(CHAT_CONTEXTO_CHARS_MIN, CHAT_CONTEXTO_CHARS_MAX)
+}
+
+/// Pausa mínima por canal entre respuestas espontáneas (minutos).
+pub const ESPONTANEO_PAUSA_DEFECTO: u32 = 10;
+pub const ESPONTANEO_PAUSA_MAX: u32 = 1440;
+const ESPONTANEO_MAX_PALABRAS: usize = 50;
+
+fn espontaneo_pausa_defecto() -> u32 {
+    ESPONTANEO_PAUSA_DEFECTO
+}
+
+/// Responder sin mención: solo con palabra clave o por probabilidad.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ChatEspontaneo {
+    #[serde(default)]
+    pub activo: bool,
+    /// Palabras clave (sin distinguir mayúsculas).
+    #[serde(default)]
+    pub palabras: Vec<String>,
+    /// Probabilidad de responder a cualquier mensaje, 0–100.
+    #[serde(default)]
+    pub probabilidad: u32,
+    /// Pausa mínima por canal, en minutos.
+    #[serde(default = "espontaneo_pausa_defecto")]
+    pub pausa_min: u32,
+}
+
+impl Default for ChatEspontaneo {
+    fn default() -> Self {
+        Self {
+            activo: false,
+            palabras: Vec::new(),
+            probabilidad: 0,
+            pausa_min: ESPONTANEO_PAUSA_DEFECTO,
+        }
+    }
+}
+
+impl ChatEspontaneo {
+    /// Ajusta al rango permitido y limpia la lista de palabras.
+    pub fn normalizar(&mut self) {
+        self.probabilidad = self.probabilidad.min(100);
+        self.pausa_min = self.pausa_min.clamp(1, ESPONTANEO_PAUSA_MAX);
+        let mut vistas: Vec<String> = Vec::new();
+        for p in &self.palabras {
+            let p = p.trim().to_lowercase();
+            if !p.is_empty() && !vistas.contains(&p) && vistas.len() < ESPONTANEO_MAX_PALABRAS {
+                vistas.push(p);
+            }
+        }
+        self.palabras = vistas;
+    }
 }
 
 fn ordenes_max_acciones_defecto() -> u32 {
@@ -876,6 +931,7 @@ impl Default for GuildSettings {
             chat_contexto: chat_contexto_defecto(),
             chat_contexto_max: chat_contexto_max_defecto(),
             chat_memoria: false,
+            chat_espontaneo: ChatEspontaneo::default(),
             chat_usuarios: Vec::new(),
             chat_ordenes: false,
             chat_ordenes_usuarios: Vec::new(),
@@ -897,6 +953,7 @@ impl GuildSettings {
         self.destruction.normalize();
         self.chat_contexto = self.chat_contexto.min(CHAT_CONTEXTO_MAX);
         self.chat_contexto_max = limitar_contexto_max(self.chat_contexto_max);
+        self.chat_espontaneo.normalizar();
         self.ordenes_max_acciones = self.ordenes_max_acciones.clamp(1, 500);
         self
     }

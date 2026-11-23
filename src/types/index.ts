@@ -114,6 +114,15 @@ export interface BotRegistrado extends BotConfig {
 }
 
 /** Ajustes propios de un servidor (sincronizado con `GuildSettings` de db.rs). */
+export interface ChatEspontaneo {
+  activo: boolean;
+  palabras: string[];
+  /** 0–100 */
+  probabilidad: number;
+  /** Pausa mínima por canal, en minutos (1–1440). */
+  pausa_min: number;
+}
+
 export interface GuildSettings {
   enabled_connectors: string[];
   moderacion_no_preguntar: boolean;
@@ -137,6 +146,8 @@ export interface GuildSettings {
   /** Máximo de caracteres del contexto del servidor en el prompt (500–6000, por defecto 1500). */
   chat_contexto_max: number;
   chat_memoria: boolean;
+  /** Respuestas sin mención (desactivadas por defecto). */
+  chat_espontaneo: ChatEspontaneo;
   /** IDs de usuarios a los que responde; vacía = todos. */
   chat_usuarios: string[];
   /** Permite dar órdenes desde Discord. */

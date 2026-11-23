@@ -150,6 +150,53 @@ pub fn debe_responder(
     }
 }
 
+/// Decide si responder sin mención. Reglas: ajuste activo, personalidad activa,
+/// nunca a bots, canal y usuario permitidos, pausa mínima del canal y, por
+/// último, palabra clave o suerte. `azar` devuelve un número 0–99 y solo se
+/// consulta cuando hace falta (sin palabra clave y con probabilidad > 0).
+pub fn debe_responder_espontaneo(
+    msg: &MensajeEntrante,
+    texto: &str,
+    bot_id: u64,
+    ajustes: &GuildSettings,
+    ultima_canal_s: Option<u64>,
+    ahora_s: u64,
+    azar: &mut dyn FnMut() -> u32,
+) -> bool {
+    let esp = &ajustes.chat_espontaneo;
+    if !esp.activo
+        || !ajustes.personality_enabled
+        || msg.autor_es_bot
+        || msg.autor_id == bot_id
+        || texto.trim().is_empty()
+    {
+        return false;
+    }
+    let canal = msg.canal_id.to_string();
+    if !ajustes.chat_canales.is_empty() && !ajustes.chat_canales.contains(&canal) {
+        return false;
+    }
+    let autor = msg.autor_id.to_string();
+    if !ajustes.chat_usuarios.is_empty() && !ajustes.chat_usuarios.contains(&autor) {
+        return false;
+    }
+    if let Some(ultima) = ultima_canal_s {
+        if ahora_s.saturating_sub(ultima) < u64::from(esp.pausa_min) * 60 {
+            return false;
+        }
+    }
+    let minusculas = texto.to_lowercase();
+    if esp
+        .palabras
+        .iter()
+        .map(|p| p.trim().to_lowercase())
+        .any(|p| !p.is_empty() && minusculas.contains(&p))
+    {
+        return true;
+    }
+    esp.probabilidad > 0 && azar() < esp.probabilidad.min(100)
+}
+
 /// Agente de opencode que ARGUS define para las respuestas en Discord.
 pub const AGENTE_CHAT: &str = "argus-chat";
 
@@ -980,5 +1027,135 @@ mod tests {
         let larga = "x".repeat(2000);
         let p = con_memoria(base, true, Some(&larga));
         assert!(p.contains(&"x".repeat(500)) && !p.contains(&"x".repeat(501)));
+    }
+
+    fn espontaneo(palabras: &[&str], probabilidad: u32) -> GuildSettings {
+        GuildSettings {
+            chat_espontaneo: crate::db::ChatEspontaneo {
+                activo: true,
+                palabras: palabras.iter().map(|p| p.to_string()).collect(),
+                probabilidad,
+                pausa_min: 10,
+            },
+            ..ajustes()
+        }
+    }
+
+    fn normal() -> MensajeEntrante {
+        MensajeEntrante {
+            autor_id: 1,
+            canal_id: 10,
+            ..Default::default()
+        }
+    }
+
+    /// Decide con un azar fijo; devuelve (decisión, veces que se tiró el azar).
+    fn decide(
+        a: &GuildSettings,
+        m: &MensajeEntrante,
+        texto: &str,
+        ultima: Option<u64>,
+        ahora: u64,
+        tirada: u32,
+    ) -> (bool, u32) {
+        let mut n = 0;
+        let mut azar = || {
+            n += 1;
+            tirada
+        };
+        let r = debe_responder_espontaneo(m, texto, BOT, a, ultima, ahora, &mut azar);
+        (r, n)
+    }
+
+    #[test]
+    fn espontaneo_esta_desactivado_por_defecto() {
+        let d = GuildSettings::default().chat_espontaneo;
+        assert!(!d.activo && d.palabras.is_empty() && d.pausa_min == 10);
+        let a = GuildSettings {
+            personality_enabled: true,
+            ..GuildSettings::default()
+        };
+        assert!(!decide(&a, &normal(), "hola", None, 1000, 0).0);
+        // Activo pero sin palabras ni probabilidad: tampoco.
+        let mut a = espontaneo(&[], 0);
+        assert!(!decide(&a, &normal(), "hola", None, 1000, 0).0);
+        a.chat_espontaneo.activo = false;
+        a.chat_espontaneo.probabilidad = 100;
+        assert!(!decide(&a, &normal(), "hola", None, 1000, 0).0);
+    }
+
+    #[test]
+    fn espontaneo_responde_con_palabra_clave_sin_tirar_el_azar() {
+        let a = espontaneo(&["Imperio"], 0);
+        assert_eq!(
+            decide(&a, &normal(), "viva el IMPERIO!", None, 1000, 99),
+            (true, 0)
+        );
+        assert!(!decide(&a, &normal(), "hola a todos", None, 1000, 0).0);
+    }
+
+    #[test]
+    fn espontaneo_responde_por_probabilidad() {
+        let a = espontaneo(&["zzz"], 30);
+        assert!(decide(&a, &normal(), "hola", None, 1000, 29).0);
+        assert!(!decide(&a, &normal(), "hola", None, 1000, 30).0);
+        assert!(decide(&espontaneo(&[], 100), &normal(), "hola", None, 1000, 99).0);
+        // 0 % nunca tira el azar.
+        assert_eq!(
+            decide(&espontaneo(&[], 0), &normal(), "hola", None, 1000, 0),
+            (false, 0)
+        );
+    }
+
+    #[test]
+    fn espontaneo_nunca_responde_a_bots_ni_a_si_mismo() {
+        let a = espontaneo(&["hola"], 100);
+        let mut m = normal();
+        m.autor_es_bot = true;
+        assert!(!decide(&a, &m, "hola", None, 1000, 0).0);
+        let mut m = normal();
+        m.autor_id = BOT;
+        assert!(!decide(&a, &m, "hola", None, 1000, 0).0);
+    }
+
+    #[test]
+    fn espontaneo_respeta_canales_y_usuarios_permitidos() {
+        let mut a = espontaneo(&["hola"], 0);
+        a.chat_canales = vec!["11".into()];
+        assert!(!decide(&a, &normal(), "hola", None, 1000, 0).0);
+        a.chat_canales = vec!["10".into()];
+        assert!(decide(&a, &normal(), "hola", None, 1000, 0).0);
+        a.chat_usuarios = vec!["2".into()];
+        assert!(!decide(&a, &normal(), "hola", None, 1000, 0).0);
+        a.chat_usuarios = vec!["1".into()];
+        assert!(decide(&a, &normal(), "hola", None, 1000, 0).0);
+    }
+
+    #[test]
+    fn espontaneo_respeta_la_pausa_del_canal() {
+        let a = espontaneo(&["hola"], 0);
+        assert!(!decide(&a, &normal(), "hola", Some(1000), 1599, 0).0);
+        assert!(decide(&a, &normal(), "hola", Some(1000), 1600, 0).0);
+    }
+
+    #[test]
+    fn espontaneo_se_normaliza() {
+        let mut e = crate::db::ChatEspontaneo {
+            activo: true,
+            palabras: vec![" Hola ".into(), "hola".into(), "  ".into()],
+            probabilidad: 500,
+            pausa_min: 0,
+        };
+        e.normalizar();
+        assert_eq!((e.probabilidad, e.pausa_min), (100, 1));
+        assert_eq!(e.palabras, vec!["hola".to_string()]);
+        e.pausa_min = 99999;
+        e.normalizar();
+        assert_eq!(e.pausa_min, 1440);
+        let antigua: GuildSettings = serde_json::from_str(r#"{"chat_max_diario":200}"#).unwrap();
+        assert_eq!(
+            antigua.chat_espontaneo,
+            crate::db::ChatEspontaneo::default()
+        );
     }
 }
