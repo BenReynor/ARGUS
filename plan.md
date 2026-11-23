@@ -790,7 +790,7 @@ EN y ES y sin datos reales en los tests.
 - [x] Respuestas espontáneas sin mención
   criterio: ajuste `chat_espontaneo` desactivado por defecto, con lista de palabras clave y probabilidad (0–100 %) y una pausa mínima por canal en minutos (por defecto 10); el bot puede responder a un mensaje sin mención solo si contiene una palabra clave o sale la probabilidad, respeta canales y usuarios permitidos, nunca responde a bots y consume el mismo cupo diario de respuestas; tests de cada condición con un reloj y un azar inyectables; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Editar mensajes del bot desde la app
+- [x] Editar mensajes del bot desde la app
   criterio: donde la app muestra mensajes del canal (vista de mensajes o detalle de actividad), los mensajes del bot activo tienen «Editar», que abre el texto en un cuadro con contador de 2000 caracteres y guarda con el comando que usa `discord::edit_channel_message`; los mensajes de otros usuarios no muestran la acción; errores de Discord traducidos; tests de la acción visible solo en mensajes propios y del guardado; Lo no especificado NO es motivo de rechazo.
 
 ## Ideas fuera de esta etapa
