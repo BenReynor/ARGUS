@@ -823,7 +823,7 @@ con t() en EN y ES y sin datos reales en los tests.
 - [x] Eventos programados del servidor
   criterio: herramientas `listar_eventos` (lectura), `crear_evento` (nombre, descripción, inicio y fin en ISO 8601 con zona, lugar externo o canal de voz/escenario), `editar_evento` y `cancelar_evento`; el inicio debe ser futuro y el fin posterior al inicio (error claro si no); aviso de permiso «Crear/Gestionar eventos»; `cancelar_evento` cuenta como acción destructiva; tests wiremock del JSON (entity_type 2/3, privacy_level 2) y de fechas inválidas; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Encuestas nativas
+- [x] Encuestas nativas
   criterio: herramienta `crear_encuesta` (canal, pregunta ≤ 300, 2–10 respuestas ≤ 55 con emoji opcional, duración en horas 1–768, opción de voto múltiple) que envía un mensaje con `poll`; `resultados_encuesta` (lectura) devuelve recuentos por respuesta; `cerrar_encuesta` termina la encuesta del bot; aviso de permiso «Crear encuestas»; tests wiremock del JSON, de los límites y del cierre; Lo no especificado NO es motivo de rechazo.
 
 ## Ideas fuera de esta etapa
