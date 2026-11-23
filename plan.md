@@ -805,7 +805,7 @@ despacho, `#[tool]` y test de herramientas registradas), entrada en
 Discord traducidos (permiso que falta, mensaje o canal inexistente), textos
 con t() en EN y ES y sin datos reales en los tests.
 
-- [ ] Compilación sin avisos
+- [x] Compilación sin avisos
   criterio: `crypto.rs` usa la API `Engine` de base64 (`general_purpose::STANDARD`) en vez de `base64::encode/decode`, con test de que un texto cifrado con el formato anterior se sigue descifrando; se quita el import sin usar de `crate::crypto`; `cargo build --lib` no da avisos; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Confirmaciones de las herramientas nuevas traducidas
