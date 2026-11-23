@@ -278,3 +278,8 @@ Añade las tuyas con el botón "+ Nueva lección" de la pestaña Memoria, o a ma
 - Síntoma: El agente no cumplió el criterio tras 2 intentos.
 - Causa: gate_fail en la iteración 5: [GATE] ✗ juez: criterio NO cumplido (Falta el proceso sin ventana y su activación; las pruebas no usan un Gateway falso para doble arranque y parada.) |     ^^^^^^^^^^^^^ | = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default warning: use of deprecated function `base64::encode`: Use Engine::encode --> src/crypto.rs:46:16 46 |     Ok(base64::encode(combined)) |                ^^^^^^ = note: `#[warn(deprecated)]` on by default warning: use of deprecated function `base64::decode`: Use Engine::decode --> src/crypto.rs:52:28 52 |     let combined = base64::decode(ciphertext_b64) |                            ^^^^^^
 - Prevención: Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios.
+
+## 2026-11-23 00:56 — Corregida en reintento: Reacciones a mensajes
+- Síntoma: El gate falló antes de pasar: [GATE] ✗ [rust] cargo test falló; [GATE] ✗ rust: 03_test_rust.py falló
+- Causa: [GATE] ✗ [rust] cargo test falló thread 'tests_canales::timeout_al_crear_detecta_canal_reflejado_tarde' (3178009) panicked at src/tests_canales.rs:98:5: thread 'tests_canales::timeout_al_crear_busca_sin_repetir_post' (3178008) panicked at src/tests_canales.rs:50:5: ---- tests_canales::timeout_al_crear_detecta_canal_reflejado_tarde stdout ---- ---- tests_canales::timeout_al_crear_busca_sin_repetir_post stdout ---- [GATE] juez: agente=claude (MODELO_JUEZ no aplica a claude)
+- Prevención: Evita exactamente ese fallo y compruébalo con `.dedalo/estado/gate --solo 03_test_rust.py` antes de terminar (03_test_rust.py).

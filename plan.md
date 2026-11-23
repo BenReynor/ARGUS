@@ -805,25 +805,25 @@ despacho, `#[tool]` y test de herramientas registradas), entrada en
 Discord traducidos (permiso que falta, mensaje o canal inexistente), textos
 con t() en EN y ES y sin datos reales en los tests.
 
-- [ ] Compilación sin avisos
+- [x] Compilación sin avisos
   criterio: `crypto.rs` usa la API `Engine` de base64 (`general_purpose::STANDARD`) en vez de `base64::encode/decode`, con test de que un texto cifrado con el formato anterior se sigue descifrando; se quita el import sin usar de `crate::crypto`; `cargo build --lib` no da avisos; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Confirmaciones de las herramientas nuevas traducidas
+- [x] Confirmaciones de las herramientas nuevas traducidas
   criterio: los textos que ARGUS muestra o devuelve en la app para `editar_mensaje`, `crear_post_foro` y `responder_a` (confirmaciones, resúmenes de propuesta y errores, incluido «el bot solo puede editar sus propios mensajes») pasan por el catálogo de traducciones con su versión en español; el check de i18n del gate pasa; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Reacciones a mensajes
+- [x] Reacciones a mensajes
   criterio: herramientas `reaccionar` (canal, mensaje, emoji unicode o personalizado `nombre:id`) y `quitar_reaccion` (solo la del propio bot), con validación del emoji antes de llamar a Discord y aviso de permiso «Añadir reacciones»; tests wiremock de la ruta codificada (PUT/DELETE `/reactions/{emoji}/@me`), de emoji inválido y de error 10014 (emoji desconocido) traducido; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Mensajes con embed
+- [x] Mensajes con embed
   criterio: `enviar_mensaje` y `editar_mensaje` aceptan un `embed` opcional (título, descripción, color en hex, pie, campos nombre/valor/en línea, URL de imagen); se validan los límites de Discord (título 256, descripción 4096, hasta 25 campos, total 6000) con mensaje claro antes de enviar; contenido o embed, al menos uno; tests del JSON enviado, de cada límite y de color inválido; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Foros: etiquetas y respuestas dentro de un post
+- [x] Foros: etiquetas y respuestas dentro de un post
   criterio: herramientas `etiquetas_foro` (lectura: lista las etiquetas de un canal foro), `editar_etiquetas_foro` (crea o renombra etiquetas, máx. 20, nombre ≤ 20 caracteres, emoji opcional) y `etiquetar_post` (asigna hasta 5 etiquetas existentes a un post por nombre o id); `crear_post_foro` acepta etiquetas opcionales; responder dentro de un post funciona con `enviar_mensaje` sobre el id del hilo y se documenta; tests wiremock de cada llamada, de nombre de etiqueta inexistente y de los límites; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Eventos programados del servidor
+- [x] Eventos programados del servidor
   criterio: herramientas `listar_eventos` (lectura), `crear_evento` (nombre, descripción, inicio y fin en ISO 8601 con zona, lugar externo o canal de voz/escenario), `editar_evento` y `cancelar_evento`; el inicio debe ser futuro y el fin posterior al inicio (error claro si no); aviso de permiso «Crear/Gestionar eventos»; `cancelar_evento` cuenta como acción destructiva; tests wiremock del JSON (entity_type 2/3, privacy_level 2) y de fechas inválidas; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Encuestas nativas
+- [x] Encuestas nativas
   criterio: herramienta `crear_encuesta` (canal, pregunta ≤ 300, 2–10 respuestas ≤ 55 con emoji opcional, duración en horas 1–768, opción de voto múltiple) que envía un mensaje con `poll`; `resultados_encuesta` (lectura) devuelve recuentos por respuesta; `cerrar_encuesta` termina la encuesta del bot; aviso de permiso «Crear encuestas»; tests wiremock del JSON, de los límites y del cierre; Lo no especificado NO es motivo de rechazo.
 
 ## Ideas fuera de esta etapa

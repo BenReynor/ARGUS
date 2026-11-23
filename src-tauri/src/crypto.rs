@@ -3,6 +3,7 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
 };
 use anyhow::{anyhow, Result};
+use base64::{engine::general_purpose, Engine as _};
 use machine_uid;
 use std::sync::OnceLock;
 
@@ -43,13 +44,14 @@ fn encrypt_with(plaintext: &str, key: &[u8; 32]) -> Result<String> {
     combined.extend_from_slice(&nonce_bytes);
     combined.extend_from_slice(&ciphertext);
 
-    Ok(base64::encode(combined))
+    Ok(general_purpose::STANDARD.encode(combined))
 }
 
 fn decrypt_with(ciphertext_b64: &str, key: &[u8; 32]) -> Result<String> {
     let cipher = Aes256Gcm::new(key.into());
 
-    let combined = base64::decode(ciphertext_b64)
+    let combined = general_purpose::STANDARD
+        .decode(ciphertext_b64)
         .map_err(|e| anyhow::anyhow!("Base64 decode failed: {}", e))?;
     if combined.len() < 12 {
         return Err(anyhow::anyhow!("Invalid ciphertext: too short"));
@@ -478,6 +480,27 @@ mod tests {
         });
         assert!(initialize_with_store(&pool, replaced).await.is_err());
         assert_eq!(tokens(&pool).await, migrated);
+    }
+
+    #[test]
+    fn legacy_base64_format_still_decrypts() {
+        // Formato anterior (base64::encode: alfabeto estándar con relleno):
+        // nonce(12) + ciphertext, construido a mano con un nonce fijo.
+        let key = [7u8; 32];
+        let nonce_bytes = [3u8; 12];
+        let cipher = Aes256Gcm::new((&key).into());
+        let ct = cipher
+            .encrypt(Nonce::from_slice(&nonce_bytes), b"legacy-secret!".as_ref())
+            .unwrap();
+        let mut combined = nonce_bytes.to_vec();
+        combined.extend_from_slice(&ct);
+        let legacy = general_purpose::STANDARD.encode(&combined);
+        assert!(legacy.ends_with('=') || legacy.len() % 4 == 0);
+        assert_eq!(decrypt_with(&legacy, &key).unwrap(), "legacy-secret!");
+        // Lo que ciframos ahora conserva el mismo formato.
+        let fresh = encrypt_with("legacy-secret!", &key).unwrap();
+        assert_eq!(fresh.len() % 4, 0);
+        assert_eq!(decrypt_with(&fresh, &key).unwrap(), "legacy-secret!");
     }
 
     #[test]

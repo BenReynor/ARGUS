@@ -165,6 +165,14 @@ pub fn traducir_respuesta(status: u16, cuerpo: &[u8]) -> String {
             Some(p) => format!("The bot is missing the permission «{p}»"),
             None => "The bot is missing a permission to do this on the server".to_string(),
         },
+        404 if json
+            .as_ref()
+            .and_then(|j| j.get("code"))
+            .and_then(|c| c.as_u64())
+            == Some(10014) =>
+        {
+            "Unknown emoji: it does not exist or the bot cannot use it".to_string()
+        }
         404 => {
             "Not found: the server, channel, role or member does not exist or the bot has no access"
                 .to_string()
@@ -412,7 +420,218 @@ pub fn validar_contenido(content: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn parse_id<M>(texto: &str, que: &str) -> Result<twilight_model::id::Id<M>, String> {
+pub const MAX_TITULO_EMBED: usize = 256;
+pub const MAX_DESCRIPCION_EMBED: usize = 4096;
+pub const MAX_CAMPOS_EMBED: usize = 25;
+pub const MAX_NOMBRE_CAMPO_EMBED: usize = 256;
+pub const MAX_VALOR_CAMPO_EMBED: usize = 1024;
+pub const MAX_PIE_EMBED: usize = 2048;
+pub const MAX_TOTAL_EMBED: usize = 6000;
+
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize, rmcp::schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct CampoEmbed {
+    /// Nombre del campo (hasta 256 caracteres).
+    pub nombre: String,
+    /// Valor del campo (hasta 1024 caracteres).
+    pub valor: String,
+    /// Si el campo se muestra en línea con los demás (por defecto no).
+    #[serde(default)]
+    pub en_linea: bool,
+}
+
+/// Embed de un mensaje, con los datos que ARGUS permite configurar.
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize, rmcp::schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct EmbedMensaje {
+    /// Título (hasta 256 caracteres).
+    pub titulo: Option<String>,
+    /// Descripción (hasta 4096 caracteres).
+    pub descripcion: Option<String>,
+    /// Color en hexadecimal, p. ej. `#5865F2`.
+    pub color: Option<String>,
+    /// Texto del pie (hasta 2048 caracteres).
+    pub pie: Option<String>,
+    /// Hasta 25 campos nombre/valor.
+    pub campos: Option<Vec<CampoEmbed>>,
+    /// URL (http/https) de la imagen.
+    pub imagen_url: Option<String>,
+}
+
+fn texto_no_vacio(o: &Option<String>) -> Option<&str> {
+    o.as_deref().map(str::trim).filter(|t| !t.is_empty())
+}
+
+/// Convierte `#RRGGBB` / `RRGGBB` (también `0x`) a entero.
+pub fn parsear_color_hex(color: &str) -> Result<u32, String> {
+    let c = color.trim();
+    let c = c
+        .strip_prefix('#')
+        .or_else(|| c.strip_prefix("0x"))
+        .unwrap_or(c);
+    if c.len() != 6 || !c.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return Err(format!(
+            "Invalid embed color «{color}»: use hexadecimal like #5865F2"
+        ));
+    }
+    u32::from_str_radix(c, 16).map_err(|_| format!("Invalid embed color «{color}»"))
+}
+
+impl EmbedMensaje {
+    pub fn esta_vacio(&self) -> bool {
+        texto_no_vacio(&self.titulo).is_none()
+            && texto_no_vacio(&self.descripcion).is_none()
+            && texto_no_vacio(&self.pie).is_none()
+            && texto_no_vacio(&self.imagen_url).is_none()
+            && self.campos.as_ref().map_or(true, |c| c.is_empty())
+    }
+
+    /// Valida los límites de Discord antes de enviar.
+    pub fn validar(&self) -> Result<(), String> {
+        let n = |t: &str| t.chars().count();
+        let mut total = 0usize;
+        if let Some(t) = texto_no_vacio(&self.titulo) {
+            if n(t) > MAX_TITULO_EMBED {
+                return Err(format!(
+                    "The embed title is too long ({} characters; the maximum is {MAX_TITULO_EMBED})",
+                    n(t)
+                ));
+            }
+            total += n(t);
+        }
+        if let Some(d) = texto_no_vacio(&self.descripcion) {
+            if n(d) > MAX_DESCRIPCION_EMBED {
+                return Err(format!(
+                    "The embed description is too long ({} characters; the maximum is {MAX_DESCRIPCION_EMBED})",
+                    n(d)
+                ));
+            }
+            total += n(d);
+        }
+        if let Some(p) = texto_no_vacio(&self.pie) {
+            if n(p) > MAX_PIE_EMBED {
+                return Err(format!(
+                    "The embed footer is too long ({} characters; the maximum is {MAX_PIE_EMBED})",
+                    n(p)
+                ));
+            }
+            total += n(p);
+        }
+        if let Some(c) = texto_no_vacio(&self.color) {
+            parsear_color_hex(c)?;
+        }
+        if let Some(u) = texto_no_vacio(&self.imagen_url) {
+            if !(u.starts_with("http://") || u.starts_with("https://")) {
+                return Err("The embed image URL must start with http:// or https://".to_string());
+            }
+        }
+        let campos = self.campos.as_deref().unwrap_or(&[]);
+        if campos.len() > MAX_CAMPOS_EMBED {
+            return Err(format!(
+                "The embed has too many fields ({}; the maximum is {MAX_CAMPOS_EMBED})",
+                campos.len()
+            ));
+        }
+        for (i, c) in campos.iter().enumerate() {
+            let (nom, val) = (c.nombre.trim(), c.valor.trim());
+            if nom.is_empty() || val.is_empty() {
+                return Err(format!(
+                    "Embed field {} needs both a name and a value",
+                    i + 1
+                ));
+            }
+            if n(nom) > MAX_NOMBRE_CAMPO_EMBED {
+                return Err(format!(
+                    "The name of embed field {} is too long ({} characters; the maximum is {MAX_NOMBRE_CAMPO_EMBED})",
+                    i + 1,
+                    n(nom)
+                ));
+            }
+            if n(val) > MAX_VALOR_CAMPO_EMBED {
+                return Err(format!(
+                    "The value of embed field {} is too long ({} characters; the maximum is {MAX_VALOR_CAMPO_EMBED})",
+                    i + 1,
+                    n(val)
+                ));
+            }
+            total += n(nom) + n(val);
+        }
+        if total > MAX_TOTAL_EMBED {
+            return Err(format!(
+                "The embed is too large ({total} characters in total; the maximum is {MAX_TOTAL_EMBED})"
+            ));
+        }
+        Ok(())
+    }
+
+    fn a_twilight(&self) -> Result<twilight_model::channel::message::Embed, String> {
+        use twilight_model::channel::message::embed::{EmbedField, EmbedFooter, EmbedImage};
+        self.validar()?;
+        let color = match texto_no_vacio(&self.color) {
+            Some(c) => Some(parsear_color_hex(c)?),
+            None => None,
+        };
+        Ok(twilight_model::channel::message::Embed {
+            author: None,
+            color,
+            description: texto_no_vacio(&self.descripcion).map(str::to_string),
+            fields: self
+                .campos
+                .iter()
+                .flatten()
+                .map(|c| EmbedField {
+                    inline: c.en_linea,
+                    name: c.nombre.trim().to_string(),
+                    value: c.valor.trim().to_string(),
+                })
+                .collect(),
+            footer: texto_no_vacio(&self.pie).map(|t| EmbedFooter {
+                icon_url: None,
+                proxy_icon_url: None,
+                text: t.to_string(),
+            }),
+            image: texto_no_vacio(&self.imagen_url).map(|u| EmbedImage {
+                height: None,
+                proxy_url: None,
+                url: u.to_string(),
+                width: None,
+            }),
+            kind: "rich".to_string(),
+            provider: None,
+            thumbnail: None,
+            timestamp: None,
+            title: texto_no_vacio(&self.titulo).map(str::to_string),
+            url: None,
+            video: None,
+        })
+    }
+}
+
+/// Contenido y/o embed: al menos uno; valida límites. Devuelve el texto
+/// (si lo hay) y el embed convertido.
+fn preparar_cuerpo(
+    content: Option<&str>,
+    embed: Option<&EmbedMensaje>,
+) -> Result<
+    (
+        Option<String>,
+        Option<twilight_model::channel::message::Embed>,
+    ),
+    String,
+> {
+    let texto = content.filter(|c| !c.trim().is_empty());
+    let embed = embed.filter(|e| !e.esta_vacio() || texto_no_vacio(&e.color).is_some());
+    if texto.is_none() && embed.is_none() {
+        return Err("The message cannot be empty: provide content or an embed".to_string());
+    }
+    if let Some(t) = texto {
+        validar_contenido(t)?;
+    }
+    let tw = embed.map(EmbedMensaje::a_twilight).transpose()?;
+    Ok((texto.map(str::to_string), tw))
+}
+
+pub(crate) fn parse_id<M>(texto: &str, que: &str) -> Result<twilight_model::id::Id<M>, String> {
     texto
         .parse::<u64>()
         .ok()
@@ -440,12 +659,30 @@ pub async fn send_channel_reply(
     content: &str,
     reply_to: Option<&str>,
 ) -> Result<String, String> {
-    validar_contenido(content)?;
+    send_channel_embed(token, base_url, channel_id, Some(content), None, reply_to).await
+}
+
+/// Envía contenido y/o un embed (al menos uno) con respuesta opcional.
+pub async fn send_channel_embed(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+    content: Option<&str>,
+    embed: Option<&EmbedMensaje>,
+    reply_to: Option<&str>,
+) -> Result<String, String> {
+    let (texto, tw) = preparar_cuerpo(content, embed)?;
     let cid = parse_id(channel_id, "channel")?;
     let client = build_client(token, base_url);
-    let mut peticion = client
-        .create_message(cid)
-        .content(content)
+    let embeds: Vec<_> = tw.into_iter().collect();
+    let mut peticion = client.create_message(cid);
+    if let Some(t) = texto.as_deref() {
+        peticion = peticion
+            .content(t)
+            .map_err(|e| format!("Invalid message: {e}"))?;
+    }
+    peticion = peticion
+        .embeds(&embeds)
         .map_err(|e| format!("Invalid message: {e}"))?;
     if let Some(mid) = reply_to {
         peticion = peticion.reply(parse_id(mid, "message")?);
@@ -468,14 +705,35 @@ pub async fn edit_channel_message(
     message_id: &str,
     content: &str,
 ) -> Result<String, String> {
-    validar_contenido(content)?;
+    edit_channel_embed(token, base_url, channel_id, message_id, Some(content), None).await
+}
+
+/// Edita contenido y/o embed (al menos uno). Lo que no se indica no se toca.
+pub async fn edit_channel_embed(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+    message_id: &str,
+    content: Option<&str>,
+    embed: Option<&EmbedMensaje>,
+) -> Result<String, String> {
+    let (texto, tw) = preparar_cuerpo(content, embed)?;
     let cid = parse_id(channel_id, "channel")?;
     let mid = parse_id(message_id, "message")?;
     let client = build_client(token, base_url);
-    let mensaje = client
-        .update_message(cid, mid)
-        .content(Some(content))
-        .map_err(|e| format!("Invalid message: {e}"))?
+    let embeds: Vec<_> = tw.into_iter().collect();
+    let mut peticion = client.update_message(cid, mid);
+    if let Some(t) = texto.as_deref() {
+        peticion = peticion
+            .content(Some(t))
+            .map_err(|e| format!("Invalid message: {e}"))?;
+    }
+    if !embeds.is_empty() {
+        peticion = peticion
+            .embeds(Some(&embeds))
+            .map_err(|e| format!("Invalid message: {e}"))?;
+    }
+    let mensaje = peticion
         .await
         .map_err(traducir_error)?
         .model()
@@ -484,14 +742,381 @@ pub async fn edit_channel_message(
     Ok(mensaje.id.to_string())
 }
 
+/// Emoji ya validado: unicode o personalizado (`nombre:id`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EmojiReaccion {
+    Unicode(String),
+    Personalizado { nombre: String, id: String },
+}
+
+const ERROR_EMOJI: &str = "Invalid emoji: use a Unicode emoji (👍) or a custom one as name:id";
+
+/// Valida el emoji antes de llamar a Discord. Acepta un emoji unicode, uno
+/// personalizado `nombre:id` y las formas `<:nombre:id>` / `<a:nombre:id>`.
+pub fn validar_emoji(emoji: &str) -> Result<EmojiReaccion, String> {
+    let e = emoji.trim();
+    let e = e
+        .strip_prefix("<a:")
+        .or_else(|| e.strip_prefix("<:"))
+        .and_then(|r| r.strip_suffix('>'))
+        .unwrap_or(e);
+    if e.is_empty() || e.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(ERROR_EMOJI.to_string());
+    }
+    if let Some((nombre, id)) = e.split_once(':') {
+        let nombre_ok = (2..=32).contains(&nombre.chars().count())
+            && nombre
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_');
+        let id_ok = id.parse::<u64>().map(|n| n > 0).unwrap_or(false);
+        if nombre_ok && id_ok {
+            return Ok(EmojiReaccion::Personalizado {
+                nombre: nombre.to_string(),
+                id: id.to_string(),
+            });
+        }
+        return Err(ERROR_EMOJI.to_string());
+    }
+    // Unicode: sin letras ASCII; solo se admiten dígitos, `#` o `*` en una
+    // secuencia keycap (`1️⃣`).
+    let keycap = e.ends_with('\u{20E3}')
+        && e.chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit() || c == '#' || c == '*');
+    let ok = e.chars().count() <= 20
+        && (keycap || e.chars().all(|c| !c.is_ascii()))
+        && e.chars().any(|c| !c.is_ascii() || keycap);
+    if ok {
+        Ok(EmojiReaccion::Unicode(e.to_string()))
+    } else {
+        Err(ERROR_EMOJI.to_string())
+    }
+}
+
+/// Añade (`PUT`) o quita (`DELETE`) la reacción del propio bot:
+/// `/channels/{id}/messages/{id}/reactions/{emoji}/@me`. Solo toca la del bot.
+pub async fn set_own_reaction(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+    message_id: &str,
+    emoji: &str,
+    anadir: bool,
+) -> Result<(), String> {
+    use twilight_http::request::channel::reaction::RequestReactionType;
+    let emoji = validar_emoji(emoji)?;
+    let cid = parse_id(channel_id, "channel")?;
+    let mid = parse_id(message_id, "message")?;
+    let eid = match &emoji {
+        EmojiReaccion::Personalizado { id, .. } => Some(parse_id(id, "emoji")?),
+        EmojiReaccion::Unicode(_) => None,
+    };
+    let tipo = match (&emoji, eid) {
+        (EmojiReaccion::Personalizado { nombre, .. }, Some(id)) => RequestReactionType::Custom {
+            id,
+            name: Some(nombre.as_str()),
+        },
+        (EmojiReaccion::Unicode(n), _) => RequestReactionType::Unicode { name: n.as_str() },
+        _ => return Err(ERROR_EMOJI.to_string()),
+    };
+    let client = build_client(token, base_url);
+    let r = if anadir {
+        client.create_reaction(cid, mid, &tipo).await
+    } else {
+        client.delete_current_user_reaction(cid, mid, &tipo).await
+    };
+    r.map(|_| ()).map_err(|e| {
+        // Discord responde 403 sin permiso; el aviso nombra el permiso concreto.
+        if anadir && matches!(e.kind(), ErrorType::Response { status, .. } if status.get() == 403) {
+            let t = traducir_error(e);
+            if t.starts_with("The bot is missing a permission") {
+                return "The bot is missing the permission «Añadir reacciones»".to_string();
+            }
+            return t;
+        }
+        traducir_error(e)
+    })
+}
+
+/// Máximo de etiquetas que puede tener un canal de foro.
+pub const ETIQUETAS_FORO_MAX: usize = 20;
+/// Máximo de caracteres del nombre de una etiqueta.
+pub const ETIQUETA_NOMBRE_MAX: usize = 20;
+/// Máximo de etiquetas aplicadas a un post.
+pub const ETIQUETAS_POST_MAX: usize = 5;
+
+/// Etiqueta de un canal de foro.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct EtiquetaForo {
+    pub id: String,
+    pub name: String,
+    /// Emoji unicode, o `nombre:id` si es personalizado.
+    pub emoji: Option<String>,
+    pub moderated: bool,
+}
+
+fn etiqueta_desde_json(v: &serde_json::Value) -> Option<EtiquetaForo> {
+    let id = v.get("id")?.as_str()?.to_string();
+    let name = v.get("name")?.as_str()?.to_string();
+    let emoji = match (
+        v.get("emoji_id").and_then(|x| x.as_str()),
+        v.get("emoji_name").and_then(|x| x.as_str()),
+    ) {
+        (Some(id), n) => Some(format!("{}:{id}", n.unwrap_or("emoji"))),
+        (None, Some(n)) => Some(n.to_string()),
+        _ => None,
+    };
+    Some(EtiquetaForo {
+        id,
+        name,
+        emoji,
+        moderated: v
+            .get("moderated")
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false),
+    })
+}
+
+fn etiqueta_a_json(e: &EtiquetaForo) -> serde_json::Value {
+    let mut v = serde_json::json!({"id": e.id, "name": e.name, "moderated": e.moderated});
+    match e.emoji.as_deref().map(validar_emoji) {
+        Some(Ok(EmojiReaccion::Personalizado { nombre, id })) => {
+            v["emoji_id"] = serde_json::json!(id);
+            v["emoji_name"] = serde_json::json!(nombre);
+        }
+        Some(Ok(EmojiReaccion::Unicode(n))) => {
+            v["emoji_name"] = serde_json::json!(n);
+        }
+        _ => {}
+    }
+    v
+}
+
+pub(crate) async fn pedir_json(
+    token: &str,
+    base_url: Option<&str>,
+    ruta: twilight_http::routing::Route<'_>,
+    cuerpo: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let mut b = twilight_http::request::Request::builder(&ruta);
+    if let Some(c) = cuerpo {
+        b = b.json(&c).map_err(|e| format!("Invalid request: {e}"))?;
+    }
+    let bytes = build_client(token, base_url)
+        .request::<twilight_http::response::marker::EmptyBody>(b.build())
+        .await
+        .map_err(traducir_error)?
+        .bytes()
+        .await
+        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
+    if bytes.is_empty() {
+        return Ok(serde_json::Value::Null);
+    }
+    serde_json::from_slice(&bytes).map_err(|e| format!("Invalid response from Discord: {e}"))
+}
+
+fn etiquetas_de_canal(canal: &serde_json::Value) -> Vec<EtiquetaForo> {
+    canal
+        .get("available_tags")
+        .and_then(|a| a.as_array())
+        .map(|a| a.iter().filter_map(etiqueta_desde_json).collect())
+        .unwrap_or_default()
+}
+
+/// Lista las etiquetas de un canal de foro (`GET /channels/{id}`).
+pub async fn get_forum_tags(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+) -> Result<Vec<EtiquetaForo>, String> {
+    let cid = parse_id::<twilight_model::id::marker::ChannelMarker>(channel_id, "channel")?;
+    let canal = pedir_json(
+        token,
+        base_url,
+        twilight_http::routing::Route::GetChannel {
+            channel_id: cid.get(),
+        },
+        None,
+    )
+    .await?;
+    match canal.get("type").and_then(|t| t.as_u64()) {
+        Some(15) | Some(16) => {}
+        _ => return Err("The channel is not a forum".to_string()),
+    }
+    Ok(etiquetas_de_canal(&canal))
+}
+
+/// Un cambio de etiqueta: crea la etiqueta `nombre` o, si ya existe (por
+/// nombre o id), la renombra (`nuevo_nombre`) y/o le cambia el emoji.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CambioEtiqueta {
+    pub nombre: String,
+    pub nuevo_nombre: Option<String>,
+    pub emoji: Option<String>,
+}
+
+fn validar_nombre_etiqueta(n: &str) -> Result<String, String> {
+    let n = n.trim();
+    if n.is_empty() {
+        return Err("The tag name cannot be empty".to_string());
+    }
+    if n.chars().count() > ETIQUETA_NOMBRE_MAX {
+        return Err("The tag name is too long (the maximum is 20 characters)".to_string());
+    }
+    Ok(n.to_string())
+}
+
+fn posicion_etiqueta(tags: &[EtiquetaForo], nombre: &str) -> Option<usize> {
+    let n = nombre.trim();
+    tags.iter().position(|t| t.id == n).or_else(|| {
+        tags.iter()
+            .position(|t| t.name.to_lowercase() == n.to_lowercase())
+    })
+}
+
+/// Resuelve nombres o ids de etiqueta a ids (máximo 5, todas existentes).
+pub fn resolver_etiquetas(
+    disponibles: &[EtiquetaForo],
+    pedidas: &[String],
+) -> Result<Vec<String>, String> {
+    if pedidas.len() > ETIQUETAS_POST_MAX {
+        return Err("A post can have at most 5 tags".to_string());
+    }
+    let mut ids: Vec<String> = Vec::new();
+    for p in pedidas {
+        let i = posicion_etiqueta(disponibles, p)
+            .ok_or_else(|| format!("Unknown forum tag: {}", p.trim()))?;
+        if !ids.contains(&disponibles[i].id) {
+            ids.push(disponibles[i].id.clone());
+        }
+    }
+    Ok(ids)
+}
+
+/// Crea o renombra etiquetas del foro (`PATCH /channels/{id}` con
+/// `available_tags`, que debe llevar la lista completa). Devuelve la lista final.
+pub async fn edit_forum_tags(
+    token: &str,
+    base_url: Option<&str>,
+    channel_id: &str,
+    cambios: &[CambioEtiqueta],
+) -> Result<Vec<EtiquetaForo>, String> {
+    if cambios.is_empty() {
+        return Err("Provide at least one tag".to_string());
+    }
+    let cid = parse_id::<twilight_model::id::marker::ChannelMarker>(channel_id, "channel")?;
+    // Validación previa (sin red) de nombres y emojis.
+    for c in cambios {
+        validar_nombre_etiqueta(&c.nombre)?;
+        if let Some(n) = &c.nuevo_nombre {
+            validar_nombre_etiqueta(n)?;
+        }
+        if let Some(e) = &c.emoji {
+            validar_emoji(e)?;
+        }
+    }
+    let mut tags = get_forum_tags(token, base_url, channel_id).await?;
+    for c in cambios {
+        let nombre = c.nombre.trim().to_string();
+        match posicion_etiqueta(&tags, &nombre) {
+            Some(i) => {
+                if let Some(n) = &c.nuevo_nombre {
+                    tags[i].name = n.trim().to_string();
+                }
+                if let Some(e) = &c.emoji {
+                    tags[i].emoji = Some(e.trim().to_string());
+                }
+            }
+            None => tags.push(EtiquetaForo {
+                id: String::new(),
+                name: c
+                    .nuevo_nombre
+                    .as_deref()
+                    .unwrap_or(&nombre)
+                    .trim()
+                    .to_string(),
+                emoji: c.emoji.as_ref().map(|e| e.trim().to_string()),
+                moderated: false,
+            }),
+        }
+        if tags.len() > ETIQUETAS_FORO_MAX {
+            return Err("A forum can have at most 20 tags".to_string());
+        }
+    }
+    let lista: Vec<serde_json::Value> = tags
+        .iter()
+        .map(|t| {
+            let mut v = etiqueta_a_json(t);
+            if t.id.is_empty() {
+                if let Some(o) = v.as_object_mut() {
+                    o.remove("id");
+                }
+            }
+            v
+        })
+        .collect();
+    let canal = pedir_json(
+        token,
+        base_url,
+        twilight_http::routing::Route::UpdateChannel {
+            channel_id: cid.get(),
+        },
+        Some(serde_json::json!({"available_tags": lista})),
+    )
+    .await?;
+    Ok(etiquetas_de_canal(&canal))
+}
+
+/// Asigna etiquetas (por nombre o id) a un post (`PATCH /channels/{post}`),
+/// sustituyendo las que tuviera. Devuelve los ids aplicados.
+pub async fn tag_forum_post(
+    token: &str,
+    base_url: Option<&str>,
+    post_id: &str,
+    etiquetas: &[String],
+) -> Result<Vec<String>, String> {
+    let pid = parse_id::<twilight_model::id::marker::ChannelMarker>(post_id, "post")?;
+    if etiquetas.len() > ETIQUETAS_POST_MAX {
+        return Err("A post can have at most 5 tags".to_string());
+    }
+    let post = pedir_json(
+        token,
+        base_url,
+        twilight_http::routing::Route::GetChannel {
+            channel_id: pid.get(),
+        },
+        None,
+    )
+    .await?;
+    let foro = post
+        .get("parent_id")
+        .and_then(|p| p.as_str())
+        .ok_or_else(|| "The channel is not a forum post".to_string())?
+        .to_string();
+    let disponibles = get_forum_tags(token, base_url, &foro).await?;
+    let ids = resolver_etiquetas(&disponibles, etiquetas)?;
+    pedir_json(
+        token,
+        base_url,
+        twilight_http::routing::Route::UpdateChannel {
+            channel_id: pid.get(),
+        },
+        Some(serde_json::json!({"applied_tags": ids})),
+    )
+    .await?;
+    Ok(ids)
+}
+
 /// Crea un post en un canal de foro (`POST /channels/{id}/threads`) con un
-/// título y un primer mensaje. Devuelve el id del post (hilo).
+/// título, un primer mensaje y etiquetas opcionales (nombre o id, máximo 5).
+/// Devuelve el id del post (hilo).
 pub async fn create_forum_post(
     token: &str,
     base_url: Option<&str>,
     channel_id: &str,
     title: &str,
     content: &str,
+    etiquetas: &[String],
 ) -> Result<String, String> {
     validar_contenido(content)?;
     if title.trim().is_empty() {
@@ -500,19 +1125,31 @@ pub async fn create_forum_post(
     if title.chars().count() > 100 {
         return Err("The post title is too long (the maximum is 100 characters)".to_string());
     }
-    let cid = parse_id(channel_id, "channel")?;
-    let client = build_client(token, base_url);
-    let post = client
-        .create_forum_thread(cid, title.trim())
-        .message()
-        .content(content)
-        .map_err(|e| format!("Invalid message: {e}"))?
-        .await
-        .map_err(traducir_error)?
-        .model()
-        .await
-        .map_err(|e| format!("Invalid response from Discord: {e}"))?;
-    Ok(post.channel.id.to_string())
+    if etiquetas.len() > ETIQUETAS_POST_MAX {
+        return Err("A post can have at most 5 tags".to_string());
+    }
+    let cid = parse_id::<twilight_model::id::marker::ChannelMarker>(channel_id, "channel")?;
+    let mut cuerpo = serde_json::json!({
+        "name": title.trim(),
+        "message": {"content": content},
+    });
+    if !etiquetas.is_empty() {
+        let disponibles = get_forum_tags(token, base_url, channel_id).await?;
+        cuerpo["applied_tags"] = serde_json::json!(resolver_etiquetas(&disponibles, etiquetas)?);
+    }
+    let post = pedir_json(
+        token,
+        base_url,
+        twilight_http::routing::Route::CreateForumThread {
+            channel_id: cid.get(),
+        },
+        Some(cuerpo),
+    )
+    .await?;
+    post.get("id")
+        .and_then(|i| i.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| "Invalid response from Discord: missing post id".to_string())
 }
 
 /// Abre (o recupera) el DM con un usuario (`POST /users/@me/channels`) y le
@@ -1579,7 +2216,37 @@ pub async fn fetch_bot_permissions(
     let owner_id = serde_json::from_slice::<serde_json::Value>(&cuerpo)
         .ok()
         .and_then(|v| v.get("owner_id")?.as_str().map(str::to_string));
-    let roles = fetch_guild_roles(token, base_url, guild_id).await?;
+    // Roles en JSON: twilight 0.15 descarta los bits que no conoce (p. ej. el
+    // 49, «Crear encuestas») al deserializar `Permissions`.
+    let roles: Vec<crate::state::Role> = pedir_json(
+        token,
+        base_url,
+        twilight_http::routing::Route::GetGuildRoles {
+            guild_id: gid.get(),
+        },
+        None,
+    )
+    .await?
+    .as_array()
+    .map(|a| {
+        a.iter()
+            .filter_map(|r| {
+                let permisos = r.get("permissions")?.as_str()?.to_string();
+                Some(crate::state::Role {
+                    id: r.get("id")?.as_str()?.to_string(),
+                    name: String::new(),
+                    color: 0,
+                    position: 0,
+                    permissions: permisos.clone(),
+                    permissions_bitfield: Some(permisos),
+                    member_count: 0,
+                    mentionable: false,
+                    hoist: false,
+                })
+            })
+            .collect()
+    })
+    .unwrap_or_default();
     let miembro = fetch_guild_member(token, base_url, guild_id, bot_id).await?;
     let bits = calcular_permisos(
         guild_id,

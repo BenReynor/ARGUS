@@ -1394,6 +1394,126 @@ pub async fn borrar_webhook(
     Ok(format!("Webhook {webhook_id} deleted"))
 }
 
+const PERMISO_ENCUESTAS: &str = "Crear encuestas";
+
+/// Crea una encuesta nativa. Con servidor conocido exige «Crear encuestas».
+#[allow(clippy::too_many_arguments)]
+pub async fn crear_encuesta_en_canal(
+    state: &AppState,
+    guild_id: Option<&str>,
+    channel_id: &str,
+    pregunta: &str,
+    respuestas: &[crate::encuestas::RespuestaEncuesta],
+    horas: u32,
+    multiple: bool,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    // Valida los límites antes de consultar permisos o llamar a Discord.
+    crate::encuestas::construir_poll(pregunta, respuestas, horas, multiple)?;
+    let token = token_del_bot_activo(state)?;
+    if let Some(g) = guild_id {
+        exigir_permiso(state, g, PERMISO_ENCUESTAS, base_url).await?;
+    }
+    let id = crate::encuestas::crear(
+        &token, base_url, channel_id, pregunta, respuestas, horas, multiple,
+    )
+    .await?;
+    Ok(format!(
+        "Poll created in channel {channel_id} (message {id})"
+    ))
+}
+
+/// Recuentos por respuesta (lectura).
+pub async fn resultados_de_encuesta(
+    state: &AppState,
+    channel_id: &str,
+    message_id: &str,
+    base_url: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    let token = token_del_bot_activo(state)?;
+    crate::encuestas::resultados(&token, base_url, channel_id, message_id).await
+}
+
+/// Termina una encuesta publicada por el bot.
+pub async fn cerrar_encuesta_de_canal(
+    state: &AppState,
+    channel_id: &str,
+    message_id: &str,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    let token = token_del_bot_activo(state)?;
+    crate::encuestas::cerrar(&token, base_url, channel_id, message_id).await?;
+    Ok(format!("Poll {message_id} closed"))
+}
+
+const PERMISO_EVENTOS: &str = "Crear/Gestionar eventos";
+
+/// Exige «Crear eventos» o «Gestionar eventos» (basta una de las dos).
+async fn exigir_permiso_eventos(
+    state: &AppState,
+    guild_id: &str,
+    base_url: Option<&str>,
+) -> Result<(), String> {
+    let permisos = permisos_del_bot(state, guild_id, base_url).await?;
+    if permisos
+        .iter()
+        .any(|p| p == "Crear eventos" || p == "Gestionar eventos")
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "The bot is missing the permission «{PERMISO_EVENTOS}»"
+        ))
+    }
+}
+
+/// Lista los eventos programados (lectura).
+pub async fn listar_eventos_del_servidor(
+    state: &AppState,
+    guild_id: &str,
+    base_url: Option<&str>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let token = token_del_bot_activo(state)?;
+    crate::eventos::listar(&token, base_url, guild_id).await
+}
+
+pub async fn crear_evento_del_servidor(
+    state: &AppState,
+    guild_id: &str,
+    datos: &crate::eventos::DatosEvento,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso_eventos(state, guild_id, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    let id = crate::eventos::crear(&token, base_url, guild_id, datos).await?;
+    Ok(format!("Event created (id {id})"))
+}
+
+pub async fn editar_evento_del_servidor(
+    state: &AppState,
+    guild_id: &str,
+    event_id: &str,
+    datos: &crate::eventos::DatosEvento,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso_eventos(state, guild_id, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::eventos::editar(&token, base_url, guild_id, event_id, datos).await?;
+    Ok(format!("Event {event_id} updated"))
+}
+
+pub async fn cancelar_evento_del_servidor(
+    state: &AppState,
+    guild_id: &str,
+    event_id: &str,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    exigir_permiso_eventos(state, guild_id, base_url).await?;
+    let token = token_del_bot_activo(state)?;
+    crate::eventos::cancelar(&token, base_url, guild_id, event_id).await?;
+    Ok(format!("Event {event_id} canceled"))
+}
+
 /// Tras cambiar roles, vuelve a leerlos y actualiza el mapa guardado (si hay uno).
 pub async fn refrescar_roles_del_mapa(
     state: &AppState,
@@ -1863,10 +1983,22 @@ pub async fn enviar_a_canal_resp(
     reply_to: Option<&str>,
     base_url: Option<&str>,
 ) -> Result<String, String> {
-    crate::discord::validar_contenido(content)?;
+    enviar_a_canal_embed(state, channel_id, Some(content), None, reply_to, base_url).await
+}
+
+/// Envía contenido y/o un embed (al menos uno).
+pub async fn enviar_a_canal_embed(
+    state: &AppState,
+    channel_id: &str,
+    content: Option<&str>,
+    embed: Option<&crate::discord::EmbedMensaje>,
+    reply_to: Option<&str>,
+    base_url: Option<&str>,
+) -> Result<String, String> {
     let token = token_del_bot_activo(state)?;
     let id =
-        crate::discord::send_channel_reply(&token, base_url, channel_id, content, reply_to).await?;
+        crate::discord::send_channel_embed(&token, base_url, channel_id, content, embed, reply_to)
+            .await?;
     Ok(format!("Message sent to channel {channel_id} (id {id})"))
 }
 
@@ -1889,27 +2021,111 @@ pub async fn editar_mensaje_de_canal(
     content: &str,
     base_url: Option<&str>,
 ) -> Result<String, String> {
-    crate::discord::validar_contenido(content)?;
+    editar_mensaje_con_embed(state, channel_id, message_id, Some(content), None, base_url).await
+}
+
+/// Edita contenido y/o embed de un mensaje del bot (al menos uno).
+pub async fn editar_mensaje_con_embed(
+    state: &AppState,
+    channel_id: &str,
+    message_id: &str,
+    content: Option<&str>,
+    embed: Option<&crate::discord::EmbedMensaje>,
+    base_url: Option<&str>,
+) -> Result<String, String> {
     let token = token_del_bot_activo(state)?;
-    let id =
-        crate::discord::edit_channel_message(&token, base_url, channel_id, message_id, content)
-            .await?;
+    let id = crate::discord::edit_channel_embed(
+        &token, base_url, channel_id, message_id, content, embed,
+    )
+    .await?;
     Ok(format!("Message {id} edited in channel {channel_id}"))
 }
 
-/// Crea un post en un canal de foro con el bot activo.
+const PERMISO_REACCIONES: &str = "Añadir reacciones";
+
+/// Añade o quita la reacción del propio bot. Valida el emoji y, si se conoce
+/// el servidor, el permiso «Añadir reacciones» antes de llamar a la reacción.
+pub async fn reaccionar_a_mensaje(
+    state: &AppState,
+    guild_id: Option<&str>,
+    channel_id: &str,
+    message_id: &str,
+    emoji: &str,
+    anadir: bool,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    crate::discord::validar_emoji(emoji)?;
+    let token = token_del_bot_activo(state)?;
+    if anadir {
+        if let Some(g) = guild_id {
+            exigir_permiso(state, g, PERMISO_REACCIONES, base_url).await?;
+        }
+    }
+    crate::discord::set_own_reaction(&token, base_url, channel_id, message_id, emoji, anadir)
+        .await?;
+    let emoji = emoji.trim();
+    Ok(if anadir {
+        format!("Reaction {emoji} added to message {message_id}")
+    } else {
+        format!("Reaction {emoji} removed from message {message_id}")
+    })
+}
+
+/// Crea un post en un canal de foro con el bot activo (etiquetas opcionales).
 pub async fn crear_post_en_foro(
     state: &AppState,
     channel_id: &str,
     title: &str,
     content: &str,
+    etiquetas: &[String],
     base_url: Option<&str>,
 ) -> Result<String, String> {
     crate::discord::validar_contenido(content)?;
     let token = token_del_bot_activo(state)?;
     let id =
-        crate::discord::create_forum_post(&token, base_url, channel_id, title, content).await?;
+        crate::discord::create_forum_post(&token, base_url, channel_id, title, content, etiquetas)
+            .await?;
     Ok(format!("Post created in forum {channel_id} (id {id})"))
+}
+
+/// Lista las etiquetas de un canal de foro.
+pub async fn etiquetas_del_foro(
+    state: &AppState,
+    channel_id: &str,
+    base_url: Option<&str>,
+) -> Result<Vec<crate::discord::EtiquetaForo>, String> {
+    let token = token_del_bot_activo(state)?;
+    crate::discord::get_forum_tags(&token, base_url, channel_id).await
+}
+
+/// Crea o renombra etiquetas de un foro.
+pub async fn editar_etiquetas_del_foro(
+    state: &AppState,
+    channel_id: &str,
+    cambios: &[crate::discord::CambioEtiqueta],
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    let token = token_del_bot_activo(state)?;
+    let tags = crate::discord::edit_forum_tags(&token, base_url, channel_id, cambios).await?;
+    Ok(format!(
+        "Forum {channel_id} now has {n} tags",
+        n = tags.len()
+    ))
+}
+
+/// Asigna etiquetas a un post de foro.
+pub async fn etiquetar_post_de_foro(
+    state: &AppState,
+    post_id: &str,
+    etiquetas: &[String],
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    let token = token_del_bot_activo(state)?;
+    let ids = crate::discord::tag_forum_post(&token, base_url, post_id, etiquetas).await?;
+    Ok(format!(
+        "Post {post_id} tagged with {n} tags",
+        n = ids.len()
+    ))
 }
 
 #[tauri::command]
@@ -3429,6 +3645,109 @@ mod tests {
         assert!(e.contains("only edit its own"), "{e}");
     }
 
+    fn embed_completo() -> crate::discord::EmbedMensaje {
+        crate::discord::EmbedMensaje {
+            titulo: Some("Reglas".into()),
+            descripcion: Some("Sé amable".into()),
+            color: Some("#5865F2".into()),
+            pie: Some("ARGUS".into()),
+            campos: Some(vec![crate::discord::CampoEmbed {
+                nombre: "Uno".into(),
+                valor: "Dos".into(),
+                en_linea: true,
+            }]),
+            imagen_url: Some("https://ejemplo.test/a.png".into()),
+        }
+    }
+
+    #[tokio::test]
+    async fn envia_y_edita_con_embed_con_el_json_esperado() {
+        let server = MockServer::start().await;
+        let esperado = serde_json::json!({"embeds": [{
+            "title": "Reglas", "description": "Sé amable", "color": 5793266,
+            "footer": {"text": "ARGUS"},
+            "fields": [{"name": "Uno", "value": "Dos", "inline": true}],
+            "image": {"url": "https://ejemplo.test/a.png"}
+        }]});
+        Mock::given(method("POST"))
+            .and(path("/api/v10/channels/42/messages"))
+            .and(wiremock::matchers::body_partial_json(esperado.clone()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mensaje_json("910", "42")))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path("/api/v10/channels/42/messages/910"))
+            .and(wiremock::matchers::body_partial_json(esperado))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mensaje_json("910", "42")))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-embed");
+        let addr = server.address().to_string();
+        let e = embed_completo();
+        let r = enviar_a_canal_embed(&state, "42", None, Some(&e), None, Some(&addr))
+            .await
+            .expect("envío");
+        assert!(r.contains("910"), "{r}");
+        editar_mensaje_con_embed(&state, "42", "910", None, Some(&e), Some(&addr))
+            .await
+            .expect("edición");
+    }
+
+    #[tokio::test]
+    async fn embed_valida_limites_color_y_exige_contenido_o_embed() {
+        let state = estado_con_bot_activo("token-lim");
+        // Sin servidor: todo debe fallar antes de enviar.
+        let addr = "127.0.0.1:1".to_string();
+        let envio = |c: Option<&'static str>, e: Option<crate::discord::EmbedMensaje>| {
+            let (state, addr) = (&state, &addr);
+            async move { enviar_a_canal_embed(state, "42", c, e.as_ref(), None, Some(addr)).await }
+        };
+        let base = crate::discord::EmbedMensaje::default();
+        let e = envio(None, None).await.unwrap_err();
+        assert!(e.contains("content or an embed"), "{e}");
+        let e = envio(Some("  "), Some(base.clone())).await.unwrap_err();
+        assert!(e.contains("content or an embed"), "{e}");
+
+        let mut x = base.clone();
+        x.titulo = Some("a".repeat(257));
+        assert!(envio(None, Some(x)).await.unwrap_err().contains("title"));
+        let mut x = base.clone();
+        x.descripcion = Some("a".repeat(4097));
+        assert!(envio(None, Some(x))
+            .await
+            .unwrap_err()
+            .contains("description"));
+        let campo = |n: &str, v: String| crate::discord::CampoEmbed {
+            nombre: n.into(),
+            valor: v,
+            en_linea: false,
+        };
+        let mut x = base.clone();
+        x.campos = Some((0..26).map(|_| campo("n", "v".into())).collect());
+        assert!(envio(None, Some(x))
+            .await
+            .unwrap_err()
+            .contains("too many fields"));
+        let mut x = base.clone();
+        x.campos = Some(vec![campo("n", "v".repeat(1025))]);
+        assert!(envio(None, Some(x)).await.unwrap_err().contains("field 1"));
+        // Total > 6000 con cada parte dentro de su límite.
+        let mut x = base.clone();
+        x.titulo = Some("a".repeat(256));
+        x.descripcion = Some("a".repeat(4096));
+        x.campos = Some(vec![
+            campo("n", "v".repeat(1024)),
+            campo("m", "v".repeat(1024)),
+        ]);
+        assert!(envio(None, Some(x)).await.unwrap_err().contains("6000"));
+        let mut x = base.clone();
+        x.titulo = Some("ok".into());
+        x.color = Some("rojo".into());
+        assert!(envio(None, Some(x)).await.unwrap_err().contains("color"));
+    }
+
     #[tokio::test]
     async fn crea_un_post_en_un_foro_con_titulo_y_mensaje() {
         let server = MockServer::start().await;
@@ -3456,13 +3775,114 @@ mod tests {
             "42",
             "Liga de ajedrez",
             "Propongo un torneo",
+            &[],
             Some(&addr),
         )
         .await
         .expect("post");
         assert!(r.contains("777"), "{r}");
-        let vacio = crear_post_en_foro(&state, "42", "  ", "texto", Some(&addr)).await;
+        let vacio = crear_post_en_foro(&state, "42", "  ", "texto", &[], Some(&addr)).await;
         assert!(vacio.is_err());
+    }
+
+    #[tokio::test]
+    async fn reacciona_y_quita_la_reaccion_con_la_ruta_codificada() {
+        let server = MockServer::start().await;
+        for verbo in ["PUT", "DELETE"] {
+            for ruta in [
+                "/api/v10/channels/42/messages/555/reactions/%F0%9F%91%8D/@me",
+                "/api/v10/channels/42/messages/555/reactions/party:123/@me",
+            ] {
+                Mock::given(method(verbo))
+                    .and(path(ruta))
+                    .and(header("authorization", "Bot token-react"))
+                    .respond_with(ResponseTemplate::new(204))
+                    .expect(1..)
+                    .mount(&server)
+                    .await;
+            }
+        }
+        let state = estado_con_bot_activo("token-react");
+        let addr = server.address().to_string();
+        for emoji in ["👍", "party:123", "<:party:123>"] {
+            let r = reaccionar_a_mensaje(&state, None, "42", "555", emoji, true, Some(&addr))
+                .await
+                .expect("reacción");
+            assert!(r.contains("555"), "{r}");
+        }
+        for emoji in ["👍", "party:123", "<:party:123>"] {
+            reaccionar_a_mensaje(&state, None, "42", "555", emoji, false, Some(&addr))
+                .await
+                .expect("quitar");
+        }
+    }
+
+    #[tokio::test]
+    async fn emoji_invalido_no_llama_a_discord() {
+        let server = MockServer::start().await;
+        Mock::given(wiremock::matchers::any())
+            .respond_with(ResponseTemplate::new(204))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-react");
+        let addr = server.address().to_string();
+        for malo in [
+            "",
+            "  ",
+            "hola",
+            "a:b",
+            "x:0",
+            "party:12:3",
+            ":123",
+            "👍 👍",
+            "1",
+        ] {
+            let e = reaccionar_a_mensaje(&state, Some("555"), "42", "555", malo, true, Some(&addr))
+                .await
+                .unwrap_err();
+            assert!(e.starts_with("Invalid emoji"), "{malo}: {e}");
+        }
+        assert!(crate::discord::validar_emoji("1\u{FE0F}\u{20E3}").is_ok());
+        assert!(crate::discord::validar_emoji("👨\u{200D}👩\u{200D}👧").is_ok());
+    }
+
+    #[tokio::test]
+    async fn emoji_desconocido_10014_se_traduce() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+                "code": 10014, "message": "Unknown Emoji"
+            })))
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-react");
+        let addr = server.address().to_string();
+        let e = reaccionar_a_mensaje(&state, None, "42", "555", "gone:999", true, Some(&addr))
+            .await
+            .unwrap_err();
+        assert!(e.contains("Unknown emoji"), "{e}");
+        assert_eq!(
+            crate::i18n::tr("es", &e),
+            "Emoji desconocido: no existe o el bot no puede usarlo"
+        );
+    }
+
+    #[tokio::test]
+    async fn reaccionar_avisa_si_falta_anadir_reacciones() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+                "code": 50013, "message": "Missing Permissions"
+            })))
+            .mount(&server)
+            .await;
+        let state = estado_con_bot_activo("token-react");
+        let addr = server.address().to_string();
+        let e = reaccionar_a_mensaje(&state, None, "42", "555", "👍", true, Some(&addr))
+            .await
+            .unwrap_err();
+        assert_eq!(e, "The bot is missing the permission «Añadir reacciones»");
     }
 
     #[tokio::test]
