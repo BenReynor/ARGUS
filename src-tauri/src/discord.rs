@@ -2216,7 +2216,37 @@ pub async fn fetch_bot_permissions(
     let owner_id = serde_json::from_slice::<serde_json::Value>(&cuerpo)
         .ok()
         .and_then(|v| v.get("owner_id")?.as_str().map(str::to_string));
-    let roles = fetch_guild_roles(token, base_url, guild_id).await?;
+    // Roles en JSON: twilight 0.15 descarta los bits que no conoce (p. ej. el
+    // 49, «Crear encuestas») al deserializar `Permissions`.
+    let roles: Vec<crate::state::Role> = pedir_json(
+        token,
+        base_url,
+        twilight_http::routing::Route::GetGuildRoles {
+            guild_id: gid.get(),
+        },
+        None,
+    )
+    .await?
+    .as_array()
+    .map(|a| {
+        a.iter()
+            .filter_map(|r| {
+                let permisos = r.get("permissions")?.as_str()?.to_string();
+                Some(crate::state::Role {
+                    id: r.get("id")?.as_str()?.to_string(),
+                    name: String::new(),
+                    color: 0,
+                    position: 0,
+                    permissions: permisos.clone(),
+                    permissions_bitfield: Some(permisos),
+                    member_count: 0,
+                    mentionable: false,
+                    hoist: false,
+                })
+            })
+            .collect()
+    })
+    .unwrap_or_default();
     let miembro = fetch_guild_member(token, base_url, guild_id, bot_id).await?;
     let bits = calcular_permisos(
         guild_id,

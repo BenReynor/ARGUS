@@ -244,6 +244,41 @@ pub struct ReaccionParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
+pub struct RespuestaEncuestaParams {
+    /// Texto de la respuesta (≤ 55 caracteres).
+    pub texto: String,
+    /// Emoji opcional: unicode (🍕) o personalizado `nombre:id`.
+    pub emoji: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct CrearEncuestaParams {
+    /// ID del servidor (opcional; con él se comprueba el permiso antes).
+    pub guild_id: Option<String>,
+    /// ID del canal donde se publica.
+    pub channel_id: String,
+    /// Pregunta (≤ 300 caracteres).
+    pub pregunta: String,
+    /// De 2 a 10 respuestas.
+    pub respuestas: Vec<RespuestaEncuestaParams>,
+    /// Duración en horas, de 1 a 768 (por defecto 24).
+    pub duracion_horas: Option<u32>,
+    /// Permite votar varias respuestas (por defecto no).
+    pub voto_multiple: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct EncuestaMensajeParams {
+    /// ID del canal del mensaje con la encuesta.
+    pub channel_id: String,
+    /// ID del mensaje con la encuesta.
+    pub message_id: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
 pub struct CrearPostForoParams {
     /// ID del canal de foro.
     pub channel_id: String,
@@ -1942,6 +1977,69 @@ impl ArgusMcp {
         self.mensaje(texto)
     }
 
+    /// `crear_encuesta`. Con servidor conocido exige «Crear encuestas».
+    pub async fn crear_encuesta_json(&self, p: &CrearEncuestaParams) -> Result<String, String> {
+        self.preparar().await?;
+        let gid = p
+            .guild_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|g| !g.is_empty())
+            .map(str::to_string)
+            .or_else(|| self.state.get_active_guild());
+        let respuestas: Vec<crate::encuestas::RespuestaEncuesta> = p
+            .respuestas
+            .iter()
+            .map(|r| crate::encuestas::RespuestaEncuesta {
+                texto: r.texto.clone(),
+                emoji: r.emoji.clone(),
+            })
+            .collect();
+        let texto = commands::crear_encuesta_en_canal(
+            &self.state,
+            gid.as_deref(),
+            p.channel_id.trim(),
+            &p.pregunta,
+            &respuestas,
+            p.duracion_horas.unwrap_or(24),
+            p.voto_multiple.unwrap_or(false),
+            self.url(),
+        )
+        .await
+        .map_err(|e| self.limpiar(e))?;
+        self.mensaje(texto)
+    }
+
+    /// `resultados_encuesta` (lectura).
+    pub async fn resultados_encuesta_json(
+        &self,
+        p: &EncuestaMensajeParams,
+    ) -> Result<String, String> {
+        self.preparar().await?;
+        let r = commands::resultados_de_encuesta(
+            &self.state,
+            p.channel_id.trim(),
+            p.message_id.trim(),
+            self.url(),
+        )
+        .await
+        .map_err(|e| self.limpiar(e))?;
+        Ok(r.to_string())
+    }
+
+    pub async fn cerrar_encuesta_json(&self, p: &EncuestaMensajeParams) -> Result<String, String> {
+        self.preparar().await?;
+        let texto = commands::cerrar_encuesta_de_canal(
+            &self.state,
+            p.channel_id.trim(),
+            p.message_id.trim(),
+            self.url(),
+        )
+        .await
+        .map_err(|e| self.limpiar(e))?;
+        self.mensaje(texto)
+    }
+
     pub async fn crear_post_foro_json(
         &self,
         channel_id: &str,
@@ -2845,6 +2943,7 @@ pub const HERRAMIENTAS_LECTURA: &[&str] = &[
     "listar_webhooks",
     "etiquetas_foro",
     "listar_eventos",
+    "resultados_encuesta",
     "listar_avisos",
 ];
 
@@ -2863,6 +2962,8 @@ pub const HERRAMIENTAS_ESCRITURA: &[&str] = &[
     "crear_evento",
     "editar_evento",
     "cancelar_evento",
+    "crear_encuesta",
+    "cerrar_encuesta",
     "reaccionar",
     "quitar_reaccion",
     "enviar_dm",
@@ -2931,6 +3032,8 @@ pub fn validar_accion(nombre: &str, args: &serde_json::Value) -> Result<(), Stri
         "crear_post_foro" => ok::<CrearPostForoParams>(nombre, args),
         "editar_etiquetas_foro" => ok::<EditarEtiquetasForoParams>(nombre, args),
         "etiquetar_post" => ok::<EtiquetarPostParams>(nombre, args),
+        "crear_encuesta" => ok::<CrearEncuestaParams>(nombre, args),
+        "cerrar_encuesta" => ok::<EncuestaMensajeParams>(nombre, args),
         "crear_evento" => ok::<CrearEventoParams>(nombre, args),
         "editar_evento" => ok::<EditarEventoParams>(nombre, args),
         "cancelar_evento" => ok::<CancelarEventoParams>(nombre, args),
@@ -2988,6 +3091,8 @@ pub fn esquema_args(nombre: &str) -> Option<serde_json::Value> {
         "crear_post_foro" => de::<CrearPostForoParams>(),
         "editar_etiquetas_foro" => de::<EditarEtiquetasForoParams>(),
         "etiquetar_post" => de::<EtiquetarPostParams>(),
+        "crear_encuesta" => de::<CrearEncuestaParams>(),
+        "cerrar_encuesta" => de::<EncuestaMensajeParams>(),
         "crear_evento" => de::<CrearEventoParams>(),
         "editar_evento" => de::<EditarEventoParams>(),
         "cancelar_evento" => de::<CancelarEventoParams>(),
@@ -3615,6 +3720,8 @@ impl ArgusMcp {
             }
             "etiquetar_post" => self.etiquetar_post_json(&args_de(nombre, args)?).await,
             "crear_evento" => self.crear_evento_json(&args_de(nombre, args)?).await,
+            "crear_encuesta" => self.crear_encuesta_json(&args_de(nombre, args)?).await,
+            "cerrar_encuesta" => self.cerrar_encuesta_json(&args_de(nombre, args)?).await,
             "editar_evento" => self.editar_evento_json(&args_de(nombre, args)?).await,
             "cancelar_evento" => {
                 let p: CancelarEventoParams = args_de(nombre, args)?;
@@ -4222,6 +4329,42 @@ impl ArgusMcp {
         let r = self
             .cancelar_evento_json(p.guild_id.as_deref(), &p.evento_id)
             .await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "crear_encuesta",
+        description = "Posts a native poll in a channel. `pregunta` ≤ 300 characters, 2–10 `respuestas` (`texto` ≤ 55, optional `emoji`), `duracion_horas` 1–768 (default 24), `voto_multiple` (default false). Requires «Create Polls». `guild_id` is optional."
+    )]
+    async fn crear_encuesta(
+        &self,
+        Parameters(p): Parameters<CrearEncuestaParams>,
+    ) -> Result<String, String> {
+        let r = self.crear_encuesta_json(&p).await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "resultados_encuesta",
+        description = "Read-only: returns the vote count of each answer of a poll message (also total votes and whether it has ended)."
+    )]
+    async fn resultados_encuesta(
+        &self,
+        Parameters(p): Parameters<EncuestaMensajeParams>,
+    ) -> Result<String, String> {
+        let r = self.resultados_encuesta_json(&p).await;
+        self.salida(r)
+    }
+
+    #[tool(
+        name = "cerrar_encuesta",
+        description = "Ends a poll posted by the bot right away (Discord only lets the poll's author end it)."
+    )]
+    async fn cerrar_encuesta(
+        &self,
+        Parameters(p): Parameters<EncuestaMensajeParams>,
+    ) -> Result<String, String> {
+        let r = self.cerrar_encuesta_json(&p).await;
         self.salida(r)
     }
 
@@ -6693,6 +6836,9 @@ mod tests {
             "crear_evento",
             "editar_evento",
             "cancelar_evento",
+            "crear_encuesta",
+            "resultados_encuesta",
+            "cerrar_encuesta",
             "reaccionar",
             "quitar_reaccion",
             "enviar_dm",
@@ -6752,6 +6898,7 @@ mod tests {
                 || *n == "leer_mensajes"
                 || *n == "buscar_mensajes"
                 || *n == "etiquetas_foro"
+                || *n == "resultados_encuesta"
                 || *n == "comparar_snapshot"
                 || *n == "consultar_plantilla"
                 || *n == "proponer_plantilla"
@@ -7430,6 +7577,53 @@ mod tests {
             .crear_evento_json(&crear("2001-05-01T20:00:00+02:00"))
             .await;
         assert_eq!(e.unwrap_err(), "The event start must be in the future");
+    }
+
+    #[tokio::test]
+    async fn encuestas_sin_permiso_no_llegan_a_discord_y_con_permiso_si() {
+        let params = CrearEncuestaParams {
+            guild_id: None,
+            channel_id: "30".into(),
+            pregunta: "¿Pizza?".into(),
+            respuestas: vec![
+                RespuestaEncuestaParams {
+                    texto: "Sí".into(),
+                    emoji: Some("🍕".into()),
+                },
+                RespuestaEncuestaParams {
+                    texto: "No".into(),
+                    emoji: None,
+                },
+            ],
+            duracion_horas: None,
+            voto_multiple: None,
+        };
+        let (_d, mcp, s) = mcp_con_servidor(GESTIONAR_MENSAJES, true).await;
+        prohibir_cambios(&s).await;
+        let e = mcp.crear_encuesta_json(&params).await;
+        assert_eq!(
+            e.unwrap_err(),
+            "The bot is missing the permission «Crear encuestas»"
+        );
+
+        let (_d, mcp, s) = mcp_con_servidor(1 << 49, true).await;
+        aceptar(
+            &s,
+            "POST",
+            "/api/v10/channels/30/messages",
+            200,
+            Some(json!({"id": "88"})),
+            1,
+        )
+        .await;
+        let r = mcp.crear_encuesta_json(&params).await.unwrap();
+        assert!(r.contains("88"), "{r}");
+        let mut mala = params;
+        mala.duracion_horas = Some(769);
+        assert_eq!(
+            mcp.crear_encuesta_json(&mala).await.unwrap_err(),
+            "The poll duration must be between 1 and 768 hours"
+        );
     }
 
     #[tokio::test]

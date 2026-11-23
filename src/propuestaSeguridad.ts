@@ -4,7 +4,7 @@ import type { AccionPropuesta } from './types/index.ts';
 const IRREVERSIBLES = new Set([
   'borrar_canal', 'borrar_rol', 'banear', 'expulsar', 'borrar_mensaje',
   'borrar_mensajes', 'borrar_invitacion', 'borrar_webhook', 'cancelar_evento', 'enviar_mensaje',
-  'editar_mensaje', 'crear_post_foro', 'enviar_dm', 'avisar',
+  'crear_encuesta', 'editar_mensaje', 'crear_post_foro', 'enviar_dm', 'avisar',
 ]);
 
 /** Vista previa local: no consulta Discord ni modifica el orden de ejecución. */

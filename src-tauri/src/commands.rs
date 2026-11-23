@@ -1394,6 +1394,58 @@ pub async fn borrar_webhook(
     Ok(format!("Webhook {webhook_id} deleted"))
 }
 
+const PERMISO_ENCUESTAS: &str = "Crear encuestas";
+
+/// Crea una encuesta nativa. Con servidor conocido exige «Crear encuestas».
+#[allow(clippy::too_many_arguments)]
+pub async fn crear_encuesta_en_canal(
+    state: &AppState,
+    guild_id: Option<&str>,
+    channel_id: &str,
+    pregunta: &str,
+    respuestas: &[crate::encuestas::RespuestaEncuesta],
+    horas: u32,
+    multiple: bool,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    // Valida los límites antes de consultar permisos o llamar a Discord.
+    crate::encuestas::construir_poll(pregunta, respuestas, horas, multiple)?;
+    let token = token_del_bot_activo(state)?;
+    if let Some(g) = guild_id {
+        exigir_permiso(state, g, PERMISO_ENCUESTAS, base_url).await?;
+    }
+    let id = crate::encuestas::crear(
+        &token, base_url, channel_id, pregunta, respuestas, horas, multiple,
+    )
+    .await?;
+    Ok(format!(
+        "Poll created in channel {channel_id} (message {id})"
+    ))
+}
+
+/// Recuentos por respuesta (lectura).
+pub async fn resultados_de_encuesta(
+    state: &AppState,
+    channel_id: &str,
+    message_id: &str,
+    base_url: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    let token = token_del_bot_activo(state)?;
+    crate::encuestas::resultados(&token, base_url, channel_id, message_id).await
+}
+
+/// Termina una encuesta publicada por el bot.
+pub async fn cerrar_encuesta_de_canal(
+    state: &AppState,
+    channel_id: &str,
+    message_id: &str,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    let token = token_del_bot_activo(state)?;
+    crate::encuestas::cerrar(&token, base_url, channel_id, message_id).await?;
+    Ok(format!("Poll {message_id} closed"))
+}
+
 const PERMISO_EVENTOS: &str = "Crear/Gestionar eventos";
 
 /// Exige «Crear eventos» o «Gestionar eventos» (basta una de las dos).

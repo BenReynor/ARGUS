@@ -187,6 +187,8 @@ function actionLabel(action: string): string {
     case 'crear_evento': return t('Create event');
     case 'editar_evento': return t('Edit event');
     case 'cancelar_evento': return t('Cancel event');
+    case 'crear_encuesta': return t('Create poll');
+    case 'cerrar_encuesta': return t('Close poll');
     case 'reaccionar': return t('Add reaction');
     case 'quitar_reaccion': return t('Remove reaction');
     case 'aplicar_restauracion': return t('Apply restoration');

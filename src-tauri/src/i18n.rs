@@ -419,7 +419,18 @@ const CATALOGO_ES: &[(&str, &str)] = &[
     ("The event channel must be a voice or stage channel", "El canal del evento debe ser de voz o escenario"),
     ("Provide either an external location or a voice/stage channel", "Indica un lugar externo o un canal de voz/escenario (solo uno)"),
     ("An event with an external location needs an end time", "Un evento con lugar externo necesita fecha de fin"),
-    ("Provide at least one field to change", "Indica al menos un campo que cambiar"),
+    ("Poll created in channel {channel_id} (message {id})", "Encuesta creada en el canal {channel_id} (mensaje {id})"),
+    ("Poll {message_id} closed", "Encuesta {message_id} cerrada"),
+    ("The poll question cannot be empty", "La pregunta de la encuesta no puede estar vacía"),
+    ("The poll question is too long (the maximum is 300 characters)", "La pregunta de la encuesta es demasiado larga (el máximo es 300 caracteres)"),
+    ("A poll needs between 2 and 10 answers", "Una encuesta necesita entre 2 y 10 respuestas"),
+    ("The poll duration must be between 1 and 768 hours", "La duración de la encuesta debe estar entre 1 y 768 horas"),
+    ("A poll answer cannot be empty", "Una respuesta de la encuesta no puede estar vacía"),
+    ("A poll answer is too long (the maximum is 55 characters)", "Una respuesta de la encuesta es demasiado larga (el máximo es 55 caracteres)"),
+    ("That message has no poll", "Ese mensaje no tiene encuesta"),
+    ("Invalid response from Discord: missing message id", "Respuesta de Discord no válida: falta el id del mensaje"),
+    ("Could not reach Discord: {e}", "No se pudo conectar con Discord: {e}"),
+    ("Provide at least one field to change","Indica al menos un campo que cambiar"),
     ("Invalid response from Discord: missing event id", "Respuesta de Discord no válida: falta el id del evento"),
     ("The post title cannot be empty", "El título del post no puede estar vacío"),
     ("The post title is too long (the maximum is 100 characters)", "El título del post es demasiado largo (el máximo es 100 caracteres)"),
@@ -522,6 +533,7 @@ const PERMISOS_EN: &[(&str, &str)] = &[
     ("Moderar miembros", "Timeout Members"),
     ("Ver registro de auditoría", "View Audit Log"),
     ("Crear/Gestionar eventos", "Create/Manage Events"),
+    ("Crear encuestas", "Create Polls"),
 ];
 
 /// `"es"` si el idioma pedido es español; cualquier otro valor es inglés.

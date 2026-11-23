@@ -675,6 +675,8 @@ export const es: Record<string, string> = {
   'Create event': 'Crear evento',
   'Edit event': 'Editar evento',
   'Cancel event': 'Cancelar evento',
+  'Create poll': 'Crear encuesta',
+  'Close poll': 'Cerrar encuesta',
   'Add reaction': 'Añadir reacción',
   'Remove reaction': 'Quitar reacción',
   'Edit the message from {name}': 'Editar mensaje de {name}',

@@ -157,6 +157,9 @@ optional parameter.
 | `crear_evento` | `guild_id?`, `nombre` (≤ 100), `descripcion?` (≤ 1000), `inicio`, `fin?`, `lugar?` or `canal_id?` | Creates a server-members-only event. Dates are ISO 8601 with a time zone; the start must be in the future and the end after the start. `lugar` (external, requires `fin`) or `canal_id` (voice → type 2, stage → type 1). Requires Create Events or Manage Events. |
 | `editar_evento` | `guild_id?`, `evento_id`, `nombre?`, `descripcion?`, `inicio?`, `fin?`, `lugar?`, `canal_id?` | Changes only the given fields, with the same date rules. Requires Create Events or Manage Events. |
 | `cancelar_evento` | `guild_id?`, `evento_id` | Cancels (deletes) the event. Irreversible, so it counts as a destructive action in proposals. Requires Create Events or Manage Events. |
+| `crear_encuesta` | `guild_id?`, `channel_id`, `pregunta` (≤ 300), `respuestas[]` (2–10: `texto` ≤ 55, `emoji?`), `duracion_horas?` (1–768, default 24), `voto_multiple?` | Posts a native poll (a message with `poll`). Requires Create Polls. In proposals it counts as an irreversible action (like `enviar_mensaje`). |
+| `resultados_encuesta` | `channel_id`, `message_id` | Read-only: question, vote count per answer, total votes and whether it has ended. |
+| `cerrar_encuesta` | `channel_id`, `message_id` | Ends a poll posted by the bot now (Discord only lets the author end it). |
 | `enviar_dm` | `user_id`, `contenido` (≤ 2000) | Direct message to a user. |
 | `avisar` | `user_id` (ID or name), `motivo`, `mensaje_id?`, `dm?` (default true), `guild_id?` | Saves a warning; with `dm` sends the user the reason and their warning count (if the DM fails the warning is kept and the result says so). |
 | `borrar_mensaje` | `guild_id?`, `channel_id`, `message_id` | Deletes a message. |

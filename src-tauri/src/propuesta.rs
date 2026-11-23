@@ -30,6 +30,7 @@ pub const ACCIONES_DESTRUCTIVAS: &[&str] = &[
     "borrar_webhook",
     "cancelar_evento",
     "enviar_mensaje",
+    "crear_encuesta",
     "editar_mensaje",
     "crear_post_foro",
     "enviar_dm",
@@ -94,7 +95,9 @@ impl Propuesta {
                 "borrar_mensaje" | "borrar_mensajes" => permisos.borrar_mensajes,
                 "avisar" | "enviar_mensaje" | "editar_mensaje" | "crear_post_foro"
                 | "etiquetar_post" | "reaccionar" | "quitar_reaccion" | "enviar_dm"
-                | "fijar_mensaje" | "desfijar_mensaje" => permisos.avisos,
+                | "fijar_mensaje" | "desfijar_mensaje" | "crear_encuesta" | "cerrar_encuesta" => {
+                    permisos.avisos
+                }
                 _ => false,
             };
             if !permitido {
@@ -360,6 +363,8 @@ fn referencias(herramienta: &str, args: &Value) -> Vec<(&'static str, Ref)> {
         | "borrar_mensaje"
         | "borrar_mensajes"
         | "fijar_mensaje"
+        | "crear_encuesta"
+        | "cerrar_encuesta"
         | "desfijar_mensaje" => {
             vec![("channel_id", Ref::Canal)]
         }
@@ -750,6 +755,8 @@ mod tests {
                     "enviar_dm",
                     "fijar_mensaje",
                     "desfijar_mensaje",
+                    "crear_encuesta",
+                    "cerrar_encuesta",
                 ],
             ),
         ];
@@ -809,6 +816,7 @@ mod tests {
             "borrar_webhook",
             "cancelar_evento",
             "enviar_mensaje",
+            "crear_encuesta",
             "enviar_dm",
             "avisar",
         ] {
