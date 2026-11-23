@@ -146,6 +146,8 @@ export const channelMessages = (guildId: string, channelId: string) =>
   invoke<MensajeCanal[]>('channel_messages', { guildId, channelId });
 export const deleteMessage = (guildId: string, channelId: string, messageId: string) =>
   invoke<string>('delete_message', { guildId, channelId, messageId });
+export const editMessage = (channelId: string, messageId: string, content: string) =>
+  invoke<string>('edit_message', { channelId, messageId, content });
 export const bulkDeleteMessages = (guildId: string, channelId: string, messageIds: string[]) =>
   invoke<string>('bulk_delete_messages', { guildId, channelId, messageIds });
 export const pinMessage = (guildId: string, channelId: string, messageId: string) =>

@@ -213,6 +213,7 @@ fn ejecutar(sin_ventana: bool) {
             set_nickname,
             guild_info,
             send_message,
+            edit_message,
             send_dm,
             get_member_info,
             add_role,
