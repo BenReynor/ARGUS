@@ -811,7 +811,7 @@ con t() en EN y ES y sin datos reales en los tests.
 - [x] Confirmaciones de las herramientas nuevas traducidas
   criterio: los textos que ARGUS muestra o devuelve en la app para `editar_mensaje`, `crear_post_foro` y `responder_a` (confirmaciones, resúmenes de propuesta y errores, incluido «el bot solo puede editar sus propios mensajes») pasan por el catálogo de traducciones con su versión en español; el check de i18n del gate pasa; Lo no especificado NO es motivo de rechazo.
 
-- [ ] Reacciones a mensajes
+- [x] Reacciones a mensajes
   criterio: herramientas `reaccionar` (canal, mensaje, emoji unicode o personalizado `nombre:id`) y `quitar_reaccion` (solo la del propio bot), con validación del emoji antes de llamar a Discord y aviso de permiso «Añadir reacciones»; tests wiremock de la ruta codificada (PUT/DELETE `/reactions/{emoji}/@me`), de emoji inválido y de error 10014 (emoji desconocido) traducido; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Mensajes con embed
