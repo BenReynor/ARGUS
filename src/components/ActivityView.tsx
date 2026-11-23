@@ -180,6 +180,8 @@ function actionLabel(action: string): string {
     case 'fijar_mensaje': return t('Pin message');
     case 'desfijar_mensaje': return t('Unpin message');
     case 'enviar_mensaje': return t('Send message');
+    case 'editar_mensaje': return t('Edit message');
+    case 'crear_post_foro': return t('Create forum post');
     case 'aplicar_restauracion': return t('Apply restoration');
     default: return action;
   }
