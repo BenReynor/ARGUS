@@ -778,7 +778,7 @@ no puede dar. Todo nuevo ajuste va en `guild_settings` (por bot y servidor),
 con valor por defecto que no cambia el comportamiento actual, textos con t() en
 EN y ES y sin datos reales en los tests.
 
-- [ ] Regla de honestidad en el prompt del chat
+- [x] Regla de honestidad en el prompt del chat
   criterio: `prompt_chat` añade a las reglas fijas que el bot puede interpretar a su personaje pero nunca afirma ser humano ni niega ser un bot o una IA cuando se lo preguntan; test de que la regla aparece con y sin órdenes; Lo no especificado NO es motivo de rechazo.
 
 - [ ] Límite configurable del contexto del servidor
