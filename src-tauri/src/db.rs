@@ -785,6 +785,9 @@ pub struct GuildSettings {
     /// Máximo de caracteres del contexto del servidor en el prompt (500–6000).
     #[serde(default = "chat_contexto_max_defecto")]
     pub chat_contexto_max: u32,
+    /// Memoria breve por persona (desactivada por defecto).
+    #[serde(default)]
+    pub chat_memoria: bool,
     /// IDs de usuarios a los que responde; vacía = todos.
     #[serde(default)]
     pub chat_usuarios: Vec<String>,
@@ -872,6 +875,7 @@ impl Default for GuildSettings {
             chat_respuestas_hoy: 0,
             chat_contexto: chat_contexto_defecto(),
             chat_contexto_max: chat_contexto_max_defecto(),
+            chat_memoria: false,
             chat_usuarios: Vec::new(),
             chat_ordenes: false,
             chat_ordenes_usuarios: Vec::new(),
@@ -1006,6 +1010,99 @@ pub async fn tomar_aviso_diario(
     .execute(pool)
     .await?;
     Ok(r.rows_affected() == 1)
+}
+
+/// Nota breve guardada sobre una persona del servidor.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NotaMemoria {
+    pub user_id: String,
+    pub nota: String,
+    pub updated_at: String,
+}
+
+pub async fn leer_nota_memoria(
+    pool: &SqlitePool,
+    bot: &str,
+    guild: &str,
+    user: &str,
+) -> Result<Option<String>> {
+    Ok(sqlx::query_scalar(
+        "SELECT nota FROM chat_memoria WHERE bot_id = ? AND guild_id = ? AND user_id = ?",
+    )
+    .bind(bot)
+    .bind(guild)
+    .bind(user)
+    .fetch_optional(pool)
+    .await?)
+}
+
+/// Guarda la nota de la persona, reemplazando la anterior.
+pub async fn guardar_nota_memoria(
+    pool: &SqlitePool,
+    bot: &str,
+    guild: &str,
+    user: &str,
+    nota: &str,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO chat_memoria (bot_id, guild_id, user_id, nota, updated_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(bot_id, guild_id, user_id) DO UPDATE SET nota = excluded.nota, updated_at = excluded.updated_at",
+    )
+    .bind(bot)
+    .bind(guild)
+    .bind(user)
+    .bind(nota)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn listar_notas_memoria(
+    pool: &SqlitePool,
+    bot: &str,
+    guild: &str,
+) -> Result<Vec<NotaMemoria>> {
+    let rows = sqlx::query(
+        "SELECT user_id, nota, updated_at FROM chat_memoria WHERE bot_id = ? AND guild_id = ?
+         ORDER BY updated_at DESC",
+    )
+    .bind(bot)
+    .bind(guild)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| NotaMemoria {
+            user_id: r.get("user_id"),
+            nota: r.get("nota"),
+            updated_at: r.get("updated_at"),
+        })
+        .collect())
+}
+
+pub async fn borrar_nota_memoria(
+    pool: &SqlitePool,
+    bot: &str,
+    guild: &str,
+    user: &str,
+) -> Result<()> {
+    sqlx::query("DELETE FROM chat_memoria WHERE bot_id = ? AND guild_id = ? AND user_id = ?")
+        .bind(bot)
+        .bind(guild)
+        .bind(user)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn borrar_todas_notas_memoria(pool: &SqlitePool, bot: &str, guild: &str) -> Result<()> {
+    sqlx::query("DELETE FROM chat_memoria WHERE bot_id = ? AND guild_id = ?")
+        .bind(bot)
+        .bind(guild)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 // Plan del servidor y conversación del asistente IA (por bot y servidor)
@@ -1980,5 +2077,62 @@ mod tests_chat_diario {
             .unwrap());
         p.close().await;
         let _ = std::fs::remove_file(ruta);
+    }
+
+    #[tokio::test]
+    async fn memoria_por_persona_guarda_reemplaza_y_borra() {
+        let pool = pool().await;
+        assert!(!GuildSettings::default().chat_memoria);
+        assert!(
+            !serde_json::from_str::<GuildSettings>("{}")
+                .unwrap()
+                .chat_memoria
+        );
+        assert_eq!(
+            leer_nota_memoria(&pool, "b", "g", "u1").await.unwrap(),
+            None
+        );
+        guardar_nota_memoria(&pool, "b", "g", "u1", "uno")
+            .await
+            .unwrap();
+        guardar_nota_memoria(&pool, "b", "g", "u1", "dos")
+            .await
+            .unwrap();
+        guardar_nota_memoria(&pool, "b", "g", "u2", "otra")
+            .await
+            .unwrap();
+        guardar_nota_memoria(&pool, "b", "g2", "u1", "otro servidor")
+            .await
+            .unwrap();
+        assert_eq!(
+            leer_nota_memoria(&pool, "b", "g", "u1")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("dos")
+        );
+        assert_eq!(
+            listar_notas_memoria(&pool, "b", "g").await.unwrap().len(),
+            2
+        );
+        borrar_nota_memoria(&pool, "b", "g", "u1").await.unwrap();
+        assert_eq!(
+            leer_nota_memoria(&pool, "b", "g", "u1").await.unwrap(),
+            None
+        );
+        assert_eq!(
+            listar_notas_memoria(&pool, "b", "g").await.unwrap().len(),
+            1
+        );
+        borrar_todas_notas_memoria(&pool, "b", "g").await.unwrap();
+        assert!(listar_notas_memoria(&pool, "b", "g")
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            listar_notas_memoria(&pool, "b", "g2").await.unwrap().len(),
+            1
+        );
+        pool.close().await;
     }
 }

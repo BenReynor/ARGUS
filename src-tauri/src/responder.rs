@@ -807,8 +807,41 @@ impl Conversador {
             &e.texto,
             autorizado,
         );
+        // Memoria opcional: solo la nota del autor actual, y solo con el ajuste activo.
+        let memoria = ajustes.chat_memoria;
+        let (bot, guild, autor) = (
+            self.bot_id.to_string(),
+            e.guild_id.to_string(),
+            e.msg.autor_id.to_string(),
+        );
+        let nota = match (&self.pool, memoria) {
+            (Some(pool), true) => crate::db::leer_nota_memoria(pool, &bot, &guild, &autor)
+                .await
+                .ok()
+                .flatten(),
+            _ => None,
+        };
+        let prompt = crate::chat::con_memoria(prompt, memoria, nota.as_deref());
         let orden = orden_chat(agente, &ruta, &ajustes.chat_modelo, &prompt)?;
         let respuesta = ejecutar_texto(&orden, self.limite).await?;
+        let respuesta = if memoria {
+            let (visible, nueva) = crate::chat::separar_memoria(&respuesta);
+            if let (Some(pool), Some(nueva)) = (&self.pool, nueva.as_deref()) {
+                match crate::chat::nota_para_guardar(nueva) {
+                    Some(n) => {
+                        if let Err(err) =
+                            crate::db::guardar_nota_memoria(pool, &bot, &guild, &autor, &n).await
+                        {
+                            self.log(format!("[WARN] Could not save the memory note: {err}"));
+                        }
+                    }
+                    None => self.log("[WARN] Discarded a memory note that looked private".into()),
+                }
+            }
+            visible
+        } else {
+            respuesta
+        };
         // La línea `ORDEN:` nunca se publica; se prepara su propuesta aparte.
         let (visible, orden) = separar_orden_tipo(&respuesta, autorizado);
         self.enviar(e, &visible).await?;

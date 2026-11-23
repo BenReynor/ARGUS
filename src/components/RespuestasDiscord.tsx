@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
 import { useStore, useActiveGuildId, useShowNotification } from '../store/useStore';
-import { listarAgentesIa, getGuildSettings, saveGuildSettings, listChannels, listMembers } from '../api/tauri';
+import { listarAgentesIa, getGuildSettings, saveGuildSettings, listChannels, listMembers, listarMemoriaChat, borrarMemoriaChat, borrarTodaMemoriaChat } from '../api/tauri';
+import type { NotaMemoria } from '../api/tauri';
 import type { AgenteIa, Channel, GuildSettings, Member } from '../types';
 import { Avatar, Button, Cargando, EstadoVacio, ErrorPanel, Input, Select } from './ui';
 import { t } from '../i18n';
@@ -206,6 +207,17 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
           />
         </div>
 
+        <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+          <legend>{t('Saved notes')}</legend>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            <input type="checkbox" role="switch" checked={!!ajustes.chat_memoria} onChange={(e) => cambiar({ chat_memoria: e.target.checked })} />
+            <span>{t('Remember short notes about each person')}</span>
+          </label>
+          <small>{t('Off by default. The agent may save one short note (max 500 characters) about the person writing, never passwords, phones or e-mails. Notes are sent to the model provider with that person\'s messages.')}</small>
+          {!ajustes.chat_memoria && <small>{t('Notes are not used while memory is off.')}</small>}
+          <NotasMemoria guildId={guildId} botId={botId} miembros={miembros} />
+        </fieldset>
+
         <Input
           etiqueta={t('Daily reply limit')}
           ayuda={t('Default: 200. 0 = unlimited. Resets at 00:00 UTC. Orders count too; failed attempts also consume budget to prevent repeated costs.')}
@@ -304,6 +316,53 @@ export const RespuestasDiscord: React.FC<{ onAbrirPersonalidad?: () => void }> =
 };
 
 const nombreMiembro = (m: Member) => m.nickname || m.username;
+
+/** Lista de notas guardadas por persona, con borrar una o todas. */
+const NotasMemoria: React.FC<{ guildId: string; botId: string | null | undefined; miembros: Member[] }> = ({ guildId, botId, miembros }) => {
+  const showNotification = useShowNotification();
+  const [notas, setNotas] = useState<NotaMemoria[] | null>(null);
+
+  useEffect(() => {
+    let vigente = true;
+    setNotas(null);
+    listarMemoriaChat(guildId)
+      .then((n) => { if (vigente) setNotas(n); })
+      .catch((e) => { if (vigente) { setNotas([]); showNotification(mensajeError(e, t('Could not load the notes')), 'error'); } });
+    return () => { vigente = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guildId, botId]);
+
+  const quitar = async (userId: string | null) => {
+    try {
+      if (userId === null) await borrarTodaMemoriaChat(guildId); else await borrarMemoriaChat(guildId, userId);
+      setNotas((actual) => (userId === null ? [] : (actual ?? []).filter((n) => n.user_id !== userId)));
+      showNotification(userId === null ? t('All notes deleted') : t('Note deleted'), 'success');
+    } catch (e) {
+      showNotification(mensajeError(e, t('Could not delete the notes')), 'error');
+    }
+  };
+
+  if (notas === null) return null;
+  if (notas.length === 0) return <small>{t('No notes saved yet.')}</small>;
+  return (
+    <div>
+      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' }}>
+        {notas.map((n) => {
+          const m = miembros.find((x) => x.user_id === n.user_id);
+          const nombre = m ? nombreMiembro(m) : n.user_id;
+          return (
+            <li key={n.user_id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <strong>{nombre}</strong>
+              <span style={{ flex: 1, whiteSpace: 'pre-wrap' }}>{n.nota}</span>
+              <Button variante="secundario" aria-label={t('Delete note')} onClick={() => { void quitar(n.user_id); }}>{t('Delete note')}</Button>
+            </li>
+          );
+        })}
+      </ul>
+      <Button variante="secundario" onClick={() => { void quitar(null); }}>{t('Delete all')}</Button>
+    </div>
+  );
+};
 
 /** Selector múltiple de miembros: buscador, lista filtrada y chips con avatar y nombre. */
 const SelectorMiembros: React.FC<{

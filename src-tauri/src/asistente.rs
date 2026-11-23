@@ -1973,6 +1973,56 @@ pub async fn guardar_contexto_servidor(
     localizar_error(&state, r)
 }
 
+/// Notas de memoria por persona del bot activo en el servidor.
+#[tauri::command]
+pub async fn listar_memoria_chat(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    guild_id: String,
+) -> Result<Vec<crate::db::NotaMemoria>, String> {
+    let r = async {
+        let (bot, pool) = bot_y_pool(&app, &state).await?;
+        crate::db::listar_notas_memoria(&pool, &bot, &guild_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    .await;
+    localizar_error(&state, r)
+}
+
+#[tauri::command]
+pub async fn borrar_memoria_chat(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    guild_id: String,
+    user_id: String,
+) -> Result<(), String> {
+    let r = async {
+        let (bot, pool) = bot_y_pool(&app, &state).await?;
+        crate::db::borrar_nota_memoria(&pool, &bot, &guild_id, &user_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    .await;
+    localizar_error(&state, r)
+}
+
+#[tauri::command]
+pub async fn borrar_toda_memoria_chat(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    guild_id: String,
+) -> Result<(), String> {
+    let r = async {
+        let (bot, pool) = bot_y_pool(&app, &state).await?;
+        crate::db::borrar_todas_notas_memoria(&pool, &bot, &guild_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    .await;
+    localizar_error(&state, r)
+}
+
 /// Estimación de las páginas de historial (100 mensajes por petición).
 /// No incluye otras herramientas del agente, permisos ni reintentos.
 #[derive(Debug, Serialize, PartialEq)]

@@ -136,6 +136,7 @@ export interface GuildSettings {
   chat_contexto: number;
   /** Máximo de caracteres del contexto del servidor en el prompt (500–6000, por defecto 1500). */
   chat_contexto_max: number;
+  chat_memoria: boolean;
   /** IDs de usuarios a los que responde; vacía = todos. */
   chat_usuarios: string[];
   /** Permite dar órdenes desde Discord. */
