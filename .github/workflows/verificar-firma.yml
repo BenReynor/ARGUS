@@ -1,0 +1,50 @@
+# Prueba en seco de la firma de actualizaciones: firma un archivo de prueba con
+# los secretos del repo y lo verifica contra la clave pública de tauri.conf.json.
+# No compila ni publica nada. Se lanza a mano (Actions → «Verificar firma» →
+# Run workflow) o con `gh workflow run verificar-firma.yml`.
+# Nunca imprime los secretos: solo dice si la pareja de claves y la contraseña encajan.
+name: Verificar firma
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firma:
+    name: Firma de actualizaciones (en seco)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: La clave pública configurada es la de producción
+        run: node -e "import('./scripts/verificar-firma-updater.mjs').then(m=>{const c=require('./src-tauri/tauri.conf.json');m.assertProductionKey(c.plugins.updater.pubkey);console.log('Clave pública de producción: OK')})"
+
+      - name: Firmar y verificar un archivo de prueba
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          node scripts/comprobar-clave-updater.mjs
+          version="$(node -p "require('./package.json').version")"
+          echo "ARGUS signing dry run" > prueba-firma.txt
+          npx tauri signer sign --app-version "$version" prueba-firma.txt
+          node scripts/verificar-firma-updater.mjs prueba-firma.txt "$version"
+
+      - name: Una alteración se rechaza
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          echo "alterado" >> prueba-firma.txt
+          if node scripts/verificar-firma-updater.mjs prueba-firma.txt "$version" 2>/dev/null; then
+            echo "✗ Un archivo alterado pasó la verificación"; exit 1
+          fi
+          echo "Archivo alterado rechazado: OK"
+          rm -f prueba-firma.txt prueba-firma.txt.sig
