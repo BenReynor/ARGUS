@@ -5,6 +5,8 @@ import { listGuilds, setActiveGuild, inviteUrl } from '../api/tauri';
 import type { Guild } from '../api/tauri';
 import { Avatar } from './ui';
 import { t } from '../i18n';
+import { debeCargar, respuestaVigente, servidorTrasCargar } from '../guildRailLogic';
+import type { EstadoCarga } from '../guildRailLogic';
 import { Plus, RefreshCw, AlertTriangle } from 'lucide-react';
 
 const guildIconUrl = (g: Guild) =>
@@ -24,28 +26,43 @@ export const GuildRail: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
 
-  // Discord limita GET /users/@me/guilds a 1 por segundo: nunca dos a la vez y,
-  // al volver a la ventana, como mucho una cada 10 s (el botón no espera).
-  const enCurso = React.useRef(false);
-  const ultima = React.useRef(0);
+  // Discord limita GET /users/@me/guilds a 1 por segundo: con el mismo bot nunca
+  // dos a la vez y, al volver a la ventana, como mucho una cada 10 s. Al cambiar
+  // de bot se pide siempre y la respuesta tardía del bot anterior se descarta
+  // (antes una petición en curso del bot anterior dejaba su lista en pantalla).
+  const estado = React.useRef<EstadoCarga>({ bot: null, enCurso: false, ultima: 0 });
+  const activoRef = React.useRef(activeGuildId);
+  activoRef.current = activeGuildId;
   const cargar = React.useCallback((forzar: boolean = true) => {
-    if (!config.active_bot_id) {
+    const bot = config.active_bot_id;
+    if (!bot) {
+      estado.current = { bot: null, enCurso: false, ultima: 0 };
       setGuilds([]);
       setError(null);
       return;
     }
-    if (enCurso.current || (!forzar && Date.now() - ultima.current < 10_000)) return;
-    enCurso.current = true;
-    ultima.current = Date.now();
+    if (!debeCargar(estado.current, bot, forzar, Date.now())) return;
+    if (estado.current.bot !== bot) setGuilds([]);
+    estado.current = { bot, enCurso: true, ultima: Date.now() };
     setCargando(true);
     listGuilds()
       .then((lista) => {
+        if (!respuestaVigente(estado.current, bot)) return;
         setGuilds(lista);
         setError(null);
+        // El servidor activo debe ser uno de este bot.
+        const destino = servidorTrasCargar(lista.map((g) => g.id), activoRef.current);
+        if (destino && destino !== activoRef.current) {
+          setActiveGuild(destino).then(() => setActiveGuildId(destino)).catch(() => {});
+        }
       })
-      .catch((e) => setError(typeof e === 'string' ? e : t("Could not read the bot's servers")))
+      .catch((e) => {
+        if (!respuestaVigente(estado.current, bot)) return;
+        setError(typeof e === 'string' ? e : t("Could not read the bot's servers"));
+      })
       .finally(() => {
-        enCurso.current = false;
+        if (!respuestaVigente(estado.current, bot)) return;
+        estado.current = { ...estado.current, enCurso: false };
         setCargando(false);
       });
   }, [config.active_bot_id]);
